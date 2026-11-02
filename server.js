@@ -33,6 +33,8 @@ const expired=x=>!!(x.deadline&&!x.claimedBy&&Date.parse(x.deadline)<Date.now())
 const out=(x,c)=>({...x,...(c?{channel:c}:{}),expired:expired(x)});
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
+// 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
+const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
 
 // 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份
@@ -55,7 +57,7 @@ process.on('uncaughtException',e=>console.error('未捕获错误',e&&e.stack||e)
 const handle=async(req,res)=>{
   let u,p; try{u=new URL(req.url.replace(/^\/+/,'/'),'http://x'); p=decodeURIComponent(u.pathname)}catch{res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});return res.end('{"error":"请求地址格式不对"}')}
   // 允许 GitHub Pages 上的前端跨域调用接口（ALLOW_ORIGINS 可用逗号追加其他来源）
-  const origin=req.headers.origin||"",allow=(process.env.ALLOW_ORIGINS||"https://xh20071114-max.github.io").split(",");
+  const origin=req.headers.origin||"",allow=(process.env.ALLOW_ORIGINS||"https://plgslzlexpmy.sealoshzh.site").split(",");
   if(allow.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");res.setHeader("Access-Control-Allow-Methods","GET, POST, OPTIONS");res.setHeader("Access-Control-Expose-Headers","X-Rev")}
   if(req.method==="OPTIONS"){res.writeHead(204);return res.end()}
   if(p.startsWith('/api/')){
@@ -63,7 +65,7 @@ const handle=async(req,res)=>{
     // POST /api/register、/api/login {username,password} -> {token,username,admin}
     if(POST&&(p==='/api/register'||p==='/api/login')){
       const {username,password}=await body(req);
-      if(limited("auth:"+req.socket.remoteAddress)) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
+      if(limited("auth:"+clientIp(req))) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
       if(!username||!password) return send(res,400,{error:"用户名和密码不能为空"});
       if(typeof username!=="string"||!/^[\w\u4e00-\u9fa5]{2,16}$/.test(username)) return send(res,400,{error:"用户名需为 2-16 位中文、字母、数字或下划线"});
       if(p==="/api/register"&&String(password).length<6) return send(res,400,{error:"密码至少 6 位"});
@@ -81,7 +83,7 @@ const handle=async(req,res)=>{
     // POST /api/password {oldPassword,newPassword}  改密码，成功后其他设备的登录全部失效，当前 token 保留
     if(p==='/api/password'&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      if(limited("auth:"+req.socket.remoteAddress)) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
+      if(limited("auth:"+clientIp(req))) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
       const {oldPassword,newPassword}=await body(req);
       if(!verify(String(oldPassword||''),db.users[n].pw)) return send(res,401,{error:'原密码错误'});
       if(String(newPassword||'').length<6) return send(res,400,{error:'新密码至少 6 位'});

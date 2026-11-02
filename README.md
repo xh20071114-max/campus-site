@@ -14,7 +14,8 @@
 ## 环境变量
 - `PORT`：端口，默认 3000
 - `ADMIN_PASSWORD`：设置后，启动时会直接建好管理员账号，别人就没法抢注了。账号已经存在时这一项不起作用，登录后可以在个人中心改密码。
-- `ALLOW_ORIGINS`：允许跨域调用接口的前端地址，逗号分隔，默认 `https://xh20071114-max.github.io`
+- `TRUST_PROXY`：默认 1，部署在网关或反向代理后面时，按 `X-Forwarded-For` 最右边的 IP 做频率限制；直接对外、前面没有代理时设成 0。
+- `ALLOW_ORIGINS`：允许跨域调用接口的前端地址，逗号分隔，默认 `https://plgslzlexpmy.sealoshzh.site`（前后端同域时用不到）
 
 ## 部署
 - 前后端一起部署：把整个目录放到服务器上运行 `./run.sh`，`config.js` 里 `API_BASE` 留空。
@@ -71,6 +72,7 @@ nohup ./run.sh &
 - `DATA_DIR`：数据目录，默认是代码所在目录。
 - `ADMIN`：唯一的管理员账号，默认 `AevonEcho`。
 - `ADMIN_PASSWORD`：设置后，启动时会直接建好管理员账号，别人就没法抢注了。账号已经存在时这一项不起作用，登录后可以在个人中心改密码。
+- `TRUST_PROXY`：默认 1，部署在网关或反向代理后面时，按 `X-Forwarded-For` 最右边的 IP 做频率限制；直接对外、前面没有代理时设成 0。
 - `ALLOW_ORIGINS`：只有跨域访问时才需要。
 
 **部署后检查**
