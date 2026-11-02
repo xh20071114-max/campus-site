@@ -74,9 +74,10 @@ const handle=async(req,res)=>{
       if(p==='/api/register'){
         if((ADMIN&&username!==ADMIN&&String(username).toLowerCase()===ADMIN.toLowerCase())||db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
         db.users[username]={pw:hash(String(password)),created:Date.now()};
-      } else { // 账号被锁时，只有以前在这个 IP 成功登录过的本人还能用正确密码进来，防止别人故意输错把账号锁死
-        if(failCount(username)>=10&&!(db.users[username]&&(db.users[username].ips||[]).includes(clientIp(req)))) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
-        if(!db.users[username]||!verify(String(password),db.users[username].pw)){addFail(username);return send(res,401,{error:'用户名或密码错误'})} }
+      } else { // 两层锁定：同账号同 IP 15 分钟错 10 次只锁这个 IP；同账号所有 IP 合计错 50 次锁整个账号（以前在这个 IP 成功登录过的本人除外）
+        const ip=clientIp(req),known=!!(db.users[username]&&(db.users[username].ips||[]).includes(ip));
+        if(failCount(username+'@'+ip)>=10||(failCount(username)>=50&&!known)) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
+        if(!db.users[username]||!verify(String(password),db.users[username].pw)){addFail(username);addFail(username+'@'+ip);return send(res,401,{error:'用户名或密码错误'})} }
       if(p==="/api/login"&&banned(username)) return send(res,403,BANNED);
       if(p==="/api/login"&&!db.users[username].pw.startsWith("s1$"))db.users[username].pw=hash(String(password));
       {const uu=db.users[username],ip=clientIp(req); if(uu&&ip){uu.ips=[ip,...(uu.ips||[]).filter(x=>x!==ip)].slice(0,5)}}
