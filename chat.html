@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="favicon.svg">
 <title>项目频道 · Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;background:#f3f4f6}
@@ -33,14 +34,26 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 .filters span{padding:4px 12px;border-radius:999px;background:#f3f4f6;font-size:13px;cursor:pointer;color:#374151}
 .filters span.on{background:#4f46e5;color:#fff}
 @media(max-width:640px){body{flex-direction:column;height:100dvh}aside{flex:none;flex-wrap:wrap}#chs{display:flex;overflow-x:auto;order:3;flex:0 0 100%;border-top:1px solid #374151}aside h2{padding:12px;font-size:14px}.ch{padding:10px 12px}.me{padding:10px 12px}#login .box{width:90%}aside{width:100%;flex-direction:row;flex-wrap:wrap;align-items:center}aside h2{border:0;white-space:nowrap}.ch{white-space:nowrap}.me{margin:0 0 0 auto;border:0;white-space:nowrap}#msgs{padding:12px}#f{padding:10px}}
+#extra{display:none;gap:8px;padding:8px 20px 0;background:#fff;flex-wrap:wrap}
+#extra.show{display:flex}#extra input{flex:1;min-width:110px;padding:8px;font-size:14px}
+.meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#92400e;margin-top:4px}
+.expired{margin-left:8px;color:#9ca3af;font-size:12px}
+#offline{display:none;background:#fef3c7;color:#92400e;padding:10px 20px;font-size:14px;border-bottom:1px solid #fde68a}
+.official{background:#dc2626;color:#fff;border-radius:4px;font-size:11px;padding:1px 6px;margin-right:6px}
+#f button:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed}
+#f textarea:disabled,#f input:disabled{background:#f3f4f6;cursor:not-allowed}
+#f input:disabled+*{color:#d1d5db}
 </style>
 </head>
 <body>
 <aside><h2><a href="index.html">← Aevon校园交流网</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
 <main>
   <div class="top" id="title"></div>
+  <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。如有疑问请联系管理员。</div>
+  <div id="offline">⚠️ 服务暂未开通：聊天服务还在部署中，暂时不能登录和发消息，请稍后再来。</div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
   <div id="msgs"></div>
+  <div id="extra"><input id="xReward" maxlength="20" placeholder="报酬（选填，如 5元）"><input id="xPlace" maxlength="50" placeholder="地点（选填）"><input id="xDeadline" type="datetime-local" title="截止时间（选填）"></div>
   <form id="f">
     <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
     <label><input type="checkbox" id="isTask">发任务</label>
@@ -57,26 +70,30 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 <script src="config.js"></script>
 <script>
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
-let cur=decodeURIComponent(location.hash.slice(1))||null;
+function dec(h){try{return decodeURIComponent(h)}catch(e){return h}}
+let cur=dec(location.hash.slice(1))||null;
 const seen=JSON.parse(localStorage.getItem('seen')||'{}');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
 const api=(p,o={})=>fetch(API_BASE+p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
-const showLogin=v=>login.style.display=v?'flex':'none';
-function expired(){token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();lerr.textContent='登录已过期，请重新登录';showLogin(true)}
+const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
+function expired(){token=me=null;isAdmin=false;if(isBanned)setBanned(false);localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();lerr.textContent='登录已过期，请重新登录';showLogin(true)}
 function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
   const o=document.getElementById('out'),i=document.getElementById('in');
-  if(o)o.onclick=()=>{api('/api/logout',{method:'POST'}).catch(()=>{});token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
+  if(o)o.onclick=()=>{api('/api/logout',{method:'POST'}).catch(()=>{});token=me=null;isAdmin=false;localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
   if(i)i.onclick=()=>showLogin(true)}
 async function auth(kind){lerr.textContent='';
   const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
   const d=await r.json();if(!r.ok){lerr.textContent=d.error;return}
-  token=d.token;me=d.username;localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
+  token=d.token;me=d.username;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
 bLogin.onclick=()=>lf.reportValidity()&&auth('login');
 bReg.onclick=()=>lf.reportValidity()&&auth('register');
-const revs={};
+const revs={};let online=null;
+function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
+  [...f.elements].forEach(x=>x.disabled=!v||isBanned);
+  if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token)showLogin(true)}
 async function refresh(){
   try{
     CHANNELS=await (await api('/api/channels')).json();
@@ -89,7 +106,8 @@ async function refresh(){
     list.sort((a,b)=>a.id-b.id);cache[ch]=list;
     seen[ch]=list.length;localStorage.setItem('seen',JSON.stringify(seen));
     renderSide();if(ch===cur&&(more.length||first))renderMsgs();
-  }catch(e){title.textContent='连接服务器失败，正在重试…'}
+    setOnline(true);
+  }catch(e){setOnline(false)}
 }
 function go(c){cur=c;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
 function renderSide(){
@@ -99,29 +117,45 @@ function renderSide(){
   const on=chs.querySelector('.ch.on');if(on&&chs.scrollWidth>chs.clientWidth)chs.scrollLeft=on.offsetLeft-chs.clientWidth/2+on.clientWidth/2;
   title.textContent='# '+cur;
 }
+const isExp=m=>m.task&&!m.claimedBy&&!m.done&&!m.cancelled&&(m.expired||(m.deadline&&new Date(m.deadline)<new Date()));
+let isAdmin=localStorage.getItem('admin')==='1',isBanned=false;
+function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);renderMsgs()}
+async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
 let flt='all',forceBottom=true;
-const FL={all:m=>1,open:m=>m.task&&!m.claimedBy,claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&m.done,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me};
+const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&(m.done||m.cancelled),mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me};
 document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
+function statusOf(m){
+  if(!m.task)return '';
+  if(m.cancelled)return '<span class="expired">🚫 已撤销</span>';
+  if(m.done||m.doneAt)return `<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)} 接单）</span>`;
+  if(m.claimedBy)return `<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>`+
+    (m.user===me?btn('complete','完成','#16a34a',m.id):'')+(m.claimedBy===me?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'');
+  if(isExp(m))return '<span class="expired">⏰ 已过期</span>';
+  return m.user===me?'<span class="claimed" style="color:#9ca3af">待接单</span>'+btn('cancel','撤销','#6b7280',m.id,'确定撤销这个任务吗？'):btn('claim','接单','#f59e0b',m.id);
+}
+function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${confirmText}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const list=(cache[cur]||[]).filter(FL[flt]);
-  msgs.innerHTML=list.map(m=>`<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${fmt(m.time)}${m.task?' · 📌 任务':''}${m.task?((m.done||m.doneAt)?`<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)} 接单）</span>`:m.claimedBy?`<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>${m.user===me?`<button class="claim done" style="background:#16a34a" data-id="${m.id}">完成</button>`:''}`:(m.user!==me?`<button class="claim" data-id="${m.id}">接单</button>`:'<span class="claimed" style="color:#9ca3af">待接单</span>')):''}</div><div class="txt">${esc(m.text)}</div></div>`).join('')||'<p style="color:#9ca3af">这个频道还没有消息</p>';
-  msgs.querySelectorAll('.done').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
-    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/complete',{method:'POST'});
-    if(r.status===401)return expired();if(!r.ok)alert((await r.json()).error);refresh()});
-  msgs.querySelectorAll('.claim:not(.done)').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
-    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/claim',{method:'POST'});
-    if(r.status===401)return expired();if(!r.ok)alert((await r.json()).error);refresh()});
+  const list=(cache[cur]||[]).filter(m=>!m.deleted).filter(FL[flt]);
+  msgs.innerHTML=list.map(m=>{
+    const canDel=isAdmin||(m.user===me&&!m.claimedBy);
+    return `<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${fmt(m.time)}${m.task?' · 📌 任务':''}${statusOf(m)}${canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):''}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}</div></div>`}).join('')||'<p style="color:#9ca3af">这里还没有消息</p>';
+  msgs.querySelectorAll('.act').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
+    if(b.dataset.confirm&&!confirm(b.dataset.confirm))return;
+    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
+    if(r.status===401)return expired();if(!r.ok)await failed(r);refresh()});
   if(atBottom||forceBottom)msgs.scrollTop=msgs.scrollHeight;forceBottom=false;
 }
-window.onhashchange=()=>go(decodeURIComponent(location.hash.slice(1)));
+window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
-  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify({text:text.value.trim(),task:isTask.checked})});
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?{reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined}:{}))});
   if(r.status===401){expired();return}
-  if(!r.ok){alert((await r.json()).error);return}
-  text.value='';isTask.checked=false;forceBottom=true;refresh()};
+  if(!r.ok){await failed(r);return}
+  text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');forceBottom=true;refresh()};
+isTask.onchange=()=>extra.classList.toggle('show',isTask.checked);
 text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
-renderMe();if(!token)showLogin(true);
-refresh();setInterval(refresh,2000);
+renderMe();
+if(token)api('/api/me').then(r=>r.ok?r.json():null).then(d=>{if(d){isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');renderMsgs()}}).catch(()=>{});
+refresh();setInterval(refresh,2000);setInterval(()=>renderMsgs(),30000);
 </script>
 </body></html>

@@ -30,9 +30,12 @@ footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size
 .tasks{display:grid;gap:10px}.task{background:#fff;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;text-decoration:none;color:inherit}.task:hover{background:#fffbeb}.task .tg{font-size:12px;background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:10px;margin-right:8px}.task small{color:#9ca3af;white-space:nowrap}
 @media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
 nav a{white-space:nowrap}
-</style></head><body>
+.news li{flex-wrap:wrap}.news .body{width:100%;color:#6b7280;font-size:14px;margin-top:6px;white-space:pre-wrap}.news .del{margin-left:10px;color:#dc2626;cursor:pointer;font-size:13px}
+#offline{display:none;background:#fef3c7;color:#92400e;text-align:center;padding:10px;font-size:14px}
+</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="og.png"><meta name="theme-color" content="#1e3a8a"><meta name="description" content="Aevon校园交流网：校园跑、食堂配送、代取快递、代课，同学之间发任务、接任务。"><meta property="og:type" content="website"><meta property="og:title" content="Aevon校园交流网"><meta property="og:description" content="校园跑、食堂配送、代取快递、代课，同学帮同学。"><meta property="og:url" content="https://xh20071114-max.github.io/campus-site/"><meta property="og:image" content="https://xh20071114-max.github.io/campus-site/og.png"><meta name="twitter:card" content="summary_large_image"></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
-<nav><a href="#home">首页</a><a href="#channels">项目频道</a><a href="#news">公告</a><a href="#about">关于</a><a href="me.html">个人中心</a><a id="me" href="chat.html">登录</a></nav></div></header>
+<nav><a href="#home">首页</a><a href="#channels">项目频道</a><a href="#news">公告</a><a href="#about">关于</a><a href="me.html">个人中心</a><a href="admin.html" id="adminLink" style="display:none">管理后台</a><a id="me" href="chat.html">登录</a></nav></div></header>
+<div id="offline">⚠️ 服务暂未开通，登录、聊天和任务暂时用不了，页面内容可以先看看</div>
 <div class="hero" id="home"><h1>同学帮同学，校园生活更轻松</h1><p>跑步约伴、食堂送餐、快递代取、课程安排，在这里发布任务、找人帮忙</p><a class="btn" href="chat.html">进入项目频道 →</a></div>
 <section id="channels"><h2>项目频道</h2><div class="grid">
 <a class="card" href="chat.html#校园跑"><div class="i">🏃</div><h3>校园跑</h3><p>约跑搭子、跑步打卡任务</p><div class="n" data-c="校园跑">进入频道</div></a>
@@ -41,11 +44,17 @@ nav a{white-space:nowrap}
 <a class="card" href="chat.html#代课"><div class="i">📚</div><h3>代课</h3><p>课程相关任务发布</p><div class="n" data-c="代课">进入频道</div></a>
 </div></section>
 <section id="tasks"><h2>🔥 最新任务 <small style="font-size:14px;color:#9ca3af;font-weight:normal">还没人接的任务</small></h2><div class="tasks" id="taskList"><p style="color:#9ca3af">加载中…</p></div></section>
-<section id="news"><h2>最新公告</h2><ul class="news">
+<section id="news"><h2>最新公告</h2>
+<form id="annForm" style="display:none;background:#fff;padding:16px;border-radius:10px;margin-bottom:12px;gap:8px;flex-direction:column">
+<b style="font-size:14px;color:#1e3a8a">📢 发布公告（管理员）</b>
+<input id="annTitle" maxlength="60" placeholder="公告标题" required style="padding:9px;border:1px solid #d1d5db;border-radius:8px">
+<textarea id="annText" maxlength="2000" rows="2" placeholder="公告内容（选填）" style="padding:9px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit"></textarea>
+<button style="align-self:flex-end;background:#1e3a8a;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer">发布</button></form>
+<ul class="news" id="annList">
 <li>Aevon校园交流网正式上线，欢迎注册使用<span>2026-11-02</span></li>
 <li>四个项目频道已开放，可在频道内发布任务<span>2026-11-02</span></li>
 </ul></section>
-<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，管理员会在频道里发布任务，同学们可以在频道里交流、接单。请遵守校规校纪，文明发言。</p></section>
+<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，管理员会在频道里发布任务，同学们可以在频道里交流、接单。请遵守校规校纪，文明发言。</p><p style="margin-top:10px;color:#6b7280;font-size:14px">本站内容由管理员管理，管理员可以查看站内所有消息。</p></section>
 <footer>© 2026 Aevon校园交流网</footer>
 <script src="config.js"></script>
 <script>
@@ -70,4 +79,32 @@ async function loadTasks(){
   }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}
 }
 loadCounts();loadTasks();setInterval(()=>{loadCounts();loadTasks()},10000);
+
+// 公告：读后端，管理员可发布和删除
+const API=window.API_BASE||'';let isAdmin=false;
+const fmtD=t=>new Date(t).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});
+async function loadAnn(){
+  try{const r=await fetch(API+'/api/announcements');if(!r.ok)throw 0;const list=await r.json();
+    document.getElementById('offline').style.display='none';
+    if(!list.length)return; // 还没有公告时保留默认两条
+    document.getElementById('annList').innerHTML=list.map(a=>`<li><b>${esc(a.title)}</b><span>${fmtD(a.time)}${isAdmin?`<a class="del" data-id="${a.id}">删除</a>`:''}</span>${a.text?`<div class="body">${esc(a.text)}</div>`:''}</li>`).join('');
+    document.querySelectorAll('#annList .del').forEach(el=>el.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
+      const r=await fetch(API+'/api/announcements/'+el.dataset.id+'/delete',{method:'POST',headers:{Authorization:'Bearer '+token}});
+      if(!r.ok){alert((await r.json()).error||'删除失败');return}loadAnn()});
+  }catch{document.getElementById('offline').style.display='block'}
+}
+async function checkAdmin(){
+  if(!token)return;
+  try{const r=await fetch(API+'/api/me',{headers:{Authorization:'Bearer '+token}});
+    if(r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');meEl.textContent='登录';meEl.href='login.html?next=index.html';return}
+    const d=await r.json();isAdmin=!!d.admin;
+    if(isAdmin){document.getElementById('annForm').style.display='flex';document.getElementById('adminLink').style.display='';}
+  }catch{}
+  loadAnn();
+}
+document.getElementById('annForm').onsubmit=async e=>{e.preventDefault();
+  const r=await fetch(API+'/api/announcements',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({title:annTitle.value.trim(),text:annText.value.trim()})});
+  const d=await r.json();if(!r.ok){alert(r.status===429?'操作太频繁，请稍后再试':(d.error||'发布失败'));return}
+  annTitle.value='';annText.value='';loadAnn()};
+loadAnn();checkAdmin();setInterval(loadAnn,30000);
 </script></body></html>

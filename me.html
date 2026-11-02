@@ -19,13 +19,14 @@ main{max-width:1100px;margin:0 auto;padding:36px 20px}
 .t .top{display:flex;justify-content:space-between;gap:10px;margin-bottom:6px}
 .tg{font-size:12px;background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:10px}
 .st{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap}
-.open{background:#fef3c7;color:#92400e}.claimed{background:#dbeafe;color:#1e40af}.done{background:#dcfce7;color:#166534}
+.open{background:#fef3c7;color:#92400e}.claimed{background:#dbeafe;color:#1e40af}.done{background:#dcfce7;color:#166534}.gone{background:#f3f4f6;color:#6b7280}
 .t small{color:#9ca3af}.empty{color:#9ca3af;font-size:14px}
 .need{background:#fff;border-radius:12px;padding:40px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
 @media(max-width:720px){.cols{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}nav a{margin-left:12px;font-size:14px}}
 @media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
 nav a{white-space:nowrap}
-</style></head><body>
+#pwf input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:10px;font-size:15px}#pwf button{background:#1e3a8a;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;margin-top:6px}
+</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="og.png"><meta name="theme-color" content="#1e3a8a"></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
 <main id="main"></main>
@@ -34,10 +35,10 @@ nav a{white-space:nowrap}
 const token=localStorage.getItem('token'),me=localStorage.getItem('username');
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const M=document.getElementById('main');
-function status(m){if(m.done||m.doneAt)return['done','🏁 已完成'];if(m.claimedBy)return['claimed','✅ 已接单'];return['open','⏳ 待接单']}
+function status(m){if(m.deleted)return['gone','🗑 已删除'];if(m.cancelled)return['gone','↩️ 已撤销'];if(m.done||m.doneAt)return['done','🏁 已完成'];if(m.expired&&!m.claimedBy)return['gone','⌛ 已过期'];if(m.claimedBy)return['claimed','✅ 已接单'];return['open','⏳ 待接单']}
 function card(m,mine){const[c,l]=status(m);const ch=m.channel||m.ch||'';
   const who=mine?(m.claimedBy?`接单人：${esc(m.claimedBy)}`:'还没人接'):`发布人：${esc(m.user)}`;
-  return `<a class="t" href="chat.html#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${esc(m.text)}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
+  return `<a class="t" href="chat.html#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${m.official?'<span class="tg" style="background:#fee2e2;color:#b91c1c">官方</span> ':''}${esc(m.deleted?'（已删除）':m.text)}${m.reward?` <small style="color:#b45309">💰${esc(m.reward)}</small>`:''}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
 async function load(){
   if(!token||!me){M.innerHTML='<div class="need"><h2>请先登录</h2><p style="color:#6b7280;margin-top:8px">登录后可以查看你发布和接下的任务</p><a href="login.html?next=me.html">去登录</a></div>';return}
   let posted=[],claimed=[];
@@ -48,16 +49,29 @@ async function load(){
     const d=await r.json();
     if(Array.isArray(d)){posted=d.filter(x=>x.user===me);claimed=d.filter(x=>x.claimedBy===me)}
     else{posted=d.posted||d.published||[];claimed=d.claimed||d.taken||[]}
-  }catch{ // 后端还没有 /api/my/tasks 时的兜底
-    const all=await (await fetch((window.API_BASE||'')+'/api/tasks?status=all&limit=100')).json();
-    posted=all.filter(x=>x.user===me);claimed=all.filter(x=>x.claimedBy===me)}
+  }catch{M.innerHTML='<div class="need"><h2>⚠️ 服务暂未开通</h2><p style="color:#6b7280;margin-top:8px">后端还没上线，个人中心暂时用不了，稍后再来看看</p><a href="index.html">回首页</a></div>';return}
   const n=(a,f)=>a.filter(f).length;
-  M.innerHTML=`<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>
-  <div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy)}</b><span>待接单</span></div>
+  let ban=false;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok)ban=!!(await r2.json()).banned}catch{}
+  M.innerHTML=`${ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':''}<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>
+  <div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
   <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>
   <div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
-  <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>`;
+  <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>
+  <div class="col" style="margin-top:20px;max-width:420px"><h2>🔒 修改密码</h2>
+  <form id="pwf"><input id="op" type="password" placeholder="原密码" autocomplete="current-password" required>
+  <input id="np" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password" required>
+  <input id="np2" type="password" placeholder="再输一次新密码" autocomplete="new-password" required>
+  <div id="pwmsg" style="font-size:14px;min-height:20px"></div><button>确认修改</button></form>
+  <p style="color:#9ca3af;font-size:12px;margin-top:8px">改完后，其他设备上的登录会自动退出</p></div>`;
+  bindPw();
   document.getElementById('out').onclick=async()=>{try{await fetch((window.API_BASE||'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch{}localStorage.removeItem('token');localStorage.removeItem('username');location.href='index.html'};
 }
-load();setInterval(load,15000);
+function bindPw(){const f=document.getElementById('pwf');f.onsubmit=async e=>{e.preventDefault();
+  const msg=document.getElementById('pwmsg');const bad=t=>{msg.style.color='#dc2626';msg.textContent=t};
+  if(np.value.length<6)return bad('新密码至少 6 位');if(np.value!==np2.value)return bad('两次输入的新密码不一致');
+  try{const r=await fetch((window.API_BASE||'')+'/api/password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({oldPassword:op.value,newPassword:np.value})});
+    const d=await r.json();if(!r.ok)return bad(r.status===429?'操作太频繁，请稍后再试':(d.error||'修改失败'));
+    f.reset();msg.style.color='#166534';msg.textContent='✅ 密码已修改';
+  }catch{bad('服务暂未开通，暂时改不了密码')}}}
+load();setInterval(()=>{if(![...document.querySelectorAll('#pwf input')].some(i=>i.value))load()},15000);
 </script></body></html>

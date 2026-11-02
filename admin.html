@@ -1,0 +1,117 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 · Aevon校园交流网</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#1e3a8a"><meta name="robots" content="noindex">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fb;color:#1f2937}
+a{color:inherit;text-decoration:none}
+header{background:#1e3a8a;color:#fff;position:sticky;top:0;z-index:9}
+.bar{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;flex-wrap:wrap;gap:6px}
+.logo{font-size:20px;font-weight:bold}nav a{margin-left:20px;opacity:.9;white-space:nowrap}
+main{max-width:1200px;margin:0 auto;padding:24px 20px}
+.tabs{display:flex;gap:8px;margin-bottom:16px}.tabs button{border:none;background:#e5e7eb;padding:9px 20px;border-radius:20px;cursor:pointer;font-size:15px}
+.tabs button.on{background:#1e3a8a;color:#fff}
+.tools{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tools input,.tools select,.box input,.box textarea{padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit}
+.tools input{flex:1;min-width:200px}
+.box{background:#fff;border-radius:12px;padding:6px 0;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:10px 14px;text-align:left;border-bottom:1px solid #f0f1f4;vertical-align:top}
+th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;word-break:break-all}
+.tg{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap;display:inline-block;margin:1px 2px 1px 0}
+.b{background:#eef2ff;color:#3730a3}.r{background:#fee2e2;color:#b91c1c}.g{background:#dcfce7;color:#166534}.y{background:#fef3c7;color:#92400e}.x{background:#f3f4f6;color:#6b7280}
+.act{border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap}.danger{background:#fee2e2;color:#b91c1c}.ok{background:#dcfce7;color:#166534}
+.new{padding:16px;display:grid;gap:8px;border-bottom:1px solid #f0f1f4}.new button{justify-self:end;background:#1e3a8a;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer}
+.empty{padding:30px;text-align:center;color:#9ca3af}.count{color:#6b7280;font-size:13px;margin:-6px 0 10px}
+.need{background:#fff;border-radius:12px;padding:50px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
+</style></head><body>
+<header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网 · 管理后台</a>
+<nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
+<main id="main"><p class="empty">加载中…</p></main>
+<script src="config.js"></script>
+<script>
+const API=window.API_BASE||'',token=localStorage.getItem('token');
+const CHANNELS=['校园跑','食堂配送','代取快递','代课'];
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+const M=document.getElementById('main');
+const call=async(path,opt={})=>{const r=await fetch(API+path,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('请求失败 '+r.status)),{status:r.status});return d};
+let tab='users',users=[],msgs=[],anns=[];
+
+function stop(title,text,link){M.innerHTML=`<div class="need"><h2>${title}</h2><p style="color:#6b7280;margin-top:8px">${text}</p>${link||''}</div>`}
+
+async function init(){
+  if(!token)return stop('请先登录','管理后台只有管理员能进入','<a href="login.html?next=admin.html">去登录</a>');
+  let me;try{me=await call('/api/me')}catch(e){
+    if(e.status===401){localStorage.removeItem('token');localStorage.removeItem('username');return stop('登录已过期','请重新登录','<a href="login.html?next=admin.html">去登录</a>')}
+    return stop('⚠️ 服务暂未开通','后端还没上线，管理后台暂时用不了','<a href="index.html">回首页</a>')}
+  if(!me.admin)return stop('没有权限','只有管理员能进入管理后台','<a href="index.html">回首页</a>');
+  M.innerHTML=`<div class="tabs"><button data-t="users">👥 用户</button><button data-t="msgs">💬 消息</button><button data-t="anns">📢 公告</button></div><div id="pane"></div>`;
+  M.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  render();
+}
+
+async function render(){
+  M.querySelectorAll('.tabs button').forEach(b=>b.className=b.dataset.t===tab?'on':'');
+  const P=document.getElementById('pane');P.innerHTML='<p class="empty">加载中…</p>';
+  try{
+    const o=await call('/api/admin/overview');
+    msgs=Object.entries(o.channels||{}).flatMap(([c,l])=>l.map(m=>({...m,channel:c})));
+    const cnt={};msgs.forEach(m=>cnt[m.user]=(cnt[m.user]||0)+1);
+    users=(o.users||[]).map(u=>({...u,messages:cnt[u.username]||0}));
+    anns=(o.announcements||[]).slice().sort((a,b)=>b.id-a.id);
+    if(tab==='users')drawUsers();if(tab==='msgs')drawMsgs();if(tab==='anns')drawAnns();
+  }catch(e){P.innerHTML=`<p class="empty">加载失败：${esc(e.message)}</p>`}
+}
+
+// 用户
+function drawUsers(){
+  const P=document.getElementById('pane');
+  P.innerHTML=`<div class="tools"><input id="uq" placeholder="搜索用户名"><select id="uf"><option value="">全部用户</option><option value="ok">正常</option><option value="banned">已封禁</option></select></div><p class="count" id="uc"></p><div class="box"><table><thead><tr><th>用户名</th><th>注册时间</th><th>发帖</th><th>在线设备</th><th>状态</th><th>操作</th></tr></thead><tbody id="ub"></tbody></table></div>`;
+  const draw=()=>{const q=uq.value.trim().toLowerCase(),f=uf.value;
+    const l=users.filter(u=>(!q||u.username.toLowerCase().includes(q))&&(!f||(f==='banned')===!!u.banned));
+    uc.textContent=`共 ${l.length} 个用户`;
+    ub.innerHTML=l.map(u=>`<tr><td><b>${esc(u.username)}</b> ${u.admin?'<span class="tg r">管理员</span>':''}</td><td>${fmt(u.created)}</td><td>${u.messages??'-'}</td><td>${u.activeSessions||0}</td>
+      <td>${u.banned?`<span class="tg r">已封禁</span>${u.banReason?`<br><small style="color:#6b7280">${esc(u.banReason)}</small>`:''}`:'<span class="tg g">正常</span>'}</td>
+      <td>${u.admin?'':u.banned?`<button class="act ok" data-u="${esc(u.username)}" data-a="unban">解封</button>`:`<button class="act danger" data-u="${esc(u.username)}" data-a="ban">封禁</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有符合条件的用户</td></tr>';
+    ub.querySelectorAll('button').forEach(b=>b.onclick=async()=>{const a=b.dataset.a,n=b.dataset.u;
+      let body={};if(a==='ban'){const r=prompt(`封禁「${n}」后，他不能登录、发消息和接单。\n封禁原因（选填）：`,'');if(r===null)return;body={reason:r.trim()}}
+      try{await call(`/api/admin/users/${encodeURIComponent(n)}/${a}`,{method:'POST',body:JSON.stringify(body)});render()}catch(e){alert(e.message)}})};
+  uq.oninput=draw;uf.onchange=draw;draw();
+}
+
+// 消息（含已删除、已撤销）
+function mState(m){const t=[];if(m.official)t.push('<span class="tg r">官方</span>');if(m.task)t.push('<span class="tg b">任务</span>');
+  if(m.deleted)t.push('<span class="tg x">已删除</span>');else if(m.cancelled)t.push('<span class="tg x">已撤销</span>');
+  else if(m.done||m.doneAt)t.push('<span class="tg g">已完成</span>');else if(m.claimedBy)t.push(`<span class="tg y">${esc(m.claimedBy)} 已接单</span>`);
+  else if(m.task&&m.expired)t.push('<span class="tg x">已过期</span>');else if(m.task)t.push('<span class="tg y">待接单</span>');return t.join('')}
+function drawMsgs(){
+  const P=document.getElementById('pane');
+  P.innerHTML=`<div class="tools"><input id="mq" placeholder="搜索内容或用户名"><select id="mc"><option value="">全部频道</option>${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select>
+  <select id="mf"><option value="">全部消息</option><option value="task">只看任务</option><option value="live">正常显示中</option><option value="gone">已删除或已撤销</option></select></div><p class="count" id="mcnt"></p>
+  <div class="box"><table><thead><tr><th>时间</th><th>频道</th><th>用户</th><th>内容</th><th>状态</th><th>操作</th></tr></thead><tbody id="mb"></tbody></table></div>`;
+  const draw=()=>{const q=mq.value.trim().toLowerCase(),c=mc.value,f=mf.value;
+    const l=msgs.filter(m=>(!c||m.channel===c)&&(!q||String(m.text||m.deletedText||'').toLowerCase().includes(q)||String(m.user).toLowerCase().includes(q))
+      &&(!f||(f==='task'&&m.task)||(f==='live'&&!m.deleted&&!m.cancelled)||(f==='gone'&&(m.deleted||m.cancelled)))).sort((a,b)=>b.id-a.id);
+    mcnt.textContent=`共 ${l.length} 条`;
+    mb.innerHTML=l.slice(0,500).map(m=>{const text=m.deleted?(m.deletedText||'（内容已清空）'):m.text;
+      const extra=[m.reward&&'💰'+m.reward,m.place&&'📍'+m.place,m.deadline&&'⏰'+fmt(m.deadline)].filter(Boolean).join('　');
+      return `<tr><td style="white-space:nowrap">${fmt(m.time)}</td><td><span class="tg b">#${esc(m.channel)}</span></td><td>${esc(m.user)}</td>
+      <td class="txt">${esc(text)}${extra?`<br><small style="color:#6b7280">${esc(extra)}</small>`:''}</td><td>${mState(m)}</td>
+      <td>${m.deleted?'':`<button class="act danger" data-c="${esc(m.channel)}" data-id="${m.id}">删除</button>`}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">没有符合条件的消息</td></tr>';
+    mb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(!confirm('确定删除这条消息？'))return;
+      try{await call(`/api/channels/${encodeURIComponent(b.dataset.c)}/messages/${b.dataset.id}/delete`,{method:'POST'});render()}catch(e){alert(e.message)}})};
+  mq.oninput=draw;mc.onchange=draw;mf.onchange=draw;draw();
+}
+
+// 公告
+function drawAnns(){
+  const P=document.getElementById('pane');
+  P.innerHTML=`<div class="box"><form class="new" id="af"><b>发布新公告</b><input id="at" maxlength="60" placeholder="公告标题" required><textarea id="ax" rows="3" maxlength="2000" placeholder="公告内容（选填）"></textarea><button>发布</button></form>
+  <table><thead><tr><th>时间</th><th>标题和内容</th><th>操作</th></tr></thead><tbody>${anns.map(a=>`<tr><td style="white-space:nowrap">${fmt(a.time)}</td><td class="txt"><b>${esc(a.title)}</b>${a.text?`<br><span style="color:#6b7280">${esc(a.text)}</span>`:''}</td>
+  <td><button class="act danger" data-id="${a.id}">删除</button></td></tr>`).join('')||'<tr><td colspan="3" class="empty">还没有公告</td></tr>'}</tbody></table></div>`;
+  af.onsubmit=async e=>{e.preventDefault();try{await call('/api/announcements',{method:'POST',body:JSON.stringify({title:at.value.trim(),text:ax.value.trim()})});render()}catch(e){alert(e.message)}};
+  P.querySelectorAll('tbody button').forEach(b=>b.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
+    try{await call(`/api/announcements/${b.dataset.id}/delete`,{method:'POST'});render()}catch(e){alert(e.message)}});
+}
+init();
+</script></body></html>
