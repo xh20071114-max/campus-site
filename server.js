@@ -74,10 +74,12 @@ const handle=async(req,res)=>{
       if(p==='/api/register'){
         if((ADMIN&&username!==ADMIN&&String(username).toLowerCase()===ADMIN.toLowerCase())||db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
         db.users[username]={pw:hash(String(password)),created:Date.now()};
-      } else { if(failCount(username)>=10) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
+      } else { // 账号被锁时，只有以前在这个 IP 成功登录过的本人还能用正确密码进来，防止别人故意输错把账号锁死
+        if(failCount(username)>=10&&!(db.users[username]&&(db.users[username].ips||[]).includes(clientIp(req)))) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
         if(!db.users[username]||!verify(String(password),db.users[username].pw)){addFail(username);return send(res,401,{error:'用户名或密码错误'})} }
       if(p==="/api/login"&&banned(username)) return send(res,403,BANNED);
       if(p==="/api/login"&&!db.users[username].pw.startsWith("s1$"))db.users[username].pw=hash(String(password));
+      {const uu=db.users[username],ip=clientIp(req); if(uu&&ip){uu.ips=[ip,...(uu.ips||[]).filter(x=>x!==ip)].slice(0,5)}}
       const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,exp:Date.now()+SESSION_MS}; persist();
       return send(res,200,{token,username,admin:isAdmin(username)});
     }
@@ -132,8 +134,6 @@ const handle=async(req,res)=>{
       else {delete t.banned; delete t.bannedAt; delete t.banReason;}
       persist(); return send(res,200,{username:bu,banned:!!t.banned});
     }
-    // 排查用：只返回请求者自己这次请求的来源信息
-    if(p==='/api/ip'||p==='/api/debug/ip') return send(res,200,{ip:clientIp(req),xff:String(req.headers['x-forwarded-for']||''),xRealIp:String(req.headers['x-real-ip']||''),remote:req.socket.remoteAddress||''});
     if(p==='/api/health') return send(res,200,{ok:true,uptime:Math.round(process.uptime())});
     if(p==='/api/channels') return send(res,200,CHANNELS.map(c=>({name:c,count:db.messages[c].filter(alive).length})));
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
