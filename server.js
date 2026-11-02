@@ -141,6 +141,7 @@ const handle=async(req,res)=>{
           if(!m.deleted){db.deletedTexts[m.id]=m.text;m.deleted=true;m.text='';m.deletedBy=n;m.deletedAt=now;msgs++;ch=true}
           if(!m.userDeleted){m.userDeleted=true;ch=true}
         } else if(m.task&&m.claimedBy===du&&!m.done){delete m.claimedBy;delete m.claimedAt;m.unclaimedAt=now;released++;ch=true}
+        else if(m.task&&m.claimedBy===du&&m.done&&!m.claimerDeleted){m.claimerDeleted=true;ch=true} // 已完成的保留，但标记接单人已删号，同名新账号不会认领
         if(ch) m.rev=nextRev();
       }
       for(const [k,v] of Object.entries(db.sessions)) if(v===du||v.user===du) delete db.sessions[k];
@@ -196,7 +197,7 @@ const handle=async(req,res)=>{
     if(p==="/api/my/tasks"&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:"请先登录"});
       const all=CHANNELS.flatMap(c=>db.messages[c].filter(x=>x.task&&!x.deleted).map(x=>out(x,c))).sort((a,b)=>b.id-a.id);
-      return send(res,200,{posted:all.filter(x=>x.user===n),claimed:all.filter(x=>x.claimedBy===n)});
+      return send(res,200,{posted:all.filter(x=>x.user===n),claimed:all.filter(x=>x.claimedBy===n&&!x.claimerDeleted)});
     }
     // GET /api/tasks?status=open|claimed|done|all&limit=10  跨频道任务；open=没人接、没撤销、没过期
     if(p==="/api/tasks"&&GET){

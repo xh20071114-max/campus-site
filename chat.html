@@ -122,12 +122,12 @@ let isAdmin=localStorage.getItem('admin')==='1',isBanned=false;
 function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);renderMsgs()}
 async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
 let flt='all',forceBottom=true;
-const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&(m.done||m.cancelled),mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me};
+const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&(m.done||m.cancelled),mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
 document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
 function statusOf(m){
   if(!m.task)return '';
   if(m.cancelled)return '<span class="expired">🚫 已撤销</span>';
-  if(m.done||m.doneAt)return `<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)} 接单）</span>`;
+  if(m.done||m.doneAt)return `<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)}${m.claimerDeleted?'，已注销':''} 接单）</span>`;
   if(m.claimedBy)return `<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>`+
     (m.user===me?btn('complete','完成','#16a34a',m.id):'')+(m.claimedBy===me?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'');
   if(isExp(m))return '<span class="expired">⏰ 已过期</span>';
