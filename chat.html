@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>项目频道 · 校园服务平台</title>
+<title>项目频道 · Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;background:#f3f4f6}
 aside{width:220px;background:#1f2937;color:#e5e7eb;display:flex;flex-direction:column}
@@ -32,11 +32,11 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 .filters{display:flex;gap:6px;padding:8px 20px;background:#fff;border-bottom:1px solid #e5e7eb;flex-wrap:wrap}
 .filters span{padding:4px 12px;border-radius:999px;background:#f3f4f6;font-size:13px;cursor:pointer;color:#374151}
 .filters span.on{background:#4f46e5;color:#fff}
-@media(max-width:640px){body{flex-direction:column}aside{width:100%;flex-direction:row;overflow-x:auto;align-items:center}aside h2{border:0;white-space:nowrap}.ch{white-space:nowrap}.me{margin:0 0 0 auto;border:0;white-space:nowrap}#msgs{padding:12px}#f{padding:10px}}
+@media(max-width:640px){body{flex-direction:column;height:100dvh}aside{flex:none;flex-wrap:wrap}#chs{display:flex;overflow-x:auto;order:3;width:100%;border-top:1px solid #374151}aside h2{padding:12px;font-size:14px}.ch{padding:10px 12px}.me{padding:10px 12px}#login .box{width:90%}aside{width:100%;flex-direction:row;overflow-x:auto;align-items:center}aside h2{border:0;white-space:nowrap}.ch{white-space:nowrap}.me{margin:0 0 0 auto;border:0;white-space:nowrap}#msgs{padding:12px}#f{padding:10px}}
 </style>
 </head>
 <body>
-<aside><h2><a href="index.html">← 校园服务平台</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
+<aside><h2><a href="index.html">← Aevon校园交流网</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
 <main>
   <div class="top" id="title"></div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
@@ -48,23 +48,27 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   </form>
 </main>
 <div id="login"><form class="box" id="lf" onsubmit="return false">
-  <h3>登录校园服务平台</h3>
+  <h3>登录Aevon校园交流网</h3>
   <input id="lu" placeholder="用户名" required><input id="lp" type="password" placeholder="密码" required>
+  <div style="font-size:12px;color:#9ca3af">用户名 2-16 位，中文、字母、数字或下划线；密码至少 6 位</div>
   <div class="err" id="lerr"></div>
   <div class="row"><button id="bLogin">登录</button><button id="bReg" style="background:#6b7280">注册</button></div>
 </form></div>
+<script src="config.js"></script>
 <script>
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
 let cur=decodeURIComponent(location.hash.slice(1))||null;
 const seen=JSON.parse(localStorage.getItem('seen')||'{}');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const api=(p,o={})=>fetch(p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
+const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
+const api=(p,o={})=>fetch(API_BASE+p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
 const showLogin=v=>login.style.display=v?'flex':'none';
+function expired(){token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();lerr.textContent='登录已过期，请重新登录';showLogin(true)}
 function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
   const o=document.getElementById('out'),i=document.getElementById('in');
-  if(o)o.onclick=()=>{token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
+  if(o)o.onclick=()=>{api('/api/logout',{method:'POST'}).catch(()=>{});token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
   if(i)i.onclick=()=>showLogin(true)}
 async function auth(kind){lerr.textContent='';
   const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
@@ -72,45 +76,50 @@ async function auth(kind){lerr.textContent='';
   token=d.token;me=d.username;localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
 bLogin.onclick=()=>lf.reportValidity()&&auth('login');
 bReg.onclick=()=>lf.reportValidity()&&auth('register');
+const revs={};
 async function refresh(){
   try{
     CHANNELS=await (await api('/api/channels')).json();
     if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
-    const c=[],since=0;
-    const more=await (await api('/api/channels/'+encodeURIComponent(cur)+'/messages?since='+since)).json();
-    const changed=JSON.stringify(more)!==JSON.stringify(cache[cur]);
-    cache[cur]=c.concat(more);
-    seen[cur]=cache[cur].length;localStorage.setItem('seen',JSON.stringify(seen));
-    renderSide();if(changed)renderMsgs();
+    const ch=cur,first=!(ch in revs);
+    const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
+    const more=await r.json();revs[ch]=+(r.headers.get('X-Rev')||revs[ch]||0);
+    const list=cache[ch]||[];
+    more.forEach(m=>{const i=list.findIndex(x=>x.id===m.id);if(i>=0)list[i]=m;else list.push(m)});
+    list.sort((a,b)=>a.id-b.id);cache[ch]=list;
+    seen[ch]=list.length;localStorage.setItem('seen',JSON.stringify(seen));
+    renderSide();if(ch===cur&&(more.length||first))renderMsgs();
   }catch(e){title.textContent='连接服务器失败，正在重试…'}
 }
-function go(c){cur=c;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
+function go(c){cur=c;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
 function renderSide(){
   chs.innerHTML=CHANNELS.map(c=>{const n=c.count-(seen[c.name]||0);
     return `<div class="ch${c.name===cur?' on':''}" data-c="${c.name}"># ${c.name}${n>0&&c.name!==cur?`<span class="badge">${n}</span>`:''}</div>`}).join('');
   chs.querySelectorAll('.ch').forEach(d=>d.onclick=()=>go(d.dataset.c));
+  const on=chs.querySelector('.ch.on');if(on&&chs.scrollWidth>chs.clientWidth)chs.scrollLeft=on.offsetLeft-chs.clientWidth/2+on.clientWidth/2;
   title.textContent='# '+cur;
 }
-let flt='all';
+let flt='all',forceBottom=true;
 const FL={all:m=>1,open:m=>m.task&&!m.claimedBy,claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&m.done,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me};
 document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
 function renderMsgs(){
+  const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
   const list=(cache[cur]||[]).filter(FL[flt]);
   msgs.innerHTML=list.map(m=>`<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${fmt(m.time)}${m.task?' · 📌 任务':''}${m.task?((m.done||m.doneAt)?`<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)} 接单）</span>`:m.claimedBy?`<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>${m.user===me?`<button class="claim done" style="background:#16a34a" data-id="${m.id}">完成</button>`:''}`:(m.user!==me?`<button class="claim" data-id="${m.id}">接单</button>`:'<span class="claimed" style="color:#9ca3af">待接单</span>')):''}</div><div class="txt">${esc(m.text)}</div></div>`).join('')||'<p style="color:#9ca3af">这个频道还没有消息</p>';
   msgs.querySelectorAll('.done').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
     const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/complete',{method:'POST'});
-    if(r.status===401)return showLogin(true);if(!r.ok)alert((await r.json()).error);refresh()});
+    if(r.status===401)return expired();if(!r.ok)alert((await r.json()).error);refresh()});
   msgs.querySelectorAll('.claim:not(.done)').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
     const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/claim',{method:'POST'});
-    if(r.status===401)return showLogin(true);if(!r.ok)alert((await r.json()).error);refresh()});
-  msgs.scrollTop=msgs.scrollHeight;
+    if(r.status===401)return expired();if(!r.ok)alert((await r.json()).error);refresh()});
+  if(atBottom||forceBottom)msgs.scrollTop=msgs.scrollHeight;forceBottom=false;
 }
 window.onhashchange=()=>go(decodeURIComponent(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify({text:text.value.trim(),task:isTask.checked})});
-  if(r.status===401){showLogin(true);return}
+  if(r.status===401){expired();return}
   if(!r.ok){alert((await r.json()).error);return}
-  text.value='';isTask.checked=false;refresh()};
+  text.value='';isTask.checked=false;forceBottom=true;refresh()};
 text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
 renderMe();if(!token)showLogin(true);
 refresh();setInterval(refresh,2000);

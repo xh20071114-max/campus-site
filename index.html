@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>校园网站</title>
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fb;color:#1f2937}
@@ -28,8 +28,10 @@ footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size
 #login .err{color:#ef4444;font-size:13px;min-height:16px}
 .me{margin-top:auto;padding:14px 16px;border-top:1px solid #374151;font-size:13px}.me a{color:#a5b4fc;cursor:pointer;margin-left:6px}
 .tasks{display:grid;gap:10px}.task{background:#fff;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;text-decoration:none;color:inherit}.task:hover{background:#fffbeb}.task .tg{font-size:12px;background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:10px;margin-right:8px}.task small{color:#9ca3af;white-space:nowrap}
+@media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
+nav a{white-space:nowrap}
 </style></head><body>
-<header><div class="bar"><a class="logo" href="index.html">🎓 校园网站</a>
+<header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="#home">首页</a><a href="#channels">项目频道</a><a href="#news">公告</a><a href="#about">关于</a><a href="me.html">个人中心</a><a id="me" href="chat.html">登录</a></nav></div></header>
 <div class="hero" id="home"><h1>同学帮同学，校园生活更轻松</h1><p>跑步约伴、食堂送餐、快递代取、课程安排，在这里发布任务、找人帮忙</p><a class="btn" href="chat.html">进入项目频道 →</a></div>
 <section id="channels"><h2>项目频道</h2><div class="grid">
@@ -40,67 +42,32 @@ footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size
 </div></section>
 <section id="tasks"><h2>🔥 最新任务 <small style="font-size:14px;color:#9ca3af;font-weight:normal">还没人接的任务</small></h2><div class="tasks" id="taskList"><p style="color:#9ca3af">加载中…</p></div></section>
 <section id="news"><h2>最新公告</h2><ul class="news">
-<li>校园网站正式上线，欢迎注册使用<span>2026-11-02</span></li>
+<li>Aevon校园交流网正式上线，欢迎注册使用<span>2026-11-02</span></li>
 <li>四个项目频道已开放，可在频道内发布任务<span>2026-11-02</span></li>
 </ul></section>
-<section class="about" id="about"><h2>关于我们</h2><p>校园网站是面向本校同学的互助平台。每个项目都是一个频道，管理员会在频道里发布任务，同学们可以在频道里交流、接单。请遵守校规校纪，文明发言。</p></section>
-<footer>© 2026 校园网站</footer>
+<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，管理员会在频道里发布任务，同学们可以在频道里交流、接单。请遵守校规校纪，文明发言。</p></section>
+<footer>© 2026 Aevon校园交流网</footer>
+<script src="config.js"></script>
 <script>
-let CHANNELS=[],cur=null,cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
-const seen=JSON.parse(localStorage.getItem('seen')||'{}');
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const api=(path,opt={})=>fetch(path,{...opt,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
-const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
-function showLogin(v){login.style.display=v?'flex':'none'}
-function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录</a>';
-  (document.getElementById('out')||{}).onclick=()=>{token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
-  (document.getElementById('in')||{}).onclick=()=>showLogin(true)}
+const token=localStorage.getItem('token'),me=localStorage.getItem('username');
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// 右上角登录状态
 const meEl=document.getElementById('me');
-async function auth(kind){lerr.textContent='';
-  const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
-  const d=await r.json(); if(!r.ok){lerr.textContent=d.error;return}
-  token=d.token;me=d.username;localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
-bLogin.onclick=()=>lf.reportValidity()&&auth('login');
-bReg.onclick=()=>lf.reportValidity()&&auth('register');
-async function refresh(){
-  try{
-    CHANNELS=await (await api('/api/channels')).json();
-    if(!cur)cur=CHANNELS[0].name;
-    const c=cache[cur]||[],since=c.length?c[c.length-1].id:0;
-    const more=await (await api('/api/channels/'+encodeURIComponent(cur)+'/messages?since='+since)).json();
-    const changed=more.length>0||!cache[cur];
-    cache[cur]=c.concat(more);
-    seen[cur]=cache[cur].length;localStorage.setItem('seen',JSON.stringify(seen));
-    renderSide();if(changed)renderMsgs();
-  }catch(e){title.textContent='连接服务器失败，正在重试…'}
+if(me&&token){meEl.textContent='👤 '+me;meEl.href='me.html';}
+else{meEl.textContent='登录';meEl.href='login.html?next=index.html';}
+// 频道卡片上的消息数
+async function loadCounts(){
+  try{const chs=await (await fetch((window.API_BASE||'')+'/api/channels')).json();
+    chs.forEach(c=>{const el=document.querySelector('.n[data-c="'+c.name+'"]');if(el)el.textContent=c.count?c.count+' 条消息 · 进入频道':'进入频道'});
+  }catch{}
 }
-function renderSide(){
-  chs.innerHTML=CHANNELS.map(c=>{const n=c.count-(seen[c.name]||0);
-    return `<div class="ch${c.name===cur?' on':''}" data-c="${c.name}"># ${c.name}${n>0&&c.name!==cur?`<span class="badge">${n}</span>`:''}</div>`}).join('');
-  chs.querySelectorAll('.ch').forEach(d=>d.onclick=()=>{cur=d.dataset.c;renderMsgs();refresh()});
-  title.textContent='# '+cur;
-}
-function renderMsgs(){
-  const list=cache[cur]||[];
-  msgs.innerHTML=list.map(m=>`<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${fmt(m.time)}${m.task?' · 📌 任务':''}</div><div class="txt">${esc(m.text)}</div></div>`).join('')||'<p style="color:#9ca3af">这个频道还没有消息</p>';
-  msgs.scrollTop=msgs.scrollHeight;
-}
-f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
-  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify({text:text.value.trim(),task:isTask.checked})});
-  if(r.status===401){showLogin(true);return}
-  if(!r.ok){alert((await r.json()).error);return}
-  text.value='';isTask.checked=false;refresh()};
-text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
-renderMe();if(!token)showLogin(true);
-refresh();setInterval(refresh,2000);
-
-(async function loadTasks(){
+// 最新待接任务
+async function loadTasks(){
   const el=document.getElementById('taskList');
-  const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   try{
-    const all=(await (await fetch('/api/tasks?limit=8')).json()).map(m=>({...m,ch:m.channel}));
-    el.innerHTML=all.slice(0,8).map(m=>`<a class="task" href="chat.html#${encodeURIComponent(m.ch)}"><div><span class="tg">#${esc(m.ch)}</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
+    const all=await (await fetch((window.API_BASE||'')+'/api/tasks?limit=8')).json();
+    el.innerHTML=all.map(m=>`<a class="task" href="chat.html#${encodeURIComponent(m.channel)}"><div><span class="tg">#${esc(m.channel)}</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
   }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}
-  setTimeout(loadTasks,10000);
-})();
+}
+loadCounts();loadTasks();setInterval(()=>{loadCounts();loadTasks()},10000);
 </script></body></html>

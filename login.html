@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登录 · 校园服务平台</title>
+<title>登录 · Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2f6fed,#6d28d9)}
@@ -18,26 +18,31 @@ a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
 </head>
 <body>
 <div class="box">
-  <h1>🎓 校园服务平台</h1>
+  <h1>🎓 Aevon校园交流网</h1>
   <div class="tabs"><button id="tL" class="on">登录</button><button id="tR">注册</button></div>
   <form id="f">
-    <input id="u" placeholder="用户名" required>
-    <input id="p" type="password" placeholder="密码" required>
-    <input id="p2" type="password" placeholder="确认密码" style="display:none">
+    <input id="u" placeholder="用户名" required autocomplete="username" maxlength="16">
+    <input id="p" type="password" placeholder="密码" required autocomplete="current-password">
+    <input id="p2" type="password" placeholder="确认密码" style="display:none" autocomplete="new-password">
+    <div id="tip" style="display:none;font-size:13px;color:#6b7280;margin:-4px 0 10px;line-height:1.6">用户名 2-16 位，只能用中文、字母、数字或下划线；密码至少 6 位。</div>
     <div id="err"></div>
     <button class="go" id="go">登录</button>
   </form>
   <a href="index.html">← 返回首页</a>
 </div>
+<script src="config.js"></script>
 <script>
 let mode='login';
 function set(m){mode=m;tL.className=m==='login'?'on':'';tR.className=m==='register'?'on':'';
- p2.style.display=m==='register'?'block':'none';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';err.textContent=''}
+ p2.style.display=m==='register'?'block':'none';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';tip.style.display=m==='register'?'block':'none';p.autocomplete=m==='register'?'new-password':'current-password';err.textContent=''}
 tL.onclick=()=>set('login');tR.onclick=()=>set('register');
 f.onsubmit=async e=>{e.preventDefault();err.textContent='';
- if(mode==='register'&&p.value!==p2.value){err.textContent='两次密码不一致';return}
- try{const r=await fetch('/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.value.trim(),password:p.value})});
-  const d=await r.json();if(!r.ok){err.textContent=d.error||'出错了';return}
+ if(mode==='register'){
+  if(!/^[\u4e00-\u9fa5A-Za-z0-9_]{2,16}$/.test(u.value.trim())){err.textContent='用户名需 2-16 位，只能用中文、字母、数字或下划线';return}
+  if(p.value.length<6){err.textContent='密码至少 6 位';return}
+  if(p.value!==p2.value){err.textContent='两次密码不一致';return}}
+ try{const r=await fetch((window.API_BASE||'')+'/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.value.trim(),password:p.value})});
+  const d=await r.json();if(!r.ok){err.textContent=r.status===429?'操作太频繁，请稍后再试':(d.error||'出错了');return}
   localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);
   location.href=new URLSearchParams(location.search).get('next')||'index.html';
  }catch{err.textContent='连不上服务器，请稍后再试'}};

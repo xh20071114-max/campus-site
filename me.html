@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>个人中心 · 校园网站</title>
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>个人中心 · Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fb;color:#1f2937}
@@ -23,10 +23,13 @@ main{max-width:1100px;margin:0 auto;padding:36px 20px}
 .t small{color:#9ca3af}.empty{color:#9ca3af;font-size:14px}
 .need{background:#fff;border-radius:12px;padding:40px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
 @media(max-width:720px){.cols{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}nav a{margin-left:12px;font-size:14px}}
+@media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
+nav a{white-space:nowrap}
 </style></head><body>
-<header><div class="bar"><a class="logo" href="index.html">🎓 校园网站</a>
+<header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
 <main id="main"></main>
+<script src="config.js"></script>
 <script>
 const token=localStorage.getItem('token'),me=localStorage.getItem('username');
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -39,14 +42,14 @@ async function load(){
   if(!token||!me){M.innerHTML='<div class="need"><h2>请先登录</h2><p style="color:#6b7280;margin-top:8px">登录后可以查看你发布和接下的任务</p><a href="login.html?next=me.html">去登录</a></div>';return}
   let posted=[],claimed=[];
   try{
-    const r=await fetch('/api/my/tasks',{headers:{Authorization:'Bearer '+token}});
+    const r=await fetch((window.API_BASE||'')+'/api/my/tasks',{headers:{Authorization:'Bearer '+token}});
     if(r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');location.href='login.html?next=me.html';return}
     if(!r.ok)throw 0;
     const d=await r.json();
     if(Array.isArray(d)){posted=d.filter(x=>x.user===me);claimed=d.filter(x=>x.claimedBy===me)}
     else{posted=d.posted||d.published||[];claimed=d.claimed||d.taken||[]}
   }catch{ // 后端还没有 /api/my/tasks 时的兜底
-    const all=await (await fetch('/api/tasks?status=all&limit=100')).json();
+    const all=await (await fetch((window.API_BASE||'')+'/api/tasks?status=all&limit=100')).json();
     posted=all.filter(x=>x.user===me);claimed=all.filter(x=>x.claimedBy===me)}
   const n=(a,f)=>a.filter(f).length;
   M.innerHTML=`<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>
@@ -54,7 +57,7 @@ async function load(){
   <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>
   <div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
   <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>`;
-  document.getElementById('out').onclick=()=>{localStorage.removeItem('token');localStorage.removeItem('username');location.href='index.html'};
+  document.getElementById('out').onclick=async()=>{try{await fetch((window.API_BASE||'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch{}localStorage.removeItem('token');localStorage.removeItem('username');location.href='index.html'};
 }
 load();setInterval(load,15000);
 </script></body></html>
