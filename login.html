@@ -15,7 +15,7 @@ input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:8px;margin-
 #err{color:#dc2626;font-size:14px;min-height:20px;margin-bottom:6px}
 a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
 </style>
-<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="og.png"><meta name="theme-color" content="#1e3a8a"></head>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Aevon校园"><script src="pwa.js" defer></script><meta name="theme-color" content="#1e3a8a"></head>
 <body>
 <div class="box">
   <h1>🎓 Aevon校园交流网</h1>
@@ -34,14 +34,14 @@ a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
 <script>
 let mode='login';
 function set(m){mode=m;tL.className=m==='login'?'on':'';tR.className=m==='register'?'on':'';
- p2.style.display=m==='register'?'block':'none';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';tip.style.display=m==='register'?'block':'none';p.autocomplete=m==='register'?'new-password':'current-password';err.textContent=''}
+ p2.style.display=m==='register'?'block':'none';if(m!=='register')p2.value='';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';tip.style.display=m==='register'?'block':'none';p.autocomplete=m==='register'?'new-password':'current-password';err.textContent=''}
 tL.onclick=()=>set('login');tR.onclick=()=>set('register');
 f.onsubmit=async e=>{e.preventDefault();err.textContent='';
  if(mode==='register'){
   if(!/^[\u4e00-\u9fa5A-Za-z0-9_]{2,16}$/.test(u.value.trim())){err.textContent='用户名需 2-16 位，只能用中文、字母、数字或下划线';return}
   if(p.value.length<6){err.textContent='密码至少 6 位';return}
-  if(p.value!==p2.value){err.textContent='两次密码不一致';return}}
- try{const r=await fetch((window.API_BASE||'')+'/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.value.trim(),password:p.value})});
+  if(p.value!==p2.value){err.textContent='两次输入的密码不一致';return}}
+ try{const r=await fetch((window.API_BASE||'')+'/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='register'?{username:u.value.trim(),password:p.value,password2:p2.value}:{username:u.value.trim(),password:p.value})});
   const d=await r.json();if(!r.ok){err.textContent=r.status===429?'操作太频繁，请稍后再试':(d.error||'出错了');return}
   localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);
   location.href=new URLSearchParams(location.search).get('next')||'index.html';

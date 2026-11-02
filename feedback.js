@@ -6,7 +6,7 @@
   var me=document.currentScript,bottom=(me&&me.dataset.bottom)||20;
   var API=function(){return window.API_BASE||''};
   var css=document.createElement('style');
-  css.textContent='#fbBtn{position:fixed;right:18px;bottom:'+bottom+'px;z-index:50;background:#f59e0b;color:#fff;border:none;border-radius:22px;padding:9px 15px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer;font-family:inherit}#fbBtn:hover{background:#d97706}#fbBtn.inSlot{position:static;box-shadow:none;padding:5px 12px;font-size:13px;border-radius:14px;vertical-align:middle}'+
+  css.textContent='#fbBtn{position:fixed;right:18px;bottom:'+bottom+'px;z-index:50;background:#f59e0b;color:#fff;border:none;border-radius:22px;padding:9px 15px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer;font-family:inherit}#fbBtn:hover{background:#d97706}body.fbPad{padding-bottom:72px}@media(max-width:640px){#fbBtn:not(.inSlot){width:42px;height:42px;padding:0;border-radius:50%;font-size:18px;right:12px;opacity:.92}#fbBtn:not(.inSlot) .l{display:none}}#fbBtn.inSlot{position:static;box-shadow:none;padding:5px 12px;font-size:13px;border-radius:14px;vertical-align:middle}'+
   '#fbMask{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}#fbMask.on{display:flex}'+
   '#fbBox{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:420px;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1f2937}'+
   '#fbBox h3{font-size:18px;margin:0 0 4px}#fbBox p{color:#6b7280;font-size:13px;margin:0 0 12px}'+
@@ -15,9 +15,9 @@
   '#fbBox button{border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:14px}#fbSend{background:#1e3a8a;color:#fff}#fbSend:disabled{background:#9ca3af;cursor:not-allowed}#fbClose{background:#f3f4f6}'+
   '#fbMsg{font-size:13px;min-height:18px;margin-top:8px}#fbBox a.go{display:inline-block;background:#1e3a8a;color:#fff;padding:9px 20px;border-radius:8px;text-decoration:none;margin-top:6px}';
   document.head.appendChild(css);
-  var b=document.createElement('button');b.id='fbBtn';b.type='button';b.textContent='💡 建议';b.title='给管理员提建议';
+  var b=document.createElement('button');b.id='fbBtn';b.type='button';b.innerHTML='💡<span class="l"> 建议</span>';b.setAttribute('aria-label','给管理员提建议');b.title='给管理员提建议';
   var m=document.createElement('div');m.id='fbMask';m.innerHTML='<div id="fbBox"></div>';
-  var slot=document.getElementById('fbSlot');if(slot){b.className='inSlot';slot.appendChild(b)}else document.body.appendChild(b);document.body.appendChild(m);
+  var slot=document.getElementById('fbSlot');if(slot){b.className='inSlot';slot.appendChild(b)}else{document.body.appendChild(b);document.body.classList.add('fbPad')}document.body.appendChild(m);
   var box=m.firstChild;
   function close(){m.classList.remove('on')}
   m.addEventListener('click',function(e){if(e.target===m)close()});

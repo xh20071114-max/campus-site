@@ -1,6 +1,6 @@
 # Aevon校园交流网
 
-校园互助网站：门户首页、注册登录、四个项目频道（校园跑、食堂配送、代取快递、代课），频道内可发任务、接单、完成，个人中心查看我发布的和我接的任务。
+校园互助网站：门户首页、注册登录、五个项目频道（校园跑、食堂配送、代取快递、代课、代做作业），频道内可发任务、接单、完成，个人中心查看我发布的和我接的任务。
 
 ## 本地运行
 需要 Node.js 18 以上，无第三方依赖。
@@ -120,3 +120,61 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `{name,count,lastId}`。
 - 频道里普通用户只能发任务，发普通消息返回 403；管理员可以发普通消息，当公告用。
 - `GET /api/channels/<ch>/notices?limit=50`：全站公告（type=global，带 title）和管理员在这个频道发的普通消息（type=channel）合并后按时间倒序返回，字段是 {id,type,title,text,user,time}。
+
+## 交易流程和私聊图片
+- 任务带 `status`：open → claimed → finished → paid → done，另外还有 cancelled（已撤回）和 closed（管理员关闭）。
+- `POST /api/channels/<ch>/messages/<id>/finish`：接单人点「我已完成」。`/paid`：发布人点「我已付款」。`/received`：接单人点「确认收款」，任务变成 done，这时发奖励积分。`/complete`：发布人「无需付款，直接完成」，接单后任何阶段都能用。进入 finished 之后不能 kick、撤回或放弃接单。每一步都会在私聊里写一条系统消息（`type:'system'`）。
+- `POST /api/admin/tasks/<id>/force {action:'done'|'close', reason}`：管理员强制完成（发奖励）或关闭任务（关闭时退还双方的发布分和接单分）。接单人在 finished 或 paid 状态下删号，任务保持原状态，标记 `claimerDeleted`，之后由发布人 complete，或者管理员 force 处理。
+- `POST /api/tasks/<id>/chat/image`：请求体是 JPEG/PNG 二进制（Content-Type 填 image/*），或者 JSON `{data: base64 或 dataURL}`。不超过 300KB，后端检查文件头，每人每天最多 20 张，上传目录总量超过 500MB 返回 507。返回的私聊消息带 `image`（读图地址）。
+- `GET /api/tasks/<id>/chat/image/<消息id>`：权限和读私聊一样。可以用 Authorization 头请求，前端用 fetch 带头请求，再转成 blob 显示（不支持在地址里带 token）。上传时 JSON 里可以带 `kind:"payqr"` 和 `text`（最多 100 字）。图片存在 `DATA_DIR/uploads/<任务id>/`，静态目录访问不到。
+
+## 动态、互评、搜索、举报、备份
+- `GET /api/my/events?after=<id>` → `{unread, events:[{id,type,taskId,channel,task,text,time,read}]}`，新的在前，每人保留最近 200 条。type 有 claim、unclaim、release、cancel、finish、paid、received、done、force、deleted、rated。`POST /api/my/events/read` 把全部标为已读。`/api/me` 带 `eventUnread` 和 `chatUnread`（私聊未读总数）。
+- `POST /api/channels/<ch>/messages/<id>/rate {score:1-5, comment≤80}`：任务 done 后双方各评一次，评过的记在任务的 `ratings.poster/claimer` 上。`GET /api/users/<name>/profile` → `{username,admin,completed,posted,ratingCount,avgScore,goodRate,recent}`。
+- 频道消息和 `/api/tasks` 支持 `?q=关键词`（匹配内容、地点、悬赏）和 `?sort=new|reward|deadline`；带了这两个参数时只返回进行中的任务，最多 limit 条（1-100，默认 50）。
+- `POST /api/report {target:'user'|'task', id, reason}`，每人每分钟最多 3 条。管理员接口：`GET /api/admin/reports`、`POST /api/admin/reports/<id>/resolve {note}`、`/delete`。overview 带 `unreadReports`。
+- `GET /api/admin/backup`：下载 `aevon-backup-YYYY-MM-DD.json`，不含 sessions（登录令牌），也不含图片。
+- `sw.js`：service worker，只缓存静态文件，/api 和 admin 都不缓存。
+
+## 纠纷、自动确认、数据安全、图片清理
+- 「无需付款，直接完成」（complete/done）只能在 claimed 状态用，finished、paid 时返回 409。
+- paid 状态超过 48 小时没确认收款，系统会自动完成任务：任务带 `autoConfirmed:true`，并写一条系统消息，双方各收到一条 `auto` 动态。这个检查每 10 分钟跑一次。
+- `POST /api/channels/<ch>/messages/<id>/dispute {reason}`：发布人或接单人在 claimed、finished、paid 状态下都能发起。
+  - 发起后 `status` 变成 `disputed`，任务带 `dispute:{by,role,reason,time,from}`，对方收到一条 `dispute` 动态。
+  - 之后所有状态动作都返回 409，也不会自动确认收款，只能由管理员用 `/api/admin/tasks/<id>/force` 处理。处理后 `dispute` 里会补上 `resolvedAt`、`resolution`、`resolvedBy` 和 `note`。私聊不受影响。
+  - `GET /api/admin/disputes` 列出所有有过纠纷的任务，没处理的排在前面，每条带 `resolved` 和 `chatCount`。overview 带 `disputes`（待处理数）。
+- 发布人删号时，处在 finished 或 paid 的任务不会撤销，而是转成 disputed，`dispute.role` 为 `system`，原因是「发布人已注销」。删号接口返回值里多一个 `disputedTasks`。
+- 评价规则：
+  - 有过纠纷的任务不能评价。
+  - 计入信用的评价，同一个评价人只算最新的 1 次；评价双方的 IP 有重叠的不算。
+  - profile 里的 `ratingCount`、`avgScore`、`goodRate` 只按计入的评价算，`ratingTotal` 是全部评价数，`recent` 每条带 `counted`。
+- 启动安全：
+  - data.json 解析失败时，先改名为 `data.corrupt-<时间>.json`，再从 backups 里最新一份能解析的备份恢复。
+  - 都不行就拒绝启动，日志里会写明原因。之后重启也不会用空库顶替。
+  - 每次备份前也会先校验数据能不能解析。
+- 图片：
+  - 删除任务时，这个任务的图片一起删掉。
+  - 删除账号时，他发布的任务的图片、以及他被放回的接单对话里的图片都会删掉。
+  - 任务结束 30 天后自动清理图片，每小时检查一次。被清理的消息带 `imageRemoved:true`，不再有 `image` 字段。
+  - 每人最多存 20MB 图片，超过返回 409。
+  - overview 带 `disk:{uploads,uploadsMax,data,backups,free,size}`，单位都是字节。
+- 后台备份下载里不包含 `ips`。
+- 其他：任务按 id 建了索引，私聊未读数改成增量维护。
+- 补充：接单人在 finished 或 paid 删号，也会转成 disputed，原因是「接单人已注销」。有纠纷的任务带 `disputeReason`、`disputeBy`（系统发起时为「系统」）和 `disputedAt`。overview 的 `disk` 里另有 `uploadBytes`、`uploadLimit`、`dataBytes`。发布人和接单人都能发收款码（payqr）。
+- 更正：IP 重叠的评价照常计入信用，只在 `/api/admin/messages` 的任务上带 `ipOverlap:true`，提示管理员双方 IP 相同；公开接口不返回这个字段。私聊里双方都能发任何图片，包括收款码（payqr），后端不限制。
+
+## 讨价接单
+- `POST /api/channels/<ch>/messages/<id>/offer {price, note≤50}`：price 是人民币金额，范围 0.01-100000。发起讨价不扣积分，返回 `{offer, task}`。
+- `GET .../offers` 返回 `{count, offers}`。发布人和管理员能看到全部讨价，讨价人只能看到自己的，其他人只能看到 `count`。任务对象上的 `offerCount` 是进行中的讨价数。
+- `POST .../offers/<oid>/accept|reject|counter|withdraw`：
+  - reject 只有发布人能用，withdraw 只有讨价人能用。
+  - counter `{price, note}` 和 accept 都要轮到自己才能用：`turn` 为 `poster` 时轮到发布人，为 `claimer` 时轮到讨价人。
+  - 每次出价最多 6 次（来回 3 轮）。
+  - accept 等于讨价人按当前价格接单，当场扣接单积分，积分不够返回 402。成交后任务带 `originalReward`、`negotiated:true` 和 `offerId`，`reward` 改成「X元」，私聊里写一条「双方已议价 X 元」。
+- offer 对象：`{id, user, status: pending|accepted|rejected|withdrawn|expired, price, turn, rounds:[{by:'claimer'|'poster', price, note, time}], time, updated, reason?}`。
+- 限制：每人对同一个任务只能有 1 个进行中的讨价，一个任务同时最多 10 个，发布人和管理员不能讨价。
+- 失效：任务被接走、撤回、被删除、被管理员关闭、过了截止时间，或者发布人删号时，所有进行中的讨价都变成 `expired`，并给讨价人发一条动态。截止时间每 10 分钟检查一次，有人操作时也会当场检查。
+- 动态类型：offer、offer_counter、offer_accept、offer_reject、offer_withdraw、offer_expire。
+- 讨价兼容字段：offer 上还带 `note`（最新留言）、`round`（1-3 轮）、`maxRound`、`counter`（发布人最新还价）、`myTurn`、`canCounter`、`history:[{by,action:offer|counter|accept|reject|withdraw|expire,price,note,time}]`。已有还价、还没结束的 offer，`status` 是 `countered`，原始状态在 `rawStatus`。任务上带 `myOffer:{id,price,counter,status,round,myTurn,canCounter}`，只给讨价人自己看。
+- 注册接口可以带 `password2`，修改密码接口可以带 `newPassword2`。传了就会校验，两次不一致时返回 400「两次输入的密码不一致」；不传就不校验，兼容旧页面。
+- 管理员看到的任务数据带 `offerTotal`，是讨价总条数，包含已失效和被拒的。`offerCount` 仍然只算进行中的讨价。

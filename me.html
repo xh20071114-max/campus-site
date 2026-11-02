@@ -31,16 +31,21 @@ nav a{white-space:nowrap}
 .led ul{list-style:none;max-height:260px;overflow:auto}.led li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f1f3f6;font-size:14px}
 .led .pl{color:#16a34a;font-weight:600}.led .mi{color:#dc2626;font-weight:600}.led small{color:#9ca3af}
 #pwf input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:10px;font-size:15px}#pwf button{background:#1e3a8a;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;margin-top:6px}
-</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="og.png"><meta name="theme-color" content="#1e3a8a"></head><body>
+.dot[hidden]{display:none!important}.dot{display:inline-block;min-width:16px;height:16px;line-height:16px;padding:0 4px;margin-left:4px;border-radius:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:bold;text-align:center;vertical-align:top}
+.ev,.cred{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:14px}.ev h2,.cred h2{font-size:16px;color:#1e3a8a;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ev ul,.cred ul{list-style:none;padding:0;margin:0;max-height:300px;overflow:auto}.ev li,.cred li{padding:8px 4px;border-top:1px solid #f3f4f6;font-size:14px}.ev li.u{background:#eff6ff;border-radius:6px}.ev li a{color:inherit;text-decoration:none;display:block}
+.ev li small,.cred li small{color:#9ca3af}.ev button{font-size:12px;border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:normal;color:#374151}
+.cs3{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}.cs3 div{flex:1;min-width:90px;background:#f9fafb;border-radius:10px;padding:10px;text-align:center}.cs3 b{display:block;font-size:20px;color:#1e3a8a}.cs3 span{font-size:12px;color:#6b7280}.stars{color:#f59e0b;letter-spacing:1px}
+</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Aevon校园"><script src="pwa.js" defer></script><meta name="theme-color" content="#1e3a8a"></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
-<nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
+<nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心<span class="dot" id="meDot" hidden></span></a></nav></div></header>
 <main id="main"></main>
 <script src="config.js"></script>
 <script>
 const token=localStorage.getItem('token'),me=localStorage.getItem('username');
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const M=document.getElementById('main');
-function status(m){if(m.deleted)return['gone','🗑 已删除'];if(m.cancelled)return['gone','↩️ 已撤销'];if(m.done||m.doneAt)return['done','🏁 已完成'];if(m.expired&&!m.claimedBy)return['gone','⌛ 已过期'];if(m.claimedBy)return['claimed','✅ 已接单'];return['open','⏳ 待接单']}
+function status(m){if(m.deleted)return['gone','🗑 已删除'];if(m.status==='closed'||m.closed)return['gone','🔒 已关闭'];if(m.cancelled)return['gone','↩️ 已撤销'];if(m.status==='disputed')return['claimed','⚠️ 平台处理中'];if(m.done||m.doneAt||m.status==='done')return['done','🏁 已完成'];if(m.status==='finished')return['claimed','📦 已完成，待付款'];if(m.status==='paid')return['claimed','💸 已付款，待确认收款'];if(m.expired&&!m.claimedBy)return['gone','⌛ 已过期'];if(m.claimedBy)return['claimed','✅ 已接单'];return['open','⏳ 待接单']}
 function card(m,mine){const[c,l]=status(m);const ch=m.channel||m.ch||'';
   const who=mine?(m.claimedBy?`接单人：${esc(m.claimedBy)}${m.claimerDeleted?'（已注销）':''}`:'还没人接'):`发布人：${esc(m.user)}`;
   return `<a class="t" href="chat.html#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${m.official?'<span class="tg" style="background:#fee2e2;color:#b91c1c">官方</span> ':''}${esc(m.deleted?'（已删除）':m.text)}${m.reward?` <small style="color:#b45309">💰${esc(m.reward)}</small>`:''}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
@@ -60,17 +65,31 @@ async function load(silent){
   const dl=x=>Number(x.delta??x.change??x.amount??0);
   const ptsHtml=pts==null?'':`<div class="pts"><div><div style="opacity:.85;font-size:14px">我的积分</div><b>${esc(pts)}</b>分</div><a class="rc" href="recharge.html">💰 充值</a></div>
   <div class="led"><h2>📒 积分明细</h2><ul>${led.slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0)).map(x=>`<li><span>${esc(x.reason||({signup:'注册赠送',post:'发布任务',claim:'接单',refund:'撤销退还',bonus:'积分任务奖励',recharge:'充值',admin:'管理员调整'})[x.type]||'积分变动')}<br><small>${x.time?new Date(x.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}${x.balance!=null?' · 余额 '+esc(x.balance):''}</small></span><span class="${dl(x)>=0?'pl':'mi'}">${dl(x)>=0?'+':''}${dl(x)}</span></li>`).join('')||'<li class="empty">还没有积分变动</li>'}</ul></div>`;
-  let ban=false;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok)ban=!!(await r2.json()).banned}catch{}
+  let ban=false,evU=0,chU=0;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok){const d2=await r2.json();ban=!!d2.banned;evU=d2.eventUnread|0;chU=d2.chatUnread|0}}catch{}
+  const dt=document.getElementById('meDot');if(dt){const nd=evU+chU;dt.hidden=!nd;dt.textContent=nd>99?'99+':nd}
+  let evs=null;try{const r4=await fetch((window.API_BASE||'')+'/api/my/events',{headers:{Authorization:'Bearer '+token}});if(r4.ok){const d4=await r4.json();evs=Array.isArray(d4)?d4:(d4.events||d4.list||[])}}catch{}
+  let prof=null;try{const r5=await fetch((window.API_BASE||'')+'/api/users/'+encodeURIComponent(me)+'/profile',{headers:{Authorization:'Bearer '+token}});if(r5.ok)prof=await r5.json()}catch{}
+  const EVL={claimed:'你的任务被接单了',claim:'你的任务被接单了',released:'接单人放弃了任务',release:'接单人放弃了任务',kicked:'你被发布人取消了接单',kick:'你被发布人取消了接单',finished:'接单人点了「我已完成」，等你付款',finish:'接单人点了「我已完成」，等你付款',paid:'发布人已付款，请确认收款',received:'接单人已确认收款，任务完成',done:'任务已完成',complete:'任务已完成',forced:'管理员处理了你的任务',force:'管理员处理了你的任务',closed:'任务已被管理员关闭',offer:'有人对你的任务发起了讨价',offer_accept:'讨价已被同意，任务已接单',offer_reject:'你的讨价被拒绝了',offer_counter:'对方还价了，去看看',offer_expire:'讨价已失效（任务已被接走、撤回、关闭或过期）',offer_withdraw:'对方撤回了讨价'};
+  const tfmt=t=>t?new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  const evHtml=evs==null?'':`<div class="ev"><h2><span>🔔 任务动态${evU?`<span class="dot">${evU>99?'99+':evU}</span>`:''}</span>${evU?'<button type="button" id="evRead">全部标为已读</button>':''}</h2><ul>${evs.slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0)).slice(0,50).map(x=>{const ch=x.channel||'';const un=x.unread??(x.read===false);const tt=x.taskText||(typeof x.task==='string'?x.task:x.task&&x.task.text)||x.title||'';
+    return `<li class="${un?'u':''}"><a href="${ch?'chat.html#'+encodeURIComponent(ch):'#'}">${un?'🔵 ':''}${esc(x.text||EVL[x.type]||'任务有新变化')}${tt?`<br><small>任务：${esc(String(tt).slice(0,40))}</small>`:''}<br><small>${ch?'#'+esc(ch)+' · ':''}${x.by?esc(x.by)+' · ':''}${tfmt(x.time)}</small></a></li>`}).join('')||'<li class="empty">还没有任务动态</li>'}</ul>${chU?`<p style="font-size:13px;color:#6b7280;margin-top:8px">💬 还有 ${chU} 条私聊未读，去<a href="chat.html">频道</a>的任务私聊里看看</p>`:''}</div>`;
+  const rv=prof?(prof.recent||prof.reviews||prof.ratings||[]):[];const avg=prof?(prof.avgScore??prof.avg??prof.average):null;const rc=prof?(prof.ratingCount??prof.count??rv.length):0;
+  const good=prof?(prof.goodRate??(rv.length?rv.filter(x=>Number(x.score)>=4).length/rv.length:null)):null;
+  const pct=g=>g==null?'—':(prof&&prof.goodRate!=null?Math.round(g):Math.round(g*100))+'%';const star=n=>{n=Math.max(0,Math.min(5,Math.round(Number(n)||0)));return '★'.repeat(n)+'☆'.repeat(5-n)};
+  const credHtml=prof?`<div class="cred"><h2>⭐ 我的信用</h2><div class="cs3"><div><b>${rc?pct(good):'—'}</b><span>好评率</span></div><div><b>${rc&&avg!=null?esc(Number(avg).toFixed(1)):'—'}</b><span>平均分</span></div><div><b>${esc(prof.completed??prof.doneCount??0)}</b><span>接单完成</span></div><div><b>${esc(prof.posted??0)}</b><span>发布完成</span></div><div><b>${esc(rc)}</b><span>收到评价</span></div></div>
+  <ul>${rv.slice(0,10).map(x=>`<li><span class="stars">${star(x.score)}</span> ${esc(x.comment||'')}<br><small>${x.from?esc(x.from):'（已注销用户）'}${x.role==='claimer'?' · 作为接单人':x.role==='poster'?' · 作为发布人':''} · ${tfmt(x.time)}</small></li>`).join('')||'<li class="empty">还没有收到评价。任务完成后，对方可以给你打分</li>'}</ul></div>`:'';
   const parts={
     banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':'',
     ptsbox:ptsHtml,
+    evbox:evHtml,
+    credbox:credHtml,
     statbox:`<div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
   <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>`,
     colbox:`<div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
   <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>`};
   // 定时刷新：只替换内容有变化的区块，不整页重绘，不影响改密码表单
-  if(silent&&document.getElementById('colbox')){for(const k in parts){const el=document.getElementById(k);if(el&&el.dataset.h!==parts[k]){el.innerHTML=parts[k];el.dataset.h=parts[k]}}return}
-  M.innerHTML=`<div id="banbox"></div><div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div><div id="ptsbox"></div><div id="statbox"></div><div id="colbox"></div>
+  if(silent&&document.getElementById('colbox')){for(const k in parts){const el=document.getElementById(k);if(el&&el.dataset.h!==parts[k]){el.innerHTML=parts[k];el.dataset.h=parts[k]}}bindEv();return}
+  M.innerHTML=`<div id="banbox"></div><div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div><div id="ptsbox"></div><div id="evbox"></div><div id="credbox"></div><div id="statbox"></div><div id="colbox"></div>
   <div class="col" style="margin-top:20px;max-width:420px"><h2>🔒 修改密码</h2>
   <form id="pwf"><input id="op" type="password" placeholder="原密码" autocomplete="current-password" required>
   <input id="np" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password" required>
@@ -78,13 +97,15 @@ async function load(silent){
   <div id="pwmsg" style="font-size:14px;min-height:20px"></div><button>确认修改</button></form>
   <p style="color:#9ca3af;font-size:12px;margin-top:8px">改完后，其他设备上的登录会自动退出</p></div>`;
   for(const k in parts){const el=document.getElementById(k);el.innerHTML=parts[k];el.dataset.h=parts[k]}
-  bindPw();
+  bindPw();bindEv();
   document.getElementById('out').onclick=async()=>{try{await fetch((window.API_BASE||'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch{}localStorage.removeItem('token');localStorage.removeItem('username');location.href='index.html'};
 }
+function bindEv(){const b=document.getElementById('evRead');if(!b||b.dataset.on)return;b.dataset.on=1;b.onclick=async()=>{b.disabled=true;
+  try{const r=await fetch((window.API_BASE||'')+'/api/my/events/read',{method:'POST',headers:{Authorization:'Bearer '+token}});if(!r.ok)throw 0;load(true)}catch{b.disabled=false;alert('网络连接失败，请检查网络后重试')}}}
 function bindPw(){const f=document.getElementById('pwf');f.onsubmit=async e=>{e.preventDefault();
   const msg=document.getElementById('pwmsg');const bad=t=>{msg.style.color='#dc2626';msg.textContent=t};
   if(np.value.length<6)return bad('新密码至少 6 位');if(np.value!==np2.value)return bad('两次输入的新密码不一致');
-  try{const r=await fetch((window.API_BASE||'')+'/api/password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({oldPassword:op.value,newPassword:np.value})});
+  try{const r=await fetch((window.API_BASE||'')+'/api/password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({oldPassword:op.value,newPassword:np.value,newPassword2:np2.value})});
     const d=await r.json();if(!r.ok)return bad(r.status===429?'操作太频繁，请稍后再试':(d.error||'修改失败'));
     f.reset();msg.style.color='#166534';msg.textContent='✅ 密码已修改';
   }catch{bad('网络连接失败，请检查网络后重试')}}}
