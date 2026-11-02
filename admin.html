@@ -18,7 +18,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:10px 14px
 th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;word-break:break-all}
 .tg{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap;display:inline-block;margin:1px 2px 1px 0}
 .b{background:#eef2ff;color:#3730a3}.r{background:#fee2e2;color:#b91c1c}.g{background:#dcfce7;color:#166534}.y{background:#fef3c7;color:#92400e}.x{background:#f3f4f6;color:#6b7280}
-.act{border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap}.danger{background:#fee2e2;color:#b91c1c}.ok{background:#dcfce7;color:#166534}
+.act{border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap}.danger{background:#fee2e2;color:#b91c1c}.ok{background:#dcfce7;color:#166534}.kill{background:#dc2626;color:#fff;margin-left:6px}
 .new{padding:16px;display:grid;gap:8px;border-bottom:1px solid #f0f1f4}.new button{justify-self:end;background:#1e3a8a;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer}
 .empty{padding:30px;text-align:center;color:#9ca3af}.count{color:#6b7280;font-size:13px;margin:-6px 0 10px}
 .need{background:#fff;border-radius:12px;padding:50px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
@@ -72,10 +72,12 @@ function drawUsers(){
     uc.textContent=`共 ${l.length} 个用户`;
     ub.innerHTML=l.map(u=>`<tr><td><b>${esc(u.username)}</b> ${u.admin?'<span class="tg r">管理员</span>':''}</td><td>${fmt(u.created)}</td><td>${u.messages??'-'}</td><td>${u.activeSessions||0}</td>
       <td>${u.banned?`<span class="tg r">已封禁</span>${u.banReason?`<br><small style="color:#6b7280">${esc(u.banReason)}</small>`:''}`:'<span class="tg g">正常</span>'}</td>
-      <td>${u.admin?'':u.banned?`<button class="act ok" data-u="${esc(u.username)}" data-a="unban">解封</button>`:`<button class="act danger" data-u="${esc(u.username)}" data-a="ban">封禁</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有符合条件的用户</td></tr>';
+      <td>${u.admin?'':u.banned?`<button class="act ok" data-u="${esc(u.username)}" data-a="unban">解封</button>`:`<button class="act danger" data-u="${esc(u.username)}" data-a="ban">封禁</button>`}${u.admin?'':`<button class="act kill" data-u="${esc(u.username)}" data-a="delete">删除</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有符合条件的用户</td></tr>';
     ub.querySelectorAll('button').forEach(b=>b.onclick=async()=>{const a=b.dataset.a,n=b.dataset.u;
-      let body={};if(a==='ban'){const r=prompt(`封禁「${n}」后，他不能登录、发消息和接单。\n封禁原因（选填）：`,'');if(r===null)return;body={reason:r.trim()}}
-      try{await call(`/api/admin/users/${encodeURIComponent(n)}/${a}`,{method:'POST',body:JSON.stringify(body)});render()}catch(e){alert(e.message)}})};
+      let body={};if(a==='delete'&&!confirm(`确定删除账号「${n}」吗？\n\n删除后不可恢复：他会立即下线，发过的消息会被标记为已删除（管理员仍能看到原文），他发布的未完成任务会被撤销，接下的未完成任务会放回待接单。删除后这个用户名可以被重新注册。`))return;
+      if(a==='ban'){const r=prompt(`封禁「${n}」后，他不能登录、发消息和接单。\n封禁原因（选填）：`,'');if(r===null)return;body={reason:r.trim()}}
+      try{const d=await call(`/api/admin/users/${encodeURIComponent(n)}/${a}`,{method:'POST',body:JSON.stringify(body)});
+        if(a==='delete'&&d.deleted)alert(`已删除账号「${n}」：${d.messages||0} 条消息标为已删除，撤销 ${d.cancelledTasks||0} 个任务，${d.releasedTasks||0} 个任务放回待接单。`);render()}catch(e){alert(e.message)}})};
   uq.oninput=draw;uf.onchange=draw;draw();
 }
 

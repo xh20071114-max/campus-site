@@ -47,6 +47,7 @@
 | GET /api/admin/messages | 全部消息，带 channel，已删除的带 originalText |
 | POST /api/admin/users/<用户名>/ban {reason} | 封禁（管理员不能被封） |
 | POST /api/admin/users/<用户名>/unban | 解封 |
+| POST /api/admin/users/<用户名>/delete | 删除账号：token 失效，消息标记已删除（原文留给管理员），未完成的任务撤销，接了的单放回待接单，用户名可重新注册 |
 | POST /api/announcements、/api/announcements/<id>/delete | 发布、删除公告 |
 
 被封的账号在登录、发消息、接单时返回 403 `{error:"账号已被封禁", banned:true}`，`/api/me` 里也带 `banned`。

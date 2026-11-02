@@ -127,6 +127,26 @@ const handle=async(req,res)=>{
       return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
     }
     // 封禁/解封：POST /api/admin/users/<用户名>/ban {reason}、/unban（仅管理员，不能封管理员）
+    // 删除账号：POST /api/admin/users/<用户名>/delete（仅管理员，不能删管理员）
+    // 删除后 token 全部失效；他的消息标记已删除（原文留给管理员看）；他发的未完成任务撤销；他接了没完成的任务放回待接单；用户名可以重新注册
+    const dm=p.match(/^\/api\/admin\/users\/([^/]+)\/delete$/);
+    if(dm&&POST){ let du; try{du=decodeURIComponent(dm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
+      const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
+      if(!db.users[du]) return send(res,404,{error:'用户不存在'}); if(isAdmin(du)) return send(res,400,{error:'不能删除管理员'});
+      const now=new Date().toISOString(); let msgs=0,cancelled=0,released=0;
+      for(const c of CHANNELS) for(const m of db.messages[c]){
+        let ch=false;
+        if(m.user===du){
+          if(m.task&&!m.done&&!m.cancelled){m.cancelled=true;m.cancelledAt=now;cancelled++;ch=true}
+          if(!m.deleted){db.deletedTexts[m.id]=m.text;m.deleted=true;m.text='';m.deletedBy=n;m.deletedAt=now;msgs++;ch=true}
+          if(!m.userDeleted){m.userDeleted=true;ch=true}
+        } else if(m.task&&m.claimedBy===du&&!m.done){delete m.claimedBy;delete m.claimedAt;m.unclaimedAt=now;released++;ch=true}
+        if(ch) m.rev=nextRev();
+      }
+      for(const [k,v] of Object.entries(db.sessions)) if(v===du||v.user===du) delete db.sessions[k];
+      delete db.users[du]; persist();
+      return send(res,200,{username:du,deleted:true,messages:msgs,cancelledTasks:cancelled,releasedTasks:released});
+    }
     const bm=p.match(/^\/api\/admin\/users\/([^/]+)\/(ban|unban)$/);
     if(bm&&POST){ let bu; try{bu=decodeURIComponent(bm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
