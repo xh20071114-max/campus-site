@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>项目频道 · 校园服务平台</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;background:#f3f4f6}
+aside{width:220px;background:#1f2937;color:#e5e7eb;display:flex;flex-direction:column}
+aside h2{font-size:16px;padding:18px 16px;margin:0;border-bottom:1px solid #374151}aside h2 a{color:#fff;text-decoration:none}
+.ch{padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between}
+.ch:hover{background:#374151}.ch.on{background:#4f46e5;color:#fff}
+.badge{background:#ef4444;color:#fff;border-radius:999px;font-size:12px;padding:0 7px}
+.me{margin-top:auto;padding:14px 16px;border-top:1px solid #374151;font-size:13px}.me a{color:#a5b4fc;cursor:pointer;margin-left:6px}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{background:#fff;padding:14px 20px;border-bottom:1px solid #e5e7eb;font-weight:600}
+#msgs{flex:1;overflow:auto;padding:20px}
+.m{margin-bottom:14px}.m .who{font-size:13px;color:#6b7280}.m .who b{color:#111827;margin-right:6px}
+.m .txt{background:#fff;display:inline-block;padding:9px 13px;border-radius:10px;margin-top:4px;max-width:80%;white-space:pre-wrap;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.m.task .txt{border-left:4px solid #f59e0b;background:#fffbeb}
+#f{display:flex;gap:8px;padding:12px 20px;background:#fff;border-top:1px solid #e5e7eb}
+input,textarea{padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px}
+#text{flex:1;resize:none}
+button{background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:0 18px;cursor:pointer}
+label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white-space:nowrap}
+#login{position:fixed;inset:0;background:rgba(17,24,39,.6);display:none;align-items:center;justify-content:center;z-index:9}
+#login .box{background:#fff;border-radius:14px;padding:26px;width:300px;display:grid;gap:12px}
+#login h3{margin:0}#login .row{display:flex;gap:8px}#login .row button{flex:1;padding:10px}
+#login .err{color:#ef4444;font-size:13px;min-height:16px}
+@media(max-width:640px){aside{width:120px}}
+.claim{margin-left:8px;background:#f59e0b;padding:3px 10px;font-size:12px;border-radius:6px}
+.claimed{margin-left:8px;color:#16a34a;font-size:12px}
+.filters{display:flex;gap:6px;padding:8px 20px;background:#fff;border-bottom:1px solid #e5e7eb;flex-wrap:wrap}
+.filters span{padding:4px 12px;border-radius:999px;background:#f3f4f6;font-size:13px;cursor:pointer;color:#374151}
+.filters span.on{background:#4f46e5;color:#fff}
+@media(max-width:640px){body{flex-direction:column}aside{width:100%;flex-direction:row;overflow-x:auto;align-items:center}aside h2{border:0;white-space:nowrap}.ch{white-space:nowrap}.me{margin:0 0 0 auto;border:0;white-space:nowrap}#msgs{padding:12px}#f{padding:10px}}
+</style>
+</head>
+<body>
+<aside><h2><a href="index.html">← 校园服务平台</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
+<main>
+  <div class="top" id="title"></div>
+  <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
+  <div id="msgs"></div>
+  <form id="f">
+    <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
+    <label><input type="checkbox" id="isTask">发任务</label>
+    <button>发送</button>
+  </form>
+</main>
+<div id="login"><form class="box" id="lf" onsubmit="return false">
+  <h3>登录校园服务平台</h3>
+  <input id="lu" placeholder="用户名" required><input id="lp" type="password" placeholder="密码" required>
+  <div class="err" id="lerr"></div>
+  <div class="row"><button id="bLogin">登录</button><button id="bReg" style="background:#6b7280">注册</button></div>
+</form></div>
+<script>
+let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
+let cur=decodeURIComponent(location.hash.slice(1))||null;
+const seen=JSON.parse(localStorage.getItem('seen')||'{}');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=(p,o={})=>fetch(p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
+const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
+const meEl=document.getElementById('me');
+const showLogin=v=>login.style.display=v?'flex':'none';
+function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
+  const o=document.getElementById('out'),i=document.getElementById('in');
+  if(o)o.onclick=()=>{token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
+  if(i)i.onclick=()=>showLogin(true)}
+async function auth(kind){lerr.textContent='';
+  const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
+  const d=await r.json();if(!r.ok){lerr.textContent=d.error;return}
+  token=d.token;me=d.username;localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
+bLogin.onclick=()=>lf.reportValidity()&&auth('login');
+bReg.onclick=()=>lf.reportValidity()&&auth('register');
+async function refresh(){
+  try{
+    CHANNELS=await (await api('/api/channels')).json();
+    if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
+    const c=[],since=0;
+    const more=await (await api('/api/channels/'+encodeURIComponent(cur)+'/messages?since='+since)).json();
+    const changed=JSON.stringify(more)!==JSON.stringify(cache[cur]);
+    cache[cur]=c.concat(more);
+    seen[cur]=cache[cur].length;localStorage.setItem('seen',JSON.stringify(seen));
+    renderSide();if(changed)renderMsgs();
+  }catch(e){title.textContent='连接服务器失败，正在重试…'}
+}
+function go(c){cur=c;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
+function renderSide(){
+  chs.innerHTML=CHANNELS.map(c=>{const n=c.count-(seen[c.name]||0);
+    return `<div class="ch${c.name===cur?' on':''}" data-c="${c.name}"># ${c.name}${n>0&&c.name!==cur?`<span class="badge">${n}</span>`:''}</div>`}).join('');
+  chs.querySelectorAll('.ch').forEach(d=>d.onclick=()=>go(d.dataset.c));
+  title.textContent='# '+cur;
+}
+let flt='all';
+const FL={all:m=>1,open:m=>m.task&&!m.claimedBy,claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&m.done,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me};
+document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
+function renderMsgs(){
+  const list=(cache[cur]||[]).filter(FL[flt]);
+  msgs.innerHTML=list.map(m=>`<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${fmt(m.time)}${m.task?' · 📌 任务':''}${m.task?((m.done||m.doneAt)?`<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)} 接单）</span>`:m.claimedBy?`<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>${m.user===me?`<button class="claim done" style="background:#16a34a" data-id="${m.id}">完成</button>`:''}`:(m.user!==me?`<button class="claim" data-id="${m.id}">接单</button>`:'<span class="claimed" style="color:#9ca3af">待接单</span>')):''}</div><div class="txt">${esc(m.text)}</div></div>`).join('')||'<p style="color:#9ca3af">这个频道还没有消息</p>';
+  msgs.querySelectorAll('.done').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
+    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/complete',{method:'POST'});
+    if(r.status===401)return showLogin(true);if(!r.ok)alert((await r.json()).error);refresh()});
+  msgs.querySelectorAll('.claim:not(.done)').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
+    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/claim',{method:'POST'});
+    if(r.status===401)return showLogin(true);if(!r.ok)alert((await r.json()).error);refresh()});
+  msgs.scrollTop=msgs.scrollHeight;
+}
+window.onhashchange=()=>go(decodeURIComponent(location.hash.slice(1)));
+f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify({text:text.value.trim(),task:isTask.checked})});
+  if(r.status===401){showLogin(true);return}
+  if(!r.ok){alert((await r.json()).error);return}
+  text.value='';isTask.checked=false;refresh()};
+text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
+renderMe();if(!token)showLogin(true);
+refresh();setInterval(refresh,2000);
+</script>
+</body></html>

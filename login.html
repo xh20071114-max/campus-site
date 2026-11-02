@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · 校园服务平台</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2f6fed,#6d28d9)}
+.box{background:#fff;border-radius:14px;padding:32px;width:340px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+h1{font-size:22px;text-align:center;margin-bottom:20px}
+.tabs{display:flex;margin-bottom:18px}.tabs button{flex:1;padding:8px;border:none;background:#f3f4f6;cursor:pointer}
+.tabs button.on{background:#2f6fed;color:#fff}
+input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px;font-size:15px}
+.go{width:100%;padding:11px;background:#2f6fed;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}
+#err{color:#dc2626;font-size:14px;min-height:20px;margin-bottom:6px}
+a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>🎓 校园服务平台</h1>
+  <div class="tabs"><button id="tL" class="on">登录</button><button id="tR">注册</button></div>
+  <form id="f">
+    <input id="u" placeholder="用户名" required>
+    <input id="p" type="password" placeholder="密码" required>
+    <input id="p2" type="password" placeholder="确认密码" style="display:none">
+    <div id="err"></div>
+    <button class="go" id="go">登录</button>
+  </form>
+  <a href="index.html">← 返回首页</a>
+</div>
+<script>
+let mode='login';
+function set(m){mode=m;tL.className=m==='login'?'on':'';tR.className=m==='register'?'on':'';
+ p2.style.display=m==='register'?'block':'none';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';err.textContent=''}
+tL.onclick=()=>set('login');tR.onclick=()=>set('register');
+f.onsubmit=async e=>{e.preventDefault();err.textContent='';
+ if(mode==='register'&&p.value!==p2.value){err.textContent='两次密码不一致';return}
+ try{const r=await fetch('/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.value.trim(),password:p.value})});
+  const d=await r.json();if(!r.ok){err.textContent=d.error||'出错了';return}
+  localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);
+  location.href=new URLSearchParams(location.search).get('next')||'index.html';
+ }catch{err.textContent='连不上服务器，请稍后再试'}};
+</script>
+</body>
+</html>

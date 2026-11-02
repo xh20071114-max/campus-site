@@ -1,0 +1,106 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>校园网站</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fb;color:#1f2937}
+a{color:inherit;text-decoration:none}
+header{background:#1e3a8a;color:#fff;position:sticky;top:0;z-index:9}
+.bar{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+.logo{font-size:20px;font-weight:bold}
+nav a{margin-left:22px;opacity:.9}nav a:hover{opacity:1;text-decoration:underline}
+.hero{background:linear-gradient(135deg,#2563eb,#1e3a8a);color:#fff;text-align:center;padding:80px 20px}
+.hero h1{font-size:40px;margin-bottom:12px}.hero p{font-size:18px;opacity:.9}
+.btn{display:inline-block;margin-top:24px;background:#fff;color:#1e3a8a;padding:12px 28px;border-radius:999px;font-weight:bold}
+section{max-width:1100px;margin:0 auto;padding:56px 20px}
+h2{font-size:26px;margin-bottom:24px;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px}
+.card{background:#fff;border-radius:14px;padding:26px;box-shadow:0 2px 10px rgba(0,0,0,.06);transition:.2s;display:block}
+.card:hover{transform:translateY(-4px);box-shadow:0 6px 18px rgba(0,0,0,.1)}
+.card .i{font-size:38px}.card h3{margin:12px 0 6px}.card p{color:#6b7280;font-size:14px}
+.card .n{margin-top:12px;font-size:13px;color:#2563eb}
+.news li{list-style:none;background:#fff;padding:14px 18px;border-radius:10px;margin-bottom:10px;display:flex;justify-content:space-between}
+.news span{color:#9ca3af;font-size:13px}
+.about{background:#fff}.about p{max-width:760px;margin:0 auto;line-height:1.9;text-align:center;color:#4b5563}
+footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size:14px}
+@media(max-width:640px){nav a{margin-left:12px;font-size:14px}.hero h1{font-size:28px}}
+#login{position:fixed;inset:0;background:rgba(17,24,39,.6);display:flex;align-items:center;justify-content:center;z-index:9}
+#login .box{background:#fff;border-radius:14px;padding:26px;width:300px;display:grid;gap:12px}
+#login h3{margin:0}#login .row{display:flex;gap:8px}#login .row button{flex:1;padding:10px}
+#login .err{color:#ef4444;font-size:13px;min-height:16px}
+.me{margin-top:auto;padding:14px 16px;border-top:1px solid #374151;font-size:13px}.me a{color:#a5b4fc;cursor:pointer;margin-left:6px}
+.tasks{display:grid;gap:10px}.task{background:#fff;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;text-decoration:none;color:inherit}.task:hover{background:#fffbeb}.task .tg{font-size:12px;background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:10px;margin-right:8px}.task small{color:#9ca3af;white-space:nowrap}
+</style></head><body>
+<header><div class="bar"><a class="logo" href="index.html">🎓 校园网站</a>
+<nav><a href="#home">首页</a><a href="#channels">项目频道</a><a href="#news">公告</a><a href="#about">关于</a><a href="me.html">个人中心</a><a id="me" href="chat.html">登录</a></nav></div></header>
+<div class="hero" id="home"><h1>同学帮同学，校园生活更轻松</h1><p>跑步约伴、食堂送餐、快递代取、课程安排，在这里发布任务、找人帮忙</p><a class="btn" href="chat.html">进入项目频道 →</a></div>
+<section id="channels"><h2>项目频道</h2><div class="grid">
+<a class="card" href="chat.html#校园跑"><div class="i">🏃</div><h3>校园跑</h3><p>约跑搭子、跑步打卡任务</p><div class="n" data-c="校园跑">进入频道</div></a>
+<a class="card" href="chat.html#食堂配送"><div class="i">🍱</div><h3>食堂配送</h3><p>食堂饭菜送到宿舍</p><div class="n" data-c="食堂配送">进入频道</div></a>
+<a class="card" href="chat.html#代取快递"><div class="i">📦</div><h3>代取快递</h3><p>驿站快递帮你拿回来</p><div class="n" data-c="代取快递">进入频道</div></a>
+<a class="card" href="chat.html#代课"><div class="i">📚</div><h3>代课</h3><p>课程相关任务发布</p><div class="n" data-c="代课">进入频道</div></a>
+</div></section>
+<section id="tasks"><h2>🔥 最新任务 <small style="font-size:14px;color:#9ca3af;font-weight:normal">还没人接的任务</small></h2><div class="tasks" id="taskList"><p style="color:#9ca3af">加载中…</p></div></section>
+<section id="news"><h2>最新公告</h2><ul class="news">
+<li>校园网站正式上线，欢迎注册使用<span>2026-11-02</span></li>
+<li>四个项目频道已开放，可在频道内发布任务<span>2026-11-02</span></li>
+</ul></section>
+<section class="about" id="about"><h2>关于我们</h2><p>校园网站是面向本校同学的互助平台。每个项目都是一个频道，管理员会在频道里发布任务，同学们可以在频道里交流、接单。请遵守校规校纪，文明发言。</p></section>
+<footer>© 2026 校园网站</footer>
+<script>
+let CHANNELS=[],cur=null,cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
+const seen=JSON.parse(localStorage.getItem('seen')||'{}');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=(path,opt={})=>fetch(path,{...opt,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
+const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
+function showLogin(v){login.style.display=v?'flex':'none'}
+function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录</a>';
+  (document.getElementById('out')||{}).onclick=()=>{token=me=null;localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
+  (document.getElementById('in')||{}).onclick=()=>showLogin(true)}
+const meEl=document.getElementById('me');
+async function auth(kind){lerr.textContent='';
+  const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
+  const d=await r.json(); if(!r.ok){lerr.textContent=d.error;return}
+  token=d.token;me=d.username;localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
+bLogin.onclick=()=>lf.reportValidity()&&auth('login');
+bReg.onclick=()=>lf.reportValidity()&&auth('register');
+async function refresh(){
+  try{
+    CHANNELS=await (await api('/api/channels')).json();
+    if(!cur)cur=CHANNELS[0].name;
+    const c=cache[cur]||[],since=c.length?c[c.length-1].id:0;
+    const more=await (await api('/api/channels/'+encodeURIComponent(cur)+'/messages?since='+since)).json();
+    const changed=more.length>0||!cache[cur];
+    cache[cur]=c.concat(more);
+    seen[cur]=cache[cur].length;localStorage.setItem('seen',JSON.stringify(seen));
+    renderSide();if(changed)renderMsgs();
+  }catch(e){title.textContent='连接服务器失败，正在重试…'}
+}
+function renderSide(){
+  chs.innerHTML=CHANNELS.map(c=>{const n=c.count-(seen[c.name]||0);
+    return `<div class="ch${c.name===cur?' on':''}" data-c="${c.name}"># ${c.name}${n>0&&c.name!==cur?`<span class="badge">${n}</span>`:''}</div>`}).join('');
+  chs.querySelectorAll('.ch').forEach(d=>d.onclick=()=>{cur=d.dataset.c;renderMsgs();refresh()});
+  title.textContent='# '+cur;
+}
+function renderMsgs(){
+  const list=cache[cur]||[];
+  msgs.innerHTML=list.map(m=>`<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${fmt(m.time)}${m.task?' · 📌 任务':''}</div><div class="txt">${esc(m.text)}</div></div>`).join('')||'<p style="color:#9ca3af">这个频道还没有消息</p>';
+  msgs.scrollTop=msgs.scrollHeight;
+}
+f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify({text:text.value.trim(),task:isTask.checked})});
+  if(r.status===401){showLogin(true);return}
+  if(!r.ok){alert((await r.json()).error);return}
+  text.value='';isTask.checked=false;refresh()};
+text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
+renderMe();if(!token)showLogin(true);
+refresh();setInterval(refresh,2000);
+
+(async function loadTasks(){
+  const el=document.getElementById('taskList');
+  const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  try{
+    const all=(await (await fetch('/api/tasks?limit=8')).json()).map(m=>({...m,ch:m.channel}));
+    el.innerHTML=all.slice(0,8).map(m=>`<a class="task" href="chat.html#${encodeURIComponent(m.ch)}"><div><span class="tg">#${esc(m.ch)}</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
+  }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}
+  setTimeout(loadTasks,10000);
+})();
+</script></body></html>
