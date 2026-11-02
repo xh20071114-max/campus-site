@@ -52,6 +52,49 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 .expired{margin-left:8px;color:#9ca3af;font-size:12px}
 #offline{display:none;background:#fef3c7;color:#92400e;padding:10px 20px;font-size:14px;border-bottom:1px solid #fde68a}
 .official{background:#dc2626;color:#fff;border-radius:4px;font-size:11px;padding:1px 6px;margin-right:6px}
+/* 任务私聊 */
+.crow{display:flex;justify-content:flex-end;margin-top:6px}
+.cbtn{position:relative;width:30px;height:30px;padding:0;border-radius:50%;background:#eef2ff;color:#4f46e5;font-size:15px;line-height:30px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.cbtn:hover{background:#e0e7ff}.cbtn i{position:absolute;top:-5px;right:-6px;background:#ef4444;color:#fff;font-style:normal;font-size:11px;line-height:16px;min-width:16px;padding:0 4px;border-radius:999px}
+#tc{position:fixed;right:20px;bottom:20px;width:340px;height:460px;max-height:calc(100dvh - 40px);background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);display:none;flex-direction:column;z-index:40;overflow:hidden}
+#tc.show{display:flex}
+#tc .h{background:#4f46e5;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px}
+#tc .h div{flex:1;min-width:0}#tc .h b{display:block;font-size:14px}#tc .h small{display:block;font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tc .h button{background:transparent;font-size:20px;padding:0 4px;line-height:1}
+#tcList{flex:1;overflow:auto;padding:12px;background:#f9fafb;display:flex;flex-direction:column;gap:8px}
+.cm{max-width:80%;align-self:flex-start}.cm.mine{align-self:flex-end;text-align:right}
+.cm .w{font-size:11px;color:#9ca3af;margin:0 4px 2px}
+.cm .b{display:inline-block;text-align:left;background:#fff;border:1px solid #e5e7eb;padding:7px 11px;border-radius:12px;white-space:pre-wrap;word-break:break-word;font-size:14px}
+.cm.mine .b{background:#4f46e5;color:#fff;border-color:#4f46e5}
+#tcNote{font-size:12px;color:#991b1b;background:#fef2f2;padding:6px 12px;display:none}
+#tcF{display:flex;gap:6px;padding:10px;border-top:1px solid #e5e7eb}
+#tcF textarea{flex:1;resize:none;font-size:14px;padding:8px}#tcF button{padding:0 14px}
+#tcF button:disabled,#tcF textarea:disabled{background:#e5e7eb;color:#9ca3af;cursor:not-allowed}
+@media(max-width:640px){#tc{inset:0;width:auto;height:auto;max-height:none;border-radius:0}}
+#more{text-align:center;color:#9ca3af;font-size:12px;padding:4px 0 10px}
+.overdue{margin-left:8px;color:#dc2626;font-size:12px;font-weight:600}
+#postBar{display:none;padding:12px 20px;background:#fff;border-top:1px solid #e5e7eb;align-items:center;gap:12px}
+#postBar.show{display:flex}
+#postBtn{flex:1;padding:13px;font-size:16px;font-weight:600;border-radius:12px;background:linear-gradient(90deg,#4f46e5,#7c3aed);box-shadow:0 4px 14px rgba(79,70,229,.3)}
+#postBtn:disabled{background:#d1d5db;box-shadow:none;cursor:not-allowed}
+#postBar small{color:#6b7280;font-size:12px;white-space:nowrap}
+#fCancel{background:#e5e7eb;color:#374151}
+.m.ann .txt{background:#eef2ff;border-left:4px solid #4f46e5;font-weight:500}
+.annTag{background:#4f46e5;color:#fff;border-radius:4px;font-size:11px;padding:1px 6px;margin-left:6px}
+#notice{display:none;background:linear-gradient(90deg,#eef2ff,#f5f3ff);border-bottom:1px solid #e0e7ff;padding:10px 20px;font-size:14px;color:#312e81;align-items:flex-start;gap:10px}
+#notice.show{display:flex}#notice .nb{flex:1;min-width:0}
+#notice .nt{font-weight:600;margin-right:6px}#notice .nx{white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#notice .nm{font-size:12px;color:#6366f1;margin-top:3px}
+#notice .na{display:flex;gap:6px;flex-shrink:0}#notice .na button{background:#fff;color:#4f46e5;border:1px solid #c7d2fe;padding:3px 10px;font-size:12px;border-radius:6px}
+#notice.mini{padding:6px 20px;cursor:pointer;align-items:center}#notice.mini .nx,#notice.mini .nm{display:none}
+#nAll{position:fixed;inset:0;background:rgba(17,24,39,.55);display:none;align-items:center;justify-content:center;z-index:45}
+#nAll.show{display:flex}#nAll .box{background:#fff;border-radius:14px;width:min(520px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+#nAll .h{padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;font-weight:600}
+#nAll .h button{background:transparent;color:#6b7280;font-size:20px;padding:0 4px}
+#nList{overflow:auto;padding:12px 18px}#nList .it{padding:10px 0;border-bottom:1px solid #f3f4f6}
+#nList .it b{display:block;margin-bottom:3px}#nList .it .x{white-space:pre-wrap;word-break:break-word;font-size:14px;color:#374151}
+#nList .it small{color:#9ca3af;font-size:12px}.scope{background:#e0e7ff;color:#4338ca;border-radius:4px;font-size:11px;padding:0 5px;margin-right:6px}
+@media(max-width:640px){#notice{padding:8px 12px}}
 #fbSlot #fbBtn{position:static;padding:5px 12px;font-size:13px;box-shadow:none;font-weight:400}
 #f button:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed}
 #f textarea:disabled,#f input:disabled{background:#f3f4f6;cursor:not-allowed}
@@ -63,7 +106,8 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 <main>
   <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span id="title"></span><span id="fbSlot"></span></div>
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。如有疑问请联系管理员。</div>
-  <div id="offline">⚠️ 服务暂未开通：聊天服务还在部署中，暂时不能登录和发消息，请稍后再来。</div>
+  <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
+  <div id="notice"><div class="nb"><div><span class="nt" id="nTitle"></span><span id="nMini" style="display:none;color:#6366f1;font-size:12px"></span></div><div class="nx" id="nText"></div><div class="nm" id="nMeta"></div></div><div class="na"><button type="button" id="nAllB">全部公告</button><button type="button" id="nToggle">收起</button></div></div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
   <div id="msgs"></div>
   <div id="tip"></div>
@@ -73,19 +117,26 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
     <label class="fld" title="截止时间"><span>⏳</span><input id="xDeadline" type="datetime-local"></label>
     <label class="fld bonus" id="bonusF" title="奖励积分（仅管理员）" style="display:none"><span>🎁</span><input id="xBonus" type="number" min="0" step="1" placeholder="奖励积分"></label>
   </div></div>
+  <div id="postBar"><button type="button" id="postBtn">＋ 发布任务</button><small id="postHint"></small></div>
   <form id="f">
     <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
-    <label><input type="checkbox" id="isTask">发任务</label>
+    <label id="isTaskL"><input type="checkbox" id="isTask">发任务</label>
     <span id="bal"></span>
+    <button type="button" id="fCancel" style="display:none">取消</button>
     <button id="send">发送</button>
   </form>
 </main>
+<div id="tc" role="dialog" aria-label="任务私聊"><div class="h"><div><b>💬 任务私聊</b><small id="tcSub"></small></div><button id="tcX" title="关闭">×</button></div>
+  <div id="tcList"></div><div id="tcNote"></div>
+  <form id="tcF"><textarea id="tcT" rows="1" maxlength="500" placeholder="和对方说点什么，回车发送"></textarea><button id="tcS">发送</button></form></div>
+<div id="nAll"><div class="box"><div class="h">📢 全部公告<button type="button" id="nAllX">×</button></div><div id="nList"></div></div></div>
 <div id="login"><form class="box" id="lf" onsubmit="return false">
   <h3>登录Aevon校园交流网</h3>
   <input id="lu" placeholder="用户名" required><input id="lp" type="password" placeholder="密码" required>
   <div style="font-size:12px;color:#9ca3af">用户名 2-16 位，中文、字母、数字或下划线；密码至少 6 位</div>
   <div class="err" id="lerr"></div>
   <div class="row"><button id="bLogin">登录</button><button id="bReg" style="background:#6b7280">注册</button></div>
+  <button type="button" id="bGuest" style="background:transparent;color:#6b7280;padding:4px;font-size:13px">先逛逛，稍后再登录 →</button>
 </form></div>
 <script src="config.js"></script>
 <script src="feedback.js"></script>
@@ -93,7 +144,10 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
 function dec(h){try{return decodeURIComponent(h)}catch(e){return h}}
 let cur=dec(location.hash.slice(1))||null;
-const seen=JSON.parse(localStorage.getItem('seen')||'{}');
+const seen=JSON.parse(localStorage.getItem('lastRead')||'{}');localStorage.removeItem('seen');
+const hasMore={};let loadingOld=false,keepScroll=false,browsing=false;
+const touch=matchMedia('(pointer:coarse)').matches;
+function enterSend(e,form){if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229||touch)return;e.preventDefault();form.requestSubmit()}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
 const api=(p,o={})=>fetch(API_BASE+p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
@@ -114,27 +168,59 @@ bLogin.onclick=()=>lf.reportValidity()&&auth('login');
 bReg.onclick=()=>lf.reportValidity()&&auth('register');
 const revs={};let online=null;
 function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
-  [...f.elements].forEach(x=>x.disabled=!v||isBanned);
-  if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token)showLogin(true)}
+  [...f.elements].forEach(x=>x.disabled=!v||isBanned);applyMode();
+  if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token&&!browsing)showLogin(true)}
+retry.onclick=()=>refresh();
+bGuest.onclick=()=>{browsing=true;showLogin(false)};
 async function refresh(){
   try{
     CHANNELS=await (await api('/api/channels')).json();
     if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
-    const more=await r.json();revs[ch]=+(r.headers.get('X-Rev')||revs[ch]||0);
+    const more=await r.json();revs[ch]=+(r.headers.get('X-Rev')||revs[ch]||0);if(first)hasMore[ch]=more.length>=50;if(first||noticeCh!==ch||more.some(m=>m.official&&!m.task))loadNotices();
     const list=cache[ch]||[];
     more.forEach(m=>{const i=list.findIndex(x=>x.id===m.id);if(i>=0)list[i]=m;else list.push(m)});
     list.sort((a,b)=>a.id-b.id);cache[ch]=list;
-    seen[ch]=list.length;localStorage.setItem('seen',JSON.stringify(seen));
+    if(list.length){seen[ch]=Math.max(seen[ch]||0,list[list.length-1].id);localStorage.setItem('lastRead',JSON.stringify(seen))}
     renderSide();if(ch===cur&&(more.length||first))renderMsgs();
     setOnline(true);
   }catch(e){setOnline(false)}
 }
-function go(c){cur=c;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
+async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]||!l||!l.length)return;loadingOld=true;more_(true);
+  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?before='+l[0].id);if(!r.ok)return;const old=await r.json();
+    hasMore[ch]=old.length>=50;const ids=new Set(l.map(m=>m.id));old.forEach(m=>{if(!ids.has(m.id))l.push(m)});l.sort((a,b)=>a.id-b.id);
+    if(ch===cur){const h0=msgs.scrollHeight,t0=msgs.scrollTop;keepScroll=true;renderMsgs();msgs.scrollTop=t0+msgs.scrollHeight-h0}}
+  catch(e){}finally{loadingOld=false;more_(false)}}
+function more_(on){const d=document.getElementById('more');if(d)d.textContent=on?'加载中…':(hasMore[cur]?'上滑加载更早的消息':'没有更早的消息了')}
+msgs.addEventListener('scroll',()=>{if(msgs.scrollTop<80)loadOlder()});
+let notices=[],noticeCh=null;
+const nKey=()=>'noticeHidden:'+cur;
+async function loadNotices(){const ch=cur;if(!ch)return;
+  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/notices');if(!r.ok)return;const d=await r.json();if(ch!==cur)return;notices=Array.isArray(d)?d:[];noticeCh=ch;renderNotice()}catch(e){}}
+function renderNotice(){const n=notices[0];if(!n||noticeCh!==cur){notice.classList.remove('show');return}
+  const hidden=localStorage.getItem(nKey())===String(n.id);
+  notice.classList.add('show');notice.classList.toggle('mini',hidden);
+  nTitle.textContent='📢 '+(n.title||(n.type==='global'?'全站公告':'频道公告'));
+  nText.textContent=n.text||'';nMeta.textContent=(n.type==='global'?'全站':'本频道')+' · '+fmt(n.time)+(notices.length>1?` · 共 ${notices.length} 条`:'');
+  nMini.textContent=hidden?'（已收起，点击展开）':'';nMini.style.display=hidden?'':'none';
+  nToggle.textContent=hidden?'展开':'收起'}
+nToggle.onclick=e=>{e.stopPropagation();const n=notices[0];if(!n)return;
+  if(localStorage.getItem(nKey())===String(n.id))localStorage.removeItem(nKey());else localStorage.setItem(nKey(),String(n.id));renderNotice()};
+notice.onclick=e=>{if(notice.classList.contains('mini')&&!e.target.closest('button'))nToggle.onclick(e)};
+nAllB.onclick=e=>{e.stopPropagation();nList.replaceChildren();
+  if(!notices.length){const p=document.createElement('p');p.style.color='#9ca3af';p.textContent='还没有公告';nList.append(p)}
+  notices.forEach(n=>{const it=document.createElement('div');it.className='it';const b=document.createElement('b');
+    const sc=document.createElement('span');sc.className='scope';sc.textContent=n.type==='global'?'全站':'本频道';b.append(sc,document.createTextNode(n.title||'公告'));
+    const x=document.createElement('div');x.className='x';x.textContent=n.text||'';const sm=document.createElement('small');sm.textContent=(n.user?n.user+' · ':'')+fmt(n.time);
+    it.append(b,x,sm);nList.append(it)});
+  nAll.classList.add('show')};
+nAllX.onclick=()=>nAll.classList.remove('show');nAll.onclick=e=>{if(e.target===nAll)nAll.classList.remove('show')};
+function go(c){cur=c;notices=[];renderNotice();loadNotices();forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
 function renderSide(){
-  chs.innerHTML=CHANNELS.map(c=>{const n=c.count-(seen[c.name]||0);
-    return `<div class="ch${c.name===cur?' on':''}" data-c="${c.name}"># ${c.name}${n>0&&c.name!==cur?`<span class="badge">${n}</span>`:''}</div>`}).join('');
+  chs.innerHTML=CHANNELS.map(c=>{const last=c.lastId||0,r=seen[c.name]||0;let n='';
+    if(c.name!==cur&&last>r){const l=cache[c.name];n=r?(l?l.filter(m=>m.id>r&&!m.deleted).length||'新':'新'):'新';if(n>99)n='99+'}
+    return `<div class="ch${c.name===cur?' on':''}" data-c="${esc(c.name)}"># ${esc(c.name)}${n!==''?`<span class="badge">${n}</span>`:''}</div>`}).join('');
   chs.querySelectorAll('.ch').forEach(d=>d.onclick=()=>go(d.dataset.c));
   const on=chs.querySelector('.ch.on');if(on&&chs.scrollWidth>chs.clientWidth)chs.scrollLeft=on.offsetLeft-chs.clientWidth/2+on.clientWidth/2;
   title.textContent='# '+cur;
@@ -147,35 +233,86 @@ function loadMe(){if(!token){points=null;renderPts();return}
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
 function renderPts(){bal.innerHTML=me&&points!=null?(isAdmin?'💎 管理员':`💎 余额 <b>${points}</b> 分`):'';
   bonusF.style.display=isAdmin?'flex':'none';
-  send.textContent=isTask.checked?(isAdmin||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送'}
+  send.textContent=isTask.checked?(isAdmin||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送';applyMode()}
+let composing=false;
+function applyMode(){const admin=!!(me&&isAdmin);
+  isTaskL.style.display=admin?'':'none';fCancel.style.display=!admin&&composing?'':'none';
+  if(!admin&&!composing&&isTask.checked){isTask.checked=false;extra.classList.remove('show')}
+  f.style.display=admin||composing?'':'none';postBar.classList.toggle('show',!admin&&!composing);
+  postBtn.disabled=isBanned||online===false;
+  postHint.textContent=me&&!admin&&points!=null?`每次发布扣 ${cost.post} 积分 · 余额 ${points}`:(me?'':'登录后即可发布任务')}
+postBtn.onclick=()=>{if(!token)return showLogin(true);composing=true;isTask.checked=true;isTask.onchange();forceBottom=true;text.focus()};
+fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
-function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);renderMsgs()}
+function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);applyMode();renderMsgs()}
 async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);loadMe();return}if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
 let flt='all',forceBottom=true;
-const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&(m.done||m.cancelled),mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
+const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done&&!m.cancelled,done:m=>m.task&&m.done&&!m.cancelled,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
 document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
+const refundOf=m=>m.cost!=null?+m.cost:(m.official?0:cost.post);
 function statusOf(m){
   if(!m.task)return '';
-  if(m.cancelled)return '<span class="expired">🚫 已撤销</span>';
+  if(m.cancelled)return '<span class="expired">🚫 已撤回</span>';
   if(m.done||m.doneAt)return `<span class="claimed" style="color:#6b7280">🏁 已完成（${esc(m.claimedBy)}${m.claimerDeleted?'，已注销':''} 接单）</span>`;
-  if(m.claimedBy)return `<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>`+
-    (m.user===me?btn('complete','完成','#16a34a',m.id):'')+(m.claimedBy===me?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'');
+  if(m.claimedBy)return (m.overdue?`<span class="overdue">⏰ 已超时（${esc(m.claimedBy)} 接单）</span>`:`<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>`)+
+    (m.user===me?btn('complete','完成','#16a34a',m.id)+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?btn('cancel',refundOf(m)?`撤回（退还 ${refundOf(m)} 积分）`:'撤回','#6b7280',m.id,`任务已超时，确定撤回吗？${refundOf(m)?`撤回后退还 ${refundOf(m)} 积分。`:''}`):''):'')+(m.claimedBy===me?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'');
   if(isExp(m))return '<span class="expired">⏰ 已过期</span>';
-  return m.user===me?'<span class="claimed" style="color:#9ca3af">待接单</span>'+btn('cancel','撤销','#6b7280',m.id,'确定撤销这个任务吗？'):btn('claim',isAdmin||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,isAdmin||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`);
+  return m.user===me?'<span class="claimed" style="color:#9ca3af">待接单</span>'+btn('cancel',refundOf(m)?`撤回（退还 ${refundOf(m)} 积分）`:'撤回','#6b7280',m.id,refundOf(m)?`确定撤回这个任务吗？撤回后退还 ${refundOf(m)} 积分。`:'确定撤回这个任务吗？'):btn('claim',isAdmin||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,isAdmin||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`);
 }
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${confirmText}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const list=(cache[cur]||[]).filter(m=>!m.deleted).filter(FL[flt]);
-  msgs.innerHTML=list.map(m=>{
+  const list=(cache[cur]||[]).filter(m=>!m.deleted&&!(m.official&&!m.task)).filter(FL[flt]);
+  const top=hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
+  msgs.innerHTML=top+list.map(m=>{
     const canDel=isAdmin||(m.user===me&&!m.claimedBy);
-    return `<div class="m${m.task?' task':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b>${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${fmt(m.time)}${m.task?' · 📌 任务':''}${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${statusOf(m)}${canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):''}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}</div></div>`}).join('')||'<p style="color:#9ca3af">这里还没有消息</p>';
+    return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b>${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}${fmt(m.time)}${m.task?' · 📌 任务':''}${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${statusOf(m)}${canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):''}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${canChat(m)?`<div class="crow"><button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button></div>`:''}</div></div>`}).join('')||'<p style="color:#9ca3af">这里还没有消息</p>';
+  const mo=document.getElementById('more');if(mo&&hasMore[cur])mo.onclick=loadOlder;
+  msgs.querySelectorAll('.cbtn').forEach(b=>b.onclick=()=>openChat(b.dataset.chat));
   msgs.querySelectorAll('.act').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
     if(b.dataset.confirm&&!confirm(b.dataset.confirm))return;
     const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
     if(r.status===401)return expired();if(!r.ok)await failed(r);else loadMe();refresh()});
-  if(atBottom||forceBottom)msgs.scrollTop=msgs.scrollHeight;forceBottom=false;
+  if(!keepScroll&&(atBottom||forceBottom))msgs.scrollTop=msgs.scrollHeight;forceBottom=false;keepScroll=false;
 }
+const canChat=m=>m.task&&me&&m.claimedBy&&!m.cancelled&&!m.claimerDeleted&&(m.user===me||m.claimedBy===me);
+let tc=null;
+function findTask(id){for(const ch in cache){const m=(cache[ch]||[]).find(x=>String(x.id)===String(id));if(m)return m}}
+function tcNote(t){tcNote_.textContent=t||'';tcNote_.style.display=t?'block':'none'}
+const tcNote_=document.getElementById('tcNote');
+function openChat(id){const m=findTask(id);if(!m)return;closeChat();
+  tc={id:String(id),after:'',seen:new Set(),timer:null};
+  tcSub.textContent=(m.user===me?'与接单人 '+m.claimedBy:'与发布人 '+m.user)+' · '+String(m.text).slice(0,30);
+  tcList.replaceChildren();tcNote('');tcT.disabled=tcS.disabled=isBanned;tcT.value='';tcT.placeholder=touch?'和对方说点什么':'和对方说点什么，回车发送';
+  m.chatUnread=0;renderMsgs();
+  document.getElementById('tc').classList.add('show');pullChat(true);tc.timer=setInterval(pullChat,4000);if(innerWidth>640)tcT.focus()}
+function closeChat(){if(!tc)return;clearInterval(tc.timer);tc=null;document.getElementById('tc').classList.remove('show');refresh()}
+async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))return;
+  try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat'+(c.after?'?after='+encodeURIComponent(c.after):''));
+    if(c!==tc)return;
+    if(r.status===401)return expired();
+    if(!r.ok){const d=await r.json().catch(()=>({}));tcNote(d.error||'暂时无法查看这段私聊');if(r.status===403||r.status===404){clearInterval(c.timer);tcT.disabled=tcS.disabled=true}return}
+    const d=await r.json();const list=Array.isArray(d)?d:(d.messages||[]);
+    const near=tcList.scrollHeight-tcList.scrollTop-tcList.clientHeight<60;
+    list.forEach(x=>{const k=String(x.id??(x.time+x.user));if(c.seen.has(k))return;c.seen.add(k);
+      const row=document.createElement('div');row.className='cm'+(x.user===me?' mine':'');
+      const w=document.createElement('div');w.className='w';w.textContent=(x.user===me?'我':(x.userDeleted?'已删除用户':x.user))+' · '+fmt(x.time);
+      const b=document.createElement('div');b.className='b';b.textContent=x.text;row.append(w,b);tcList.append(row);
+      if(x.id!=null&&(!c.after||+x.id>+c.after))c.after=String(x.id)});
+    if(d.task&&d.task.canWrite===false&&!isBanned){tcT.disabled=tcS.disabled=true;tcT.placeholder=d.task.claimedBy?'这单已经结束，不能再发消息':'现在没有接单人，不能发消息'}
+    if(first&&!list.length&&!tcList.children.length){const e=document.createElement('div');e.style.cssText='color:#9ca3af;font-size:13px;text-align:center;margin-top:20px';e.textContent='还没有消息，打个招呼吧';e.className='empty';tcList.append(e)}
+    if(list.length)tcList.querySelector('.empty')?.remove();
+    if(first||near)tcList.scrollTop=tcList.scrollHeight;
+  }catch(e){if(c===tc)tcNote('网络异常，正在重试…')}}
+tcX.onclick=closeChat;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(nAll.classList.contains('show'))nAll.classList.remove('show');else if(tc)closeChat()}});
+tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!t)return;tcS.disabled=true;
+  try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat',{method:'POST',body:JSON.stringify({text:t})});
+    if(r.status===401)return expired();
+    if(!r.ok){const d=await r.json().catch(()=>({}));if(r.status===403&&(d.banned||/封禁/.test(d.error||'')))setBanned(true);tcNote(r.status===429?(d.error||'发得太快了，歇一会儿再发'):(d.error||'发送失败'));return}
+    tcT.value='';tcNote('');await pullChat();tcList.scrollTop=tcList.scrollHeight}
+  finally{if(c===tc)tcS.disabled=isBanned||tcT.disabled}};
+tcT.onkeydown=e=>enterSend(e,tcF);
 window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   if(isTask.checked&&!isAdmin&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
@@ -183,12 +320,15 @@ f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined},bonus>0?{bonusPoints:bonus}:{}):{}))});
   if(r.status===401){expired();return}
   if(!r.ok){await failed(r);return}
-  const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()};
-isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placeholder=isTask.checked?'任务内容：要做什么、有什么要求（必填）':'发消息，回车发送';renderPts()};
-text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
+  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()};
+isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placeholder=isTask.checked?'任务内容：要做什么、有什么要求（必填）':(touch?'发消息':'发消息，回车发送');renderPts()};
+text.onkeydown=e=>enterSend(e,f);
+if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
 renderMe();
-loadCost();loadMe();renderPts();setInterval(loadMe,30000);
+loadCost();loadMe();renderPts();setInterval(()=>{if(!document.hidden)loadMe()},30000);
 (function(){const b=document.getElementById('fbBtn');if(b)fbSlot.appendChild(b)})();
-refresh();setInterval(refresh,2000);setInterval(()=>renderMsgs(),30000);
+refresh();setInterval(()=>{if(!document.hidden)refresh()},8000);
+setInterval(()=>{if(!document.hidden)loadNotices()},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();if(tc)pullChat()}});setInterval(()=>renderMsgs(),30000);
 </script>
 </body></html>

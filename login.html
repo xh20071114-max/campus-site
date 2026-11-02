@@ -24,7 +24,7 @@ a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
     <input id="u" placeholder="用户名" required autocomplete="username" maxlength="16">
     <input id="p" type="password" placeholder="密码" required autocomplete="current-password">
     <input id="p2" type="password" placeholder="确认密码" style="display:none" autocomplete="new-password">
-    <div id="tip" style="display:none;font-size:13px;color:#6b7280;margin:-4px 0 10px;line-height:1.6">用户名 2-16 位，只能用中文、字母、数字或下划线；密码至少 6 位。<br>注册即表示知悉：本站由管理员管理，管理员可以查看站内所有内容。</div>
+    <div id="tip" style="display:none;font-size:13px;color:#6b7280;margin:-4px 0 10px;line-height:1.6">用户名 2-16 位，只能用中文、字母、数字或下划线；密码至少 6 位。<br>注册即表示知悉：本站由管理员管理，管理员可以查看所有内容；任务私聊只有发布人和接单人能发言。</div>
     <div id="err"></div>
     <button class="go" id="go">登录</button>
   </form>
@@ -45,7 +45,7 @@ f.onsubmit=async e=>{e.preventDefault();err.textContent='';
   const d=await r.json();if(!r.ok){err.textContent=r.status===429?'操作太频繁，请稍后再试':(d.error||'出错了');return}
   localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);
   location.href=new URLSearchParams(location.search).get('next')||'index.html';
- }catch{err.textContent='服务暂未开通，暂时无法登录和注册'}};
+ }catch{err.textContent='网络连接失败，请检查网络后重试'}};
 </script>
 </body>
 </html>

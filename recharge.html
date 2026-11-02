@@ -43,7 +43,7 @@ const API=window.API_BASE||'',token=localStorage.getItem('token'),me=localStorag
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
 const M=document.getElementById('main');
-const call=async(p,o={})=>{const r=await fetch(API+p,{...o,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(r.status===429?'操作太频繁，请稍后再试':(d.error||'请求失败 '+r.status)),{status:r.status});return d};
+const call=async(p,o={})=>{let r;try{r=await fetch(API+p,{...o,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}})}catch{throw new Error('网络连接失败，请检查网络后重试')}const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(r.status===429?'操作太频繁，请稍后再试':(d.error||'请求失败 '+r.status)),{status:r.status});return d};
 const PAY={alipay:['支付宝','pay-alipay.png'],wechat:['微信','pay-wechat.png']};
 let method='';
 function showQR(k){method=k;qu.textContent=me||'';const[n,src]=PAY[k];qt.textContent=n+'扫码付款';qph.style.display='none';qi.style.display='';qi.onerror=()=>{qi.style.display='none';qph.style.display='flex'};qi.src=src;mask.classList.add('on')}
@@ -55,7 +55,7 @@ async function load(){
   let pts='-',list=[];
   try{const d=await call('/api/my/points');pts=d.points??d.balance??'-'}catch(e){
     if(e.status===401){localStorage.removeItem('token');localStorage.removeItem('username');location.href='login.html?next=recharge.html';return}
-    if(e.status===undefined||e.message.startsWith('Failed')){M.innerHTML='<div class="card need"><h2>⚠️ 服务暂未开通</h2><p class="sub">暂时无法充值，稍后再来看看</p><a href="index.html">回首页</a></div>';return}}
+    if(e.status===undefined){M.innerHTML='<div class="card need"><h2>⚠️ 网络连接失败</h2><p class="sub">请检查网络后重试</p><a href="#" id="retry">重试</a></div>';document.getElementById('retry').onclick=e=>{e.preventDefault();load()};return}}
   try{const d=await call('/api/my/recharges');list=Array.isArray(d)?d:(d.recharges||d.list||[])}catch{}
   M.innerHTML=`<div class="card"><h1>💰 积分充值</h1><p class="sub">积分用来发布任务和接单。充值提交后由管理员审核，通过后积分自动到账。</p>
   <div class="bal"><span class="sub">当前余额</span><b>${esc(pts)}</b><span class="sub">积分</span></div></div>

@@ -22,6 +22,7 @@ th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;wo
 .new{padding:16px;display:grid;gap:8px;border-bottom:1px solid #f0f1f4}.new button{justify-self:end;background:#1e3a8a;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer}
 .empty{padding:30px;text-align:center;color:#9ca3af}.count{color:#6b7280;font-size:13px;margin:-6px 0 10px}
 .need{background:#fff;border-radius:12px;padding:50px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
+.cm{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}.cw{background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column}.cw h3{padding:14px 18px;border-bottom:1px solid #eef0f4;font-size:16px;display:flex;justify-content:space-between;gap:10px}.cw h3 small{color:#6b7280;font-weight:normal;display:block;margin-top:2px;word-break:break-all}.cw h3 button{border:none;background:#f3f4f6;border-radius:8px;padding:4px 12px;cursor:pointer;align-self:start}.cl{overflow:auto;padding:14px 18px;flex:1}.ci{margin-bottom:12px}.ci .h{font-size:12px;color:#6b7280;margin-bottom:3px}.ci .h b{color:#1f2937}.ci .b{background:#f3f4f6;border-radius:10px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:14px;display:inline-block;max-width:100%}.ci.p .b{background:#dbeafe}.ro{font-size:12px;color:#9ca3af;text-align:center;padding:8px;border-top:1px solid #eef0f4}
 </style></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网 · 管理后台</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
@@ -43,9 +44,9 @@ async function init(){
   if(!token)return stop('请先登录','管理后台只有管理员能进入','<a href="login.html?next=admin.html">去登录</a>');
   let me;try{me=await call('/api/me')}catch(e){
     if(e.status===401){localStorage.removeItem('token');localStorage.removeItem('username');return stop('登录已过期','请重新登录','<a href="login.html?next=admin.html">去登录</a>')}
-    return stop('⚠️ 服务暂未开通','后端还没上线，管理后台暂时用不了','<a href="index.html">回首页</a>')}
+    return stop('⚠️ 网络连接失败','请检查网络后重试','<a href="#" onclick="location.reload();return false">重试</a>')}
   if(!me.admin)return stop('没有权限','只有管理员能进入管理后台','<a href="index.html">回首页</a>');
-  M.innerHTML=`<div class="tabs"><button data-t="users">👥 用户</button><button data-t="msgs">💬 消息</button><button data-t="anns">📢 公告</button><button data-t="rch">💰 充值审核</button><button data-t="set">⚙️ 积分设置</button><button data-t="fb">💡 建议<span id="fbN"></span></button></div><div id="pane"></div>`;
+  M.innerHTML=`<div class="tabs"><button data-t="users">👥 用户</button><button data-t="msgs">💬 消息</button><button data-t="anns">📢 公告</button><button data-t="rch">💰 充值审核</button><button data-t="set">⚙️ 积分设置</button><button data-t="chats">💬 私聊</button><button data-t="fb">💡 建议<span id="fbN"></span></button></div><div id="pane"></div>`;
   M.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
   render();
 }
@@ -59,7 +60,7 @@ async function render(){
     const cnt={};msgs.forEach(m=>cnt[m.user]=(cnt[m.user]||0)+1);
     users=(o.users||[]).map(u=>({...u,messages:cnt[u.username]||0}));
     anns=(o.announcements||[]).slice().sort((a,b)=>b.id-a.id);
-    if(tab==='users')drawUsers();if(tab==='msgs')drawMsgs();if(tab==='anns')drawAnns();if(tab==='rch')await drawRch();if(tab==='set')await drawSet();if(tab==='fb')await drawFb();
+    if(tab==='users')drawUsers();if(tab==='msgs')drawMsgs();if(tab==='anns')drawAnns();if(tab==='rch')await drawRch();if(tab==='set')await drawSet();if(tab==='fb')await drawFb();if(tab==='chats')await drawChats();
     const un=o.unreadFeedback|0,fn=document.getElementById('fbN');if(fn)fn.innerHTML=un?` <span style="background:#dc2626;color:#fff;border-radius:9px;padding:0 6px;font-size:12px">${un}</span>`:'';
   }catch(e){P.innerHTML=`<p class="empty">加载失败：${esc(e.message)}</p>`}
 }
@@ -93,18 +94,19 @@ function mState(m){const t=[];if(m.official)t.push('<span class="tg r">官方</s
 function drawMsgs(){
   const P=document.getElementById('pane');
   P.innerHTML=`<div class="tools"><input id="mq" placeholder="搜索内容或用户名"><select id="mc"><option value="">全部频道</option>${CHANNELS.map(c=>`<option>${c}</option>`).join('')}</select>
-  <select id="mf"><option value="">全部消息</option><option value="task">只看任务</option><option value="live">正常显示中</option><option value="gone">已删除或已撤销</option></select></div><p class="count" id="mcnt"></p>
+  <select id="mf"><option value="">全部消息</option><option value="task">只看任务</option><option value="note">只看非任务（频道公告、旧聊天）</option><option value="live">正常显示中</option><option value="gone">已删除或已撤销</option></select></div><p class="count" id="mcnt"></p>
   <div class="box"><table><thead><tr><th>时间</th><th>频道</th><th>用户</th><th>内容</th><th>状态</th><th>操作</th></tr></thead><tbody id="mb"></tbody></table></div>`;
   const draw=()=>{const q=mq.value.trim().toLowerCase(),c=mc.value,f=mf.value;
     const l=msgs.filter(m=>(!c||m.channel===c)&&(!q||String(m.text||m.deletedText||'').toLowerCase().includes(q)||String(m.user).toLowerCase().includes(q))
-      &&(!f||(f==='task'&&m.task)||(f==='live'&&!m.deleted&&!m.cancelled)||(f==='gone'&&(m.deleted||m.cancelled)))).sort((a,b)=>b.id-a.id);
+      &&(!f||(f==='task'&&m.task)||(f==='note'&&!m.task)||(f==='live'&&!m.deleted&&!m.cancelled)||(f==='gone'&&(m.deleted||m.cancelled)))).sort((a,b)=>b.id-a.id);
     mcnt.textContent=`共 ${l.length} 条`;
     mb.innerHTML=l.slice(0,500).map(m=>{const text=m.deleted?(m.deletedText||'（内容已清空）'):m.text;
       const extra=[m.reward&&'💰'+m.reward,m.place&&'📍'+m.place,m.deadline&&'⏰'+fmt(m.deadline)].filter(Boolean).join('　');
       return `<tr><td style="white-space:nowrap">${fmt(m.time)}</td><td><span class="tg b">#${esc(m.channel)}</span></td><td>${esc(m.user)}</td>
-      <td class="txt">${esc(text)}${extra?`<br><small style="color:#6b7280">${esc(extra)}</small>`:''}</td><td>${mState(m)}</td>
-      <td>${m.deleted?'':`<button class="act danger" data-c="${esc(m.channel)}" data-id="${m.id}">删除</button>`}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">没有符合条件的消息</td></tr>';
-    mb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(!confirm('确定删除这条消息？'))return;
+      <td class="txt">${m.task?'':'<span class="tg" style="background:#ede9fe;color:#6d28d9">📢 非任务</span> '}${esc(text)}${extra?`<br><small style="color:#6b7280">${esc(extra)}</small>`:''}</td><td>${mState(m)}</td>
+      <td style="white-space:nowrap">${m.task&&(m.claimedBy||m.chatCount)?`<button class="act ok" data-chat="${m.id}" data-t="${esc(m.text||m.deletedText||'')}">💬 私聊${m.chatCount?' '+(m.chatCount|0):''}</button> `:''}${m.deleted?'':`<button class="act danger" data-c="${esc(m.channel)}" data-id="${m.id}">删除</button>`}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">没有符合条件的消息</td></tr>';
+    mb.querySelectorAll('button[data-chat]').forEach(b=>b.onclick=()=>openChat(b.dataset.chat,b.dataset.t));
+    mb.querySelectorAll('button[data-c]').forEach(b=>b.onclick=async()=>{if(!confirm('确定删除这条消息？'))return;
       try{await call(`/api/channels/${encodeURIComponent(b.dataset.c)}/messages/${b.dataset.id}/delete`,{method:'POST'});render()}catch(e){alert(e.message)}})};
   mq.oninput=draw;mc.onchange=draw;mf.onchange=draw;draw();
 }
@@ -167,6 +169,37 @@ async function drawFb(){
     fbb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.a==='delete'&&!confirm('确定删除这条建议？删除后不可恢复'))return;
       try{await call(`/api/admin/feedback/${encodeURIComponent(b.dataset.id)}/${b.dataset.a}`,{method:'POST'});render()}catch(e){alert(e.message)}})};
   ff.onchange=draw;draw();
+}
+// 任务私聊（管理员只读）
+async function openChat(id,title){
+  const w=document.createElement('div');w.className='cm';
+  w.innerHTML='<div class="cw"><h3><span>💬 任务私聊<small></small></span><button type="button">关闭</button></h3><div class="cl"><p class="empty">加载中…</p></div><div class="ro">管理员只能查看，不能发言</div></div>';
+  w.querySelector('small').textContent=title||('任务 #'+id);
+  const esc_=e=>{if(e.key==='Escape')close()};const close=()=>{w.remove();document.removeEventListener('keydown',esc_)};
+  w.querySelector('h3 button').onclick=close;w.onclick=e=>{if(e.target===w)close()};document.addEventListener('keydown',esc_);
+  document.body.appendChild(w);const L=w.querySelector('.cl');
+  let d;try{d=await call(`/api/tasks/${encodeURIComponent(id)}/chat`)}catch(e){L.innerHTML='';L.textContent='加载失败：'+e.message;return}
+  const list=Array.isArray(d)?d:(d.messages||[]);const poster=d.poster||(d.task&&d.task.user);
+  L.innerHTML='';if(!list.length){L.innerHTML='<p class="empty">这个任务还没有私聊消息</p>';return}
+  list.forEach(m=>{const u=m.user||'';const isP=poster&&u===poster&&!m.userDeleted;const it=document.createElement('div');it.className='ci'+(isP?' p':'');
+    const h=document.createElement('div');h.className='h';const b=document.createElement('b');b.textContent=(m.userDeleted?u+'（已注销）':u)+(isP?' · 发布人':(m.claimer?' · 接单人':''));h.appendChild(b);h.appendChild(document.createTextNode('  '+fmt(m.time)));
+    const t=document.createElement('div');t.className='b';t.textContent=m.text||'';it.appendChild(h);it.appendChild(t);L.appendChild(it)});
+  L.scrollTop=L.scrollHeight;
+}
+// 私聊列表（管理员只读）
+async function drawChats(){
+  const P=document.getElementById('pane');const d=await call('/api/admin/chats');const all=Array.isArray(d)?d:(d.chats||[]);
+  P.innerHTML=`<div class="tools"><input id="cq" placeholder="搜索任务内容、用户名或聊天内容"></div><p class="count" id="ccnt"></p>
+  <div class="box"><table><thead><tr><th>最后消息</th><th>任务</th><th>双方</th><th>最新一条</th><th>条数</th><th>操作</th></tr></thead><tbody id="cb"></tbody></table></div>`;
+  const draw=()=>{const q=cq.value.trim().toLowerCase();
+    const l=all.filter(c=>!q||[c.text,c.user,c.claimedBy,c.last&&c.last.user,c.last&&c.last.text].some(v=>String(v||'').toLowerCase().includes(q)));
+    ccnt.textContent=`共 ${l.length} 个任务有私聊`;
+    cb.innerHTML=l.map(c=>`<tr><td style="white-space:nowrap">${fmt(c.last&&c.last.time)}</td><td class="txt">${c.channel?`<span class="tg b">#${esc(c.channel)}</span> `:''}${esc(c.text||'（任务已不存在）')}</td>
+    <td style="white-space:nowrap">${esc(c.user||'-')}<br><small style="color:#6b7280">接单：${esc(c.claimedBy||'无')}</small></td>
+    <td class="txt"><small style="color:#6b7280">${esc(c.last&&c.last.user)}：</small>${esc(c.last&&c.last.text)}</td><td>${c.count|0}</td>
+    <td><button class="act ok" data-chat="${esc(c.taskId)}" data-t="${esc(c.text||'')}">查看</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">还没有任务私聊</td></tr>';
+    cb.querySelectorAll('button').forEach(b=>b.onclick=()=>openChat(b.dataset.chat,b.dataset.t))};
+  cq.oninput=draw;draw();
 }
 init();
 </script></body></html>

@@ -44,7 +44,7 @@
         if(x.r.ok){box.innerHTML='<h3>✅ 已发送</h3><p>谢谢你的建议，管理员会看到的。</p><div class="r"><span></span><button id="fbClose" type="button">关闭</button></div>';document.getElementById('fbClose').onclick=close;return}
         if(x.r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');msg.style.color='#b91c1c';msg.textContent='登录已过期，请重新登录后再发';s.disabled=false;return}
         msg.style.color='#b91c1c';msg.textContent=x.r.status===429?'发得太频繁了，请一分钟后再试':(x.d.error||'发送失败，请稍后再试');s.disabled=false})
-      .catch(function(){msg.style.color='#b91c1c';msg.textContent='服务暂未开通，暂时发不了';s.disabled=false});
+      .catch(function(){msg.style.color='#b91c1c';msg.textContent='网络连接失败，请检查网络后重试';s.disabled=false});
     };
     m.classList.add('on');setTimeout(function(){t.focus()},50);
   };

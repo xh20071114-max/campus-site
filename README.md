@@ -102,3 +102,21 @@ nohup ./run.sh &
 | POST /api/admin/feedback/<id>/read 或 /delete | 标为已读或删除 |
 
 overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不到任何建议，包括自己发的。
+
+## 任务私聊
+| 接口 | 说明 |
+|---|---|
+| GET /api/tasks/<id>/chat?after=<消息id或时间> | 发布人、当前接单人和管理员可读，返回 {task:{...,canWrite}, messages:[{id,user,text,time,claimer,userDeleted?}]}；当事人读取后未读清零 |
+| POST /api/tasks/<id>/chat {text} | 只有发布人和当前接单人能发；最多 500 字，每分钟 20 条；没人接返回 409，管理员返回 403 |
+| GET /api/my/chat-unread | {任务id: 未读数} |
+| GET /api/admin/chats | 管理员：所有有私聊的任务列表 |
+
+任务列表、我的任务、频道消息里，当事人看到的任务会带 `chatUnread`。换了接单人以后，新接单人看不到前任接单人的对话，管理员都能看到。
+
+## 任务状态补充
+- `POST /api/channels/<ch>/messages/<id>/release`（也可以写 `kick`）：发布人取消接单人，任务回到待接单，退还接单人的接单积分（返回的任务带 `releasedBy`）。
+- 已接单、没完成、超过截止时间 24 小时的任务带 `overdue:true`，发布人可以 `cancel`，会退还发布积分。
+- 管理员删除已接单、没完成的任务时，发布积分和接单积分都退回。
+- 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `{name,count,lastId}`。
+- 频道里普通用户只能发任务，发普通消息返回 403；管理员可以发普通消息，当公告用。
+- `GET /api/channels/<ch>/notices?limit=50`：全站公告（type=global，带 title）和管理员在这个频道发的普通消息（type=channel）合并后按时间倒序返回，字段是 {id,type,title,text,user,time}。

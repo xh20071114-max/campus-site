@@ -44,7 +44,7 @@ function status(m){if(m.deleted)return['gone','🗑 已删除'];if(m.cancelled)r
 function card(m,mine){const[c,l]=status(m);const ch=m.channel||m.ch||'';
   const who=mine?(m.claimedBy?`接单人：${esc(m.claimedBy)}${m.claimerDeleted?'（已注销）':''}`:'还没人接'):`发布人：${esc(m.user)}`;
   return `<a class="t" href="chat.html#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${m.official?'<span class="tg" style="background:#fee2e2;color:#b91c1c">官方</span> ':''}${esc(m.deleted?'（已删除）':m.text)}${m.reward?` <small style="color:#b45309">💰${esc(m.reward)}</small>`:''}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
-async function load(){
+async function load(silent){
   if(!token||!me){M.innerHTML='<div class="need"><h2>请先登录</h2><p style="color:#6b7280;margin-top:8px">登录后可以查看你发布和接下的任务</p><a href="login.html?next=me.html">去登录</a></div>';return}
   let posted=[],claimed=[];
   try{
@@ -54,24 +54,30 @@ async function load(){
     const d=await r.json();
     if(Array.isArray(d)){posted=d.filter(x=>x.user===me);claimed=d.filter(x=>x.claimedBy===me)}
     else{posted=d.posted||d.published||[];claimed=d.claimed||d.taken||[]}
-  }catch{M.innerHTML='<div class="need"><h2>⚠️ 服务暂未开通</h2><p style="color:#6b7280;margin-top:8px">后端还没上线，个人中心暂时用不了，稍后再来看看</p><a href="index.html">回首页</a></div>';return}
+  }catch{if(silent)return;M.innerHTML='<div class="need"><h2>⚠️ 网络连接失败</h2><p style="color:#6b7280;margin-top:8px">请检查网络后重试</p><a href="#" id="retry">重试</a></div>';document.getElementById('retry').onclick=e=>{e.preventDefault();M.innerHTML='<p class="empty" style="text-align:center;padding:40px">加载中…</p>';load()};return}
   const n=(a,f)=>a.filter(f).length;
   let pts=null,led=[];try{const r3=await fetch((window.API_BASE||'')+'/api/my/points',{headers:{Authorization:'Bearer '+token}});if(r3.ok){const d3=await r3.json();pts=d3.points??d3.balance;led=d3.log||d3.history||d3.logs||d3.ledger||d3.records||[]}}catch{}
   const dl=x=>Number(x.delta??x.change??x.amount??0);
   const ptsHtml=pts==null?'':`<div class="pts"><div><div style="opacity:.85;font-size:14px">我的积分</div><b>${esc(pts)}</b>分</div><a class="rc" href="recharge.html">💰 充值</a></div>
   <div class="led"><h2>📒 积分明细</h2><ul>${led.slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0)).map(x=>`<li><span>${esc(x.reason||({signup:'注册赠送',post:'发布任务',claim:'接单',refund:'撤销退还',bonus:'积分任务奖励',recharge:'充值',admin:'管理员调整'})[x.type]||'积分变动')}<br><small>${x.time?new Date(x.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}${x.balance!=null?' · 余额 '+esc(x.balance):''}</small></span><span class="${dl(x)>=0?'pl':'mi'}">${dl(x)>=0?'+':''}${dl(x)}</span></li>`).join('')||'<li class="empty">还没有积分变动</li>'}</ul></div>`;
   let ban=false;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok)ban=!!(await r2.json()).banned}catch{}
-  M.innerHTML=`${ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':''}<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>${ptsHtml}
-  <div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
-  <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>
-  <div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
-  <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>
+  const parts={
+    banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':'',
+    ptsbox:ptsHtml,
+    statbox:`<div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
+  <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>`,
+    colbox:`<div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
+  <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>`};
+  // 定时刷新：只替换内容有变化的区块，不整页重绘，不影响改密码表单
+  if(silent&&document.getElementById('colbox')){for(const k in parts){const el=document.getElementById(k);if(el&&el.dataset.h!==parts[k]){el.innerHTML=parts[k];el.dataset.h=parts[k]}}return}
+  M.innerHTML=`<div id="banbox"></div><div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div><div id="ptsbox"></div><div id="statbox"></div><div id="colbox"></div>
   <div class="col" style="margin-top:20px;max-width:420px"><h2>🔒 修改密码</h2>
   <form id="pwf"><input id="op" type="password" placeholder="原密码" autocomplete="current-password" required>
   <input id="np" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password" required>
   <input id="np2" type="password" placeholder="再输一次新密码" autocomplete="new-password" required>
   <div id="pwmsg" style="font-size:14px;min-height:20px"></div><button>确认修改</button></form>
   <p style="color:#9ca3af;font-size:12px;margin-top:8px">改完后，其他设备上的登录会自动退出</p></div>`;
+  for(const k in parts){const el=document.getElementById(k);el.innerHTML=parts[k];el.dataset.h=parts[k]}
   bindPw();
   document.getElementById('out').onclick=async()=>{try{await fetch((window.API_BASE||'')+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch{}localStorage.removeItem('token');localStorage.removeItem('username');location.href='index.html'};
 }
@@ -81,6 +87,6 @@ function bindPw(){const f=document.getElementById('pwf');f.onsubmit=async e=>{e.
   try{const r=await fetch((window.API_BASE||'')+'/api/password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({oldPassword:op.value,newPassword:np.value})});
     const d=await r.json();if(!r.ok)return bad(r.status===429?'操作太频繁，请稍后再试':(d.error||'修改失败'));
     f.reset();msg.style.color='#166534';msg.textContent='✅ 密码已修改';
-  }catch{bad('服务暂未开通，暂时改不了密码')}}}
-load();setInterval(()=>{if(![...document.querySelectorAll('#pwf input')].some(i=>i.value))load()},15000);
+  }catch{bad('网络连接失败，请检查网络后重试')}}}
+load();setInterval(()=>{if(!document.hidden)load(true)},15000);
 </script><script src="feedback.js"></script></body></html>
