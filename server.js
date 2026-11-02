@@ -21,6 +21,8 @@ const legacy=p=>crypto.createHash("sha256").update("campus:"+p).digest("hex");
 const hash=(p,salt=crypto.randomBytes(16).toString("hex"))=>"s1$"+salt+"$"+crypto.scryptSync(p,salt,32).toString("hex");
 const verify=(p,h)=>{if(!h)return false;if(!h.startsWith("s1$"))return h===legacy(p);const salt=h.split("$")[1];return crypto.timingSafeEqual(Buffer.from(hash(p,salt)),Buffer.from(h))};
 const SESSION_MS=7*24*3600e3, hits={};
+// 按账号限制登录失败：同一用户名 15 分钟内错 10 次就先锁住，不管请求从哪个 IP 来
+const fails=new Map(),FAIL_MS=15*60e3,failCount=n=>{const k=String(n).toLowerCase(),a=(fails.get(k)||[]).filter(t=>Date.now()-t<FAIL_MS);fails.set(k,a);return a.length},addFail=n=>{const k=String(n).toLowerCase();fails.set(k,[...(fails.get(k)||[]),Date.now()])};
 const limited=(key,max=20)=>{const now=Date.now(),a=(hits[key]||[]).filter(t=>now-t<60e3);a.push(now);hits[key]=a;return a.length>max};
 const nextRev=()=>db.rev=(db.rev||0)+1;
 const newId=()=>Date.now()*1000+Math.floor(Math.random()*1000);
@@ -72,7 +74,8 @@ const handle=async(req,res)=>{
       if(p==='/api/register'){
         if((ADMIN&&username!==ADMIN&&String(username).toLowerCase()===ADMIN.toLowerCase())||db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
         db.users[username]={pw:hash(String(password)),created:Date.now()};
-      } else if(!db.users[username]||!verify(String(password),db.users[username].pw)) return send(res,401,{error:'用户名或密码错误'});
+      } else { if(failCount(username)>=10) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
+        if(!db.users[username]||!verify(String(password),db.users[username].pw)){addFail(username);return send(res,401,{error:'用户名或密码错误'})} }
       if(p==="/api/login"&&banned(username)) return send(res,403,BANNED);
       if(p==="/api/login"&&!db.users[username].pw.startsWith("s1$"))db.users[username].pw=hash(String(password));
       const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,exp:Date.now()+SESSION_MS}; persist();
@@ -129,6 +132,8 @@ const handle=async(req,res)=>{
       else {delete t.banned; delete t.bannedAt; delete t.banReason;}
       persist(); return send(res,200,{username:bu,banned:!!t.banned});
     }
+    // 排查用：只返回请求者自己这次请求的来源信息
+    if(p==='/api/ip'||p==='/api/debug/ip') return send(res,200,{ip:clientIp(req),xff:String(req.headers['x-forwarded-for']||''),xRealIp:String(req.headers['x-real-ip']||''),remote:req.socket.remoteAddress||''});
     if(p==='/api/health') return send(res,200,{ok:true,uptime:Math.round(process.uptime())});
     if(p==='/api/channels') return send(res,200,CHANNELS.map(c=>({name:c,count:db.messages[c].filter(alive).length})));
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
