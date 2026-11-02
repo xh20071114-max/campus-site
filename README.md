@@ -79,3 +79,26 @@ nohup ./run.sh &
 **部署后检查**
 打开 `http://服务器地址/api/health`，返回 `{"ok":true}` 就说明服务在运行。
 如果没设 `ADMIN_PASSWORD`，部署完要马上用 `AevonEcho` 注册，免得被别人抢先注册。
+
+## 积分
+新用户注册送 `signupBonus` 积分。发任务扣 `postCost`，接单扣 `claimCost`，普通聊天不扣；管理员发任务、接单都不扣分。积分不够时返回 402 `{error, points, need}`。撤销没人接的任务，或者删掉没人接的任务，发布者的积分会退回来；放弃接单不退。管理员可以发带 `bonusPoints` 的积分任务，发布者确认完成后，奖励自动加给接单人。
+
+| 接口 | 说明 |
+|---|---|
+| GET /api/settings | 公开，返回 {postCost, claimCost, signupBonus} |
+| GET /api/my/points | 本人的余额和流水 {points, log:[{time,delta,balance,type,reason}]} |
+| POST /api/recharge {amount, method:alipay\|wechat, note} | 提交充值，等待审核（每人最多 5 笔在审核中） |
+| GET /api/my/recharges | 本人的充值记录 |
+| GET/POST /api/admin/settings | 查看或修改三个积分配置 |
+| GET /api/admin/recharges?status=pending | 充值审核列表 |
+| POST /api/admin/recharges/<id>/approve {points} 或 /reject {reason} | 通过或拒绝充值 |
+| POST /api/admin/users/<用户名>/points {delta, reason} | 手动加减积分，不能扣到负数 |
+
+## 建议
+| 接口 | 说明 |
+|---|---|
+| POST /api/feedback {text, contact?} | 需登录；内容最多 1000 字，每人每分钟最多 3 条；返回 {ok, id} |
+| GET /api/admin/feedback | 仅管理员，[{id,user,text,contact,time,read}]，最新的在前 |
+| POST /api/admin/feedback/<id>/read 或 /delete | 标为已读或删除 |
+
+overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不到任何建议，包括自己发的。

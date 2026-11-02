@@ -34,12 +34,25 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 .filters span{padding:4px 12px;border-radius:999px;background:#f3f4f6;font-size:13px;cursor:pointer;color:#374151}
 .filters span.on{background:#4f46e5;color:#fff}
 @media(max-width:640px){body{flex-direction:column;height:100dvh}aside{flex:none;flex-wrap:wrap}#chs{display:flex;overflow-x:auto;order:3;flex:0 0 100%;border-top:1px solid #374151}aside h2{padding:12px;font-size:14px}.ch{padding:10px 12px}.me{padding:10px 12px}#login .box{width:90%}aside{width:100%;flex-direction:row;flex-wrap:wrap;align-items:center}aside h2{border:0;white-space:nowrap}.ch{white-space:nowrap}.me{margin:0 0 0 auto;border:0;white-space:nowrap}#msgs{padding:12px}#f{padding:10px}}
-#extra{display:none;gap:8px;padding:8px 20px 0;background:#fff;flex-wrap:wrap}
-#extra.show{display:flex}#extra input{flex:1;min-width:110px;padding:8px;font-size:14px}
+#extra{display:none;padding:12px 20px 0;background:#fff;border-top:1px solid #e5e7eb}
+#extra.show{display:block}
+#extra .hd{font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+#extra .hd small{font-weight:400;color:#9ca3af}
+#extra .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+#extra .fld{min-width:0;display:flex;align-items:center;gap:6px;border:1px solid #e5e7eb;border-radius:8px;padding:0 10px;background:#f9fafb}
+#extra .fld:focus-within{border-color:#4f46e5;background:#fff}
+#extra .fld span{font-size:15px}#extra .fld input{width:100%;border:0;background:transparent;flex:1;min-width:0;padding:8px 0;font-size:14px;outline:none}
+#extra .fld.bonus{border-color:#fbbf24;background:#fffbeb}
+#bal{font-size:12px;color:#6b7280;white-space:nowrap;align-self:center}#bal b{color:#4f46e5}
+#tip{display:none;background:#fef2f2;color:#991b1b;padding:8px 20px;font-size:13px}#tip a{color:#4f46e5;font-weight:600;margin-left:6px}
+.bonus-tag{background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;border-radius:4px;font-size:11px;padding:1px 7px;margin-left:6px;font-weight:600}
+@media(max-width:640px){#f{flex-wrap:wrap}#text{flex:1 1 100%}#f label{margin-right:auto}#f button{padding:10px 18px}#extra{padding:10px 10px 0}#extra .grid{grid-template-columns:repeat(2,minmax(0,1fr))}#extra .hd small{display:none}}
+.m.bonus .txt{border-left-color:#ef4444;background:#fff7ed}
 .meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#92400e;margin-top:4px}
 .expired{margin-left:8px;color:#9ca3af;font-size:12px}
 #offline{display:none;background:#fef3c7;color:#92400e;padding:10px 20px;font-size:14px;border-bottom:1px solid #fde68a}
 .official{background:#dc2626;color:#fff;border-radius:4px;font-size:11px;padding:1px 6px;margin-right:6px}
+#fbSlot #fbBtn{position:static;padding:5px 12px;font-size:13px;box-shadow:none;font-weight:400}
 #f button:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed}
 #f textarea:disabled,#f input:disabled{background:#f3f4f6;cursor:not-allowed}
 #f input:disabled+*{color:#d1d5db}
@@ -48,16 +61,23 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 <body>
 <aside><h2><a href="index.html">← Aevon校园交流网</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
 <main>
-  <div class="top" id="title"></div>
+  <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span id="title"></span><span id="fbSlot"></span></div>
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。如有疑问请联系管理员。</div>
   <div id="offline">⚠️ 服务暂未开通：聊天服务还在部署中，暂时不能登录和发消息，请稍后再来。</div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
   <div id="msgs"></div>
-  <div id="extra"><input id="xReward" maxlength="20" placeholder="报酬（选填，如 5元）"><input id="xPlace" maxlength="50" placeholder="地点（选填）"><input id="xDeadline" type="datetime-local" title="截止时间（选填）"></div>
+  <div id="tip"></div>
+  <div id="extra"><div class="hd">📌 任务信息 <small>任务内容写在下方输入框，其余都是选填</small></div><div class="grid">
+    <label class="fld" title="报酬"><span>💰</span><input id="xReward" maxlength="20" placeholder="报酬，如 5元"></label>
+    <label class="fld" title="地点"><span>📍</span><input id="xPlace" maxlength="50" placeholder="地点，如 三食堂"></label>
+    <label class="fld" title="截止时间"><span>⏳</span><input id="xDeadline" type="datetime-local"></label>
+    <label class="fld bonus" id="bonusF" title="奖励积分（仅管理员）" style="display:none"><span>🎁</span><input id="xBonus" type="number" min="0" step="1" placeholder="奖励积分"></label>
+  </div></div>
   <form id="f">
     <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
     <label><input type="checkbox" id="isTask">发任务</label>
-    <button>发送</button>
+    <span id="bal"></span>
+    <button id="send">发送</button>
   </form>
 </main>
 <div id="login"><form class="box" id="lf" onsubmit="return false">
@@ -68,6 +88,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div class="row"><button id="bLogin">登录</button><button id="bReg" style="background:#6b7280">注册</button></div>
 </form></div>
 <script src="config.js"></script>
+<script src="feedback.js"></script>
 <script>
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
 function dec(h){try{return decodeURIComponent(h)}catch(e){return h}}
@@ -80,14 +101,15 @@ const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
 const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
 function expired(){token=me=null;isAdmin=false;if(isBanned)setBanned(false);localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();lerr.textContent='登录已过期，请重新登录';showLogin(true)}
-function renderMe(){meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
+function renderMe(){if(!me){points=null;if(window.bal)renderPts()}
+  meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
   const o=document.getElementById('out'),i=document.getElementById('in');
   if(o)o.onclick=()=>{api('/api/logout',{method:'POST'}).catch(()=>{});token=me=null;isAdmin=false;localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
   if(i)i.onclick=()=>showLogin(true)}
 async function auth(kind){lerr.textContent='';
   const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify({username:lu.value.trim(),password:lp.value})});
   const d=await r.json();if(!r.ok){lerr.textContent=d.error;return}
-  token=d.token;me=d.username;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe()}
+  token=d.token;me=d.username;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe();loadMe()}
 bLogin.onclick=()=>lf.reportValidity()&&auth('login');
 bReg.onclick=()=>lf.reportValidity()&&auth('register');
 const revs={};let online=null;
@@ -118,9 +140,17 @@ function renderSide(){
   title.textContent='# '+cur;
 }
 const isExp=m=>m.task&&!m.claimedBy&&!m.done&&!m.cancelled&&(m.expired||(m.deadline&&new Date(m.deadline)<new Date()));
-let isAdmin=localStorage.getItem('admin')==='1',isBanned=false;
+let isAdmin=localStorage.getItem('admin')==='1',isBanned=false,points=null,cost={post:1,claim:1};
+function loadMe(){if(!token){points=null;renderPts();return}
+  api('/api/me').then(r=>r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d)return;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');
+    if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
+function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
+function renderPts(){bal.innerHTML=me&&points!=null?(isAdmin?'💎 管理员':`💎 余额 <b>${points}</b> 分`):'';
+  bonusF.style.display=isAdmin?'flex':'none';
+  send.textContent=isTask.checked?(isAdmin||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送'}
+function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
 function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);renderMsgs()}
-async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
+async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);loadMe();return}if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
 let flt='all',forceBottom=true;
 const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done,done:m=>m.task&&(m.done||m.cancelled),mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
 document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
@@ -131,7 +161,7 @@ function statusOf(m){
   if(m.claimedBy)return `<span class="claimed">✅ ${esc(m.claimedBy)} 已接单</span>`+
     (m.user===me?btn('complete','完成','#16a34a',m.id):'')+(m.claimedBy===me?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'');
   if(isExp(m))return '<span class="expired">⏰ 已过期</span>';
-  return m.user===me?'<span class="claimed" style="color:#9ca3af">待接单</span>'+btn('cancel','撤销','#6b7280',m.id,'确定撤销这个任务吗？'):btn('claim','接单','#f59e0b',m.id);
+  return m.user===me?'<span class="claimed" style="color:#9ca3af">待接单</span>'+btn('cancel','撤销','#6b7280',m.id,'确定撤销这个任务吗？'):btn('claim',isAdmin||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,isAdmin||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`);
 }
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${confirmText}"`:''}>${label}</button>`}
 function renderMsgs(){
@@ -139,23 +169,26 @@ function renderMsgs(){
   const list=(cache[cur]||[]).filter(m=>!m.deleted).filter(FL[flt]);
   msgs.innerHTML=list.map(m=>{
     const canDel=isAdmin||(m.user===me&&!m.claimedBy);
-    return `<div class="m${m.task?' task':''}"><div class="who"><b>${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${fmt(m.time)}${m.task?' · 📌 任务':''}${statusOf(m)}${canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):''}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}</div></div>`}).join('')||'<p style="color:#9ca3af">这里还没有消息</p>';
+    return `<div class="m${m.task?' task':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b>${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${fmt(m.time)}${m.task?' · 📌 任务':''}${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${statusOf(m)}${canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):''}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}</div></div>`}).join('')||'<p style="color:#9ca3af">这里还没有消息</p>';
   msgs.querySelectorAll('.act').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
     if(b.dataset.confirm&&!confirm(b.dataset.confirm))return;
     const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
-    if(r.status===401)return expired();if(!r.ok)await failed(r);refresh()});
+    if(r.status===401)return expired();if(!r.ok)await failed(r);else loadMe();refresh()});
   if(atBottom||forceBottom)msgs.scrollTop=msgs.scrollHeight;forceBottom=false;
 }
 window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
-  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?{reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined}:{}))});
+  if(isTask.checked&&!isAdmin&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
+  const bonus=isAdmin&&isTask.checked&&xBonus.value?Math.floor(+xBonus.value):0;
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined},bonus>0?{bonusPoints:bonus}:{}):{}))});
   if(r.status===401){expired();return}
   if(!r.ok){await failed(r);return}
-  text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');forceBottom=true;refresh()};
-isTask.onchange=()=>extra.classList.toggle('show',isTask.checked);
+  const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()};
+isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placeholder=isTask.checked?'任务内容：要做什么、有什么要求（必填）':'发消息，回车发送';renderPts()};
 text.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();f.requestSubmit()}};
 renderMe();
-if(token)api('/api/me').then(r=>r.ok?r.json():null).then(d=>{if(d){isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');renderMsgs()}}).catch(()=>{});
+loadCost();loadMe();renderPts();setInterval(loadMe,30000);
+(function(){const b=document.getElementById('fbBtn');if(b)fbSlot.appendChild(b)})();
 refresh();setInterval(refresh,2000);setInterval(()=>renderMsgs(),30000);
 </script>
 </body></html>

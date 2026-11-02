@@ -107,4 +107,4 @@ document.getElementById('annForm').onsubmit=async e=>{e.preventDefault();
   const d=await r.json();if(!r.ok){alert(r.status===429?'操作太频繁，请稍后再试':(d.error||'发布失败'));return}
   annTitle.value='';annText.value='';loadAnn()};
 loadAnn();checkAdmin();setInterval(loadAnn,30000);
-</script></body></html>
+</script><script src="feedback.js"></script></body></html>

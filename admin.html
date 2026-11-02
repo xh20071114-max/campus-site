@@ -8,7 +8,7 @@ header{background:#1e3a8a;color:#fff;position:sticky;top:0;z-index:9}
 .bar{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;flex-wrap:wrap;gap:6px}
 .logo{font-size:20px;font-weight:bold}nav a{margin-left:20px;opacity:.9;white-space:nowrap}
 main{max-width:1200px;margin:0 auto;padding:24px 20px}
-.tabs{display:flex;gap:8px;margin-bottom:16px}.tabs button{border:none;background:#e5e7eb;padding:9px 20px;border-radius:20px;cursor:pointer;font-size:15px}
+.tabs{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch}.tabs button{white-space:nowrap;flex:none}.tabs button{border:none;background:#e5e7eb;padding:9px 20px;border-radius:20px;cursor:pointer;font-size:15px}
 .tabs button.on{background:#1e3a8a;color:#fff}
 .tools{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .tools input,.tools select,.box input,.box textarea{padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-family:inherit}
@@ -45,7 +45,7 @@ async function init(){
     if(e.status===401){localStorage.removeItem('token');localStorage.removeItem('username');return stop('登录已过期','请重新登录','<a href="login.html?next=admin.html">去登录</a>')}
     return stop('⚠️ 服务暂未开通','后端还没上线，管理后台暂时用不了','<a href="index.html">回首页</a>')}
   if(!me.admin)return stop('没有权限','只有管理员能进入管理后台','<a href="index.html">回首页</a>');
-  M.innerHTML=`<div class="tabs"><button data-t="users">👥 用户</button><button data-t="msgs">💬 消息</button><button data-t="anns">📢 公告</button></div><div id="pane"></div>`;
+  M.innerHTML=`<div class="tabs"><button data-t="users">👥 用户</button><button data-t="msgs">💬 消息</button><button data-t="anns">📢 公告</button><button data-t="rch">💰 充值审核</button><button data-t="set">⚙️ 积分设置</button><button data-t="fb">💡 建议<span id="fbN"></span></button></div><div id="pane"></div>`;
   M.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
   render();
 }
@@ -59,21 +59,25 @@ async function render(){
     const cnt={};msgs.forEach(m=>cnt[m.user]=(cnt[m.user]||0)+1);
     users=(o.users||[]).map(u=>({...u,messages:cnt[u.username]||0}));
     anns=(o.announcements||[]).slice().sort((a,b)=>b.id-a.id);
-    if(tab==='users')drawUsers();if(tab==='msgs')drawMsgs();if(tab==='anns')drawAnns();
+    if(tab==='users')drawUsers();if(tab==='msgs')drawMsgs();if(tab==='anns')drawAnns();if(tab==='rch')await drawRch();if(tab==='set')await drawSet();if(tab==='fb')await drawFb();
+    const un=o.unreadFeedback|0,fn=document.getElementById('fbN');if(fn)fn.innerHTML=un?` <span style="background:#dc2626;color:#fff;border-radius:9px;padding:0 6px;font-size:12px">${un}</span>`:'';
   }catch(e){P.innerHTML=`<p class="empty">加载失败：${esc(e.message)}</p>`}
 }
 
 // 用户
 function drawUsers(){
   const P=document.getElementById('pane');
-  P.innerHTML=`<div class="tools"><input id="uq" placeholder="搜索用户名"><select id="uf"><option value="">全部用户</option><option value="ok">正常</option><option value="banned">已封禁</option></select></div><p class="count" id="uc"></p><div class="box"><table><thead><tr><th>用户名</th><th>注册时间</th><th>发帖</th><th>在线设备</th><th>状态</th><th>操作</th></tr></thead><tbody id="ub"></tbody></table></div>`;
+  P.innerHTML=`<div class="tools"><input id="uq" placeholder="搜索用户名"><select id="uf"><option value="">全部用户</option><option value="ok">正常</option><option value="banned">已封禁</option></select></div><p class="count" id="uc"></p><div class="box"><table><thead><tr><th>用户名</th><th>注册时间</th><th>发帖</th><th>在线设备</th><th>积分</th><th>状态</th><th>操作</th></tr></thead><tbody id="ub"></tbody></table></div>`;
   const draw=()=>{const q=uq.value.trim().toLowerCase(),f=uf.value;
     const l=users.filter(u=>(!q||u.username.toLowerCase().includes(q))&&(!f||(f==='banned')===!!u.banned));
     uc.textContent=`共 ${l.length} 个用户`;
-    ub.innerHTML=l.map(u=>`<tr><td><b>${esc(u.username)}</b> ${u.admin?'<span class="tg r">管理员</span>':''}</td><td>${fmt(u.created)}</td><td>${u.messages??'-'}</td><td>${u.activeSessions||0}</td>
+    ub.innerHTML=l.map(u=>`<tr><td><b>${esc(u.username)}</b> ${u.admin?'<span class="tg r">管理员</span>':''}</td><td>${fmt(u.created)}</td><td>${u.messages??'-'}</td><td>${u.activeSessions||0}</td><td><b>${esc(u.points??'-')}</b> <button class="act ok" data-u="${esc(u.username)}" data-a="points" title="手动加减积分">±</button></td>
       <td>${u.banned?`<span class="tg r">已封禁</span>${u.banReason?`<br><small style="color:#6b7280">${esc(u.banReason)}</small>`:''}`:'<span class="tg g">正常</span>'}</td>
-      <td>${u.admin?'':u.banned?`<button class="act ok" data-u="${esc(u.username)}" data-a="unban">解封</button>`:`<button class="act danger" data-u="${esc(u.username)}" data-a="ban">封禁</button>`}${u.admin?'':`<button class="act kill" data-u="${esc(u.username)}" data-a="delete">删除</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有符合条件的用户</td></tr>';
+      <td>${u.admin?'':u.banned?`<button class="act ok" data-u="${esc(u.username)}" data-a="unban">解封</button>`:`<button class="act danger" data-u="${esc(u.username)}" data-a="ban">封禁</button>`}${u.admin?'':`<button class="act kill" data-u="${esc(u.username)}" data-a="delete">删除</button>`}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">没有符合条件的用户</td></tr>';
     ub.querySelectorAll('button').forEach(b=>b.onclick=async()=>{const a=b.dataset.a,n=b.dataset.u;
+      if(a==='points'){const v=prompt(`给「${n}」加减积分：\n填正数加分，负数扣分，例如 5 或 -3`,'');if(v===null)return;const delta=Number(v.trim());
+        if(!Number.isInteger(delta)||delta===0)return alert('请填一个不为 0 的整数');const reason=prompt('原因（会记进他的积分明细）：','管理员调整');if(reason===null)return;
+        try{await call(`/api/admin/users/${encodeURIComponent(n)}/points`,{method:'POST',body:JSON.stringify({delta,reason:reason.trim()})});render()}catch(e){alert(e.message)}return}
       let body={};if(a==='delete'&&!confirm(`确定删除账号「${n}」吗？\n\n删除后不可恢复：他会立即下线，发过的消息会被标记为已删除（管理员仍能看到原文），他发布的未完成任务会被撤销，接下的未完成任务会放回待接单。删除后这个用户名可以被重新注册。`))return;
       if(a==='ban'){const r=prompt(`封禁「${n}」后，他不能登录、发消息和接单。\n封禁原因（选填）：`,'');if(r===null)return;body={reason:r.trim()}}
       try{const d=await call(`/api/admin/users/${encodeURIComponent(n)}/${a}`,{method:'POST',body:JSON.stringify(body)});
@@ -114,6 +118,55 @@ function drawAnns(){
   af.onsubmit=async e=>{e.preventDefault();try{await call('/api/announcements',{method:'POST',body:JSON.stringify({title:at.value.trim(),text:ax.value.trim()})});render()}catch(e){alert(e.message)}};
   P.querySelectorAll('tbody button').forEach(b=>b.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
     try{await call(`/api/announcements/${b.dataset.id}/delete`,{method:'POST'});render()}catch(e){alert(e.message)}});
+}
+// 充值审核
+let rchF='pending';
+async function drawRch(){
+  const P=document.getElementById('pane');const d=await call('/api/admin/recharges');
+  const all=(Array.isArray(d)?d:(d.recharges||d.list||[])).slice().sort((a,b)=>new Date(b.time||b.created||0)-new Date(a.time||a.created||0));
+  const st=r=>String(r.status||'pending');
+  const tag=s=>s==='approved'?'<span class="tg g">已通过</span>':s==='rejected'?'<span class="tg r">已拒绝</span>':'<span class="tg" style="background:#fef3c7;color:#92400e">待审核</span>';
+  const np=all.filter(r=>st(r)==='pending').length;
+  P.innerHTML=`<div class="tools"><select id="rf"><option value="pending">待审核（${np}）</option><option value="approved">已通过</option><option value="rejected">已拒绝</option><option value="">全部</option></select></div>
+  <p class="count">核对收款记录后再通过；通过时填写要给的积分。</p><div class="box"><table><thead><tr><th>时间</th><th>用户</th><th>金额</th><th>备注</th><th>状态</th><th>操作</th></tr></thead><tbody id="rb"></tbody></table></div>`;
+  rf.value=rchF;
+  const draw=()=>{rchF=rf.value;const l=all.filter(r=>!rchF||st(r)===rchF);
+    rb.innerHTML=l.map(r=>`<tr><td style="white-space:nowrap">${fmt(r.time||r.created)}</td><td><b>${esc(r.user||r.username)}</b></td><td>¥${esc(r.amount)}<br><small style="color:#6b7280">${r.method==='wechat'?'微信':r.method==='alipay'?'支付宝':''}</small></td><td class="txt">${esc(r.note||'')}</td>
+    <td>${tag(st(r))}${st(r)==='approved'?` +${esc(r.points??'')}`:''}${r.reason?`<br><small style="color:#6b7280">${esc(r.reason)}</small>`:''}</td>
+    <td style="white-space:nowrap">${st(r)==='pending'?`<button class="act ok" data-id="${esc(r.id)}" data-a="approve" data-m="${esc(r.amount)}" data-u="${esc(r.user||r.username)}">通过</button> <button class="act danger" data-id="${esc(r.id)}" data-a="reject" data-u="${esc(r.user||r.username)}">拒绝</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有记录</td></tr>';
+    rb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{const id=encodeURIComponent(b.dataset.id),u=b.dataset.u;let body={};
+      if(b.dataset.a==='approve'){const v=prompt(`通过「${u}」的充值 ¥${b.dataset.m}\n给多少积分？`,'');if(v===null)return;const points=Number(v.trim());
+        if(!Number.isInteger(points)||points<=0)return alert('积分要填正整数');body={points}}
+      else{const r=prompt(`拒绝「${u}」的充值，原因（选填，用户能看到）：`,'');if(r===null)return;body={reason:r.trim()}}
+      try{await call(`/api/admin/recharges/${id}/${b.dataset.a}`,{method:'POST',body:JSON.stringify(body)});render()}catch(e){alert(e.message)}})};
+  rf.onchange=draw;draw();
+}
+
+// 积分设置
+async function drawSet(){
+  const P=document.getElementById('pane');const d=await call('/api/admin/settings');const s=d.settings||d;
+  const F=[['postCost','发布任务扣的积分','普通用户每发一个任务扣多少'],['claimCost','接单扣的积分','普通用户每接一单扣多少'],['signupBonus','新注册赠送积分','只对之后注册的新用户生效']];
+  P.innerHTML=`<div class="box"><form class="new" id="sf">${F.map(([k,l,h])=>`<label style="display:grid;gap:4px"><b style="font-size:14px">${l}</b><input id="s_${k}" type="number" min="0" step="1" value="${esc(s[k]??'')}" required><small style="color:#6b7280">${h}</small></label>`).join('')}
+  <button>保存设置</button><small id="sm" style="color:#166534"></small></form></div>`;
+  sf.onsubmit=async e=>{e.preventDefault();const body={};for(const[k]of F){const v=Number(document.getElementById('s_'+k).value);if(!Number.isInteger(v)||v<0)return alert('请填 0 或正整数');body[k]=v}
+    try{await call('/api/admin/settings',{method:'POST',body:JSON.stringify(body)});sm.textContent='✅ 已保存'}catch(e){alert(e.message)}};
+}
+// 建议
+let fbF='';
+async function drawFb(){
+  const P=document.getElementById('pane');const d=await call('/api/admin/feedback');
+  const all=(Array.isArray(d)?d:(d.feedback||d.list||[])).slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0));
+  const nu=all.filter(f=>!f.read).length;
+  P.innerHTML=`<div class="tools"><select id="ff"><option value="">全部（${all.length}）</option><option value="unread">未读（${nu}）</option><option value="read">已读</option></select></div>
+  <div class="box"><table><thead><tr><th>时间</th><th>用户</th><th>建议</th><th>联系方式</th><th>操作</th></tr></thead><tbody id="fbb"></tbody></table></div>`;
+  ff.value=fbF;
+  const draw=()=>{fbF=ff.value;const l=all.filter(f=>!fbF||(fbF==='read')===!!f.read);
+    fbb.innerHTML=l.map(f=>`<tr style="${f.read?'':'background:#fffbeb'}"><td style="white-space:nowrap">${fmt(f.time)}${f.read?'':'<br><span class="tg r">未读</span>'}</td><td><b>${esc(f.user)}</b></td>
+    <td class="txt" style="white-space:pre-wrap">${esc(f.text)}</td><td>${esc(f.contact||'')}</td>
+    <td style="white-space:nowrap">${f.read?'':`<button class="act ok" data-id="${esc(f.id)}" data-a="read">标为已读</button> `}<button class="act danger" data-id="${esc(f.id)}" data-a="delete">删除</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">还没有建议</td></tr>';
+    fbb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.a==='delete'&&!confirm('确定删除这条建议？删除后不可恢复'))return;
+      try{await call(`/api/admin/feedback/${encodeURIComponent(b.dataset.id)}/${b.dataset.a}`,{method:'POST'});render()}catch(e){alert(e.message)}})};
+  ff.onchange=draw;draw();
 }
 init();
 </script></body></html>

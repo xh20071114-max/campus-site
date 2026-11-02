@@ -25,6 +25,14 @@ const SESSION_MS=7*24*3600e3, hits={};
 const fails=new Map(),FAIL_MS=15*60e3,failCount=n=>{const k=String(n).toLowerCase(),a=(fails.get(k)||[]).filter(t=>Date.now()-t<FAIL_MS);fails.set(k,a);return a.length},addFail=n=>{const k=String(n).toLowerCase();fails.set(k,[...(fails.get(k)||[]),Date.now()])};
 const limited=(key,max=20)=>{const now=Date.now(),a=(hits[key]||[]).filter(t=>now-t<60e3);a.push(now);hits[key]=a;return a.length>max};
 const nextRev=()=>db.rev=(db.rev||0)+1;
+// ===== 积分 =====
+db.settings=Object.assign({postCost:1,claimCost:1,signupBonus:10},db.settings||{}); db.ledger=db.ledger||[]; db.recharges=db.recharges||[]; db.feedback=db.feedback||[];
+const S=()=>db.settings, pts=n=>(db.users[n]&&db.users[n].points)||0;
+const intIn=(v,min,max)=>{const x=typeof v==='string'&&v.trim()!==''?Number(v):v;return Number.isInteger(x)&&x>=min&&x<=max?x:null};
+// 改积分必须走这里：同步完成「改余额+记流水」，中间没有 await，并发请求不会扣成负数
+const addPoints=(n,delta,type,reason,ref)=>{const u=db.users[n];if(!u||!delta)return;u.points=(u.points||0)+delta;db.ledger.push({id:Date.now()*1000+Math.floor(Math.random()*1000),user:n,time:new Date().toISOString(),delta,balance:u.points,type,reason:reason||'',...(ref!=null?{ref:String(ref)}:{})})};
+const noPoints=(n,need)=>({error:'积分不足：需要 '+need+' 积分，当前 '+pts(n)+' 积分，请先充值',points:pts(n),need});
+for(const [k,u] of Object.entries(db.users)) if(u.points==null){u.points=0;if(!isAdmin(k))addPoints(k,S().signupBonus,'signup','老账号补发注册积分')}
 const newId=()=>Date.now()*1000+Math.floor(Math.random()*1000);
 const send=(res,code,obj)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(obj))};
 const body=req=>new Promise(r=>{let d='';req.on('data',c=>{d+=c;if(d.length>1e5){d='';r({});req.destroy()}});req.on('end',()=>{try{const v=JSON.parse(d||'{}');r(v&&typeof v==='object'&&!Array.isArray(v)?v:{})}catch{r({})}})});
@@ -73,7 +81,7 @@ const handle=async(req,res)=>{
       if(p==="/api/register"&&String(password).length<6) return send(res,400,{error:"密码至少 6 位"});
       if(p==='/api/register'){
         if((ADMIN&&username!==ADMIN&&String(username).toLowerCase()===ADMIN.toLowerCase())||db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
-        db.users[username]={pw:hash(String(password)),created:Date.now()};
+        db.users[username]={pw:hash(String(password)),created:Date.now(),points:0}; if(!isAdmin(username)) addPoints(username,S().signupBonus,'signup','注册赠送');
       } else { // 两层锁定：同账号同 IP 15 分钟错 10 次只锁这个 IP；同账号所有 IP 合计错 50 次锁整个账号（以前在这个 IP 成功登录过的本人除外）
         const ip=clientIp(req),known=!!(db.users[username]&&(db.users[username].ips||[]).includes(ip));
         if(failCount(username+'@'+ip)>=10||(failCount(username)>=50&&!known)) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
@@ -85,7 +93,7 @@ const handle=async(req,res)=>{
       return send(res,200,{token,username,admin:isAdmin(username)});
     }
     if(p==="/api/logout"&&POST){delete db.sessions[tokenOf(req)];persist();return send(res,200,{ok:true})}
-    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,admin:isAdmin(n),banned:banned(n)}):send(res,401,{error:'未登录'});}
+    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,admin:isAdmin(n),banned:banned(n),points:pts(n),postCost:S().postCost,claimCost:S().claimCost}):send(res,401,{error:'未登录'});}
     // POST /api/password {oldPassword,newPassword}  改密码，成功后其他设备的登录全部失效，当前 token 保留
     if(p==='/api/password'&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
@@ -112,9 +120,9 @@ const handle=async(req,res)=>{
     if(p==='/api/admin/overview'&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
       const online={}; for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
-      const users=Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0}));
+      const users=Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0}));
       const channels=Object.fromEntries(CHANNELS.map(c=>[c,db.messages[c].map(x=>({...out(x),...(x.deleted?{deletedText:db.deletedTexts[x.id]||'',originalText:db.deletedTexts[x.id]||''}:{})}))]));
-      return send(res,200,{users,channels,announcements:db.announcements});
+      return send(res,200,{users,channels,announcements:db.announcements,unreadFeedback:db.feedback.filter(x=>!x.read).length});
     }
     // GET /api/admin/users -> [{username,created,admin,banned,bannedAt,banReason,activeSessions,messages}]（messages=发过的消息数）
     // GET /api/admin/messages -> 全部消息（含已删除、已撤销），每条带 channel，已删除的带 originalText，按时间倒序
@@ -124,7 +132,7 @@ const handle=async(req,res)=>{
       if(p==='/api/admin/messages') return send(res,200,all.sort((a,b)=>b.id-a.id));
       const cnt={}; all.forEach(x=>cnt[x.user]=(cnt[x.user]||0)+1);
       const online={}; for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
-      return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
+      return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
     }
     // 封禁/解封：POST /api/admin/users/<用户名>/ban {reason}、/unban（仅管理员，不能封管理员）
     // 删除账号：POST /api/admin/users/<用户名>/delete（仅管理员，不能删管理员）
@@ -145,8 +153,10 @@ const handle=async(req,res)=>{
         if(ch) m.rev=nextRev();
       }
       for(const [k,v] of Object.entries(db.sessions)) if(v===du||v.user===du) delete db.sessions[k];
+      let rej=0; for(const x of db.ledger) if(x.user===du&&!x.userDeleted) x.userDeleted=true;
+      for(const x of db.recharges) if(x.user===du&&!x.userDeleted){x.userDeleted=true; if(x.status==='pending'){x.status='rejected';x.reason='账号已删除';x.handledBy=n;x.handledAt=now;rej++}}
       delete db.users[du]; persist();
-      return send(res,200,{username:du,deleted:true,messages:msgs,cancelledTasks:cancelled,releasedTasks:released});
+      return send(res,200,{username:du,deleted:true,messages:msgs,cancelledTasks:cancelled,releasedTasks:released,rejectedRecharges:rej});
     }
     const bm=p.match(/^\/api\/admin\/users\/([^/]+)\/(ban|unban)$/);
     if(bm&&POST){ let bu; try{bu=decodeURIComponent(bm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
@@ -155,6 +165,65 @@ const handle=async(req,res)=>{
       if(bm[2]==='ban'){const b=await body(req); t.banned=true; t.bannedAt=new Date().toISOString(); t.banReason=str(b.reason,100);}
       else {delete t.banned; delete t.bannedAt; delete t.banReason;}
       persist(); return send(res,200,{username:bu,banned:!!t.banned});
+    }
+    if(p==='/api/settings'&&GET) return send(res,200,S());
+    // 建议：只有管理员能看，普通用户连自己的也看不到
+    if(p==='/api/feedback'||p.startsWith('/api/admin/feedback')){
+      const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
+      if(p==='/api/feedback'&&POST){
+        const b=await body(req); if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'建议内容不能为空'});
+        if(b.contact!=null&&typeof b.contact!=='string') return send(res,400,{error:'联系方式格式不对'});
+        if(limited('fb:'+n,3)) return send(res,429,{error:'发得太快了，请一分钟后再试'});
+        const fb={id:String(newId()),user:n,text:b.text.trim().slice(0,1000),contact:str(b.contact,100),time:new Date().toISOString(),read:false};
+        db.feedback.push(fb); persist(); return send(res,200,{ok:true,id:fb.id});
+      }
+      if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
+      if(p==='/api/admin/feedback'&&GET) return send(res,200,db.feedback.slice().reverse());
+      const fm=p.match(/^\/api\/admin\/feedback\/([^/]+)\/(read|delete)$/);
+      if(fm&&POST){ const i=db.feedback.findIndex(x=>x.id===fm[1]); if(i<0) return send(res,404,{error:'建议不存在'});
+        if(fm[2]==='read') db.feedback[i].read=true; else db.feedback.splice(i,1);
+        persist(); return send(res,200,{ok:true}); }
+      return send(res,404,{error:'接口不存在'});
+    }
+    if(p.startsWith('/api/my/points')||p.startsWith('/api/my/recharges')||p==='/api/recharge'||p.startsWith('/api/admin/settings')||p.startsWith('/api/admin/recharges')||/^\/api\/admin\/users\/[^/]+\/points$/.test(p)){
+      const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
+      if(p==='/api/my/points'&&GET) return send(res,200,{points:pts(n),log:db.ledger.filter(x=>x.user===n&&!x.userDeleted).slice(-500).reverse().map(({user,...x})=>x)});
+      if(p==='/api/my/recharges'&&GET) return send(res,200,db.recharges.filter(x=>x.user===n&&!x.userDeleted).slice().reverse());
+      if(p==='/api/recharge'&&POST){
+        if(banned(n)) return send(res,403,BANNED);
+        const b=await body(req), amt=typeof b.amount==='string'?Number(b.amount):b.amount;
+        if(typeof amt!=='number'||!isFinite(amt)||amt<0.01||amt>10000) return send(res,400,{error:'金额要在 0.01 到 10000 元之间'});
+        if(!['alipay','wechat'].includes(b.method)) return send(res,400,{error:'请选择支付宝或微信'});
+        if(db.recharges.filter(x=>x.user===n&&!x.userDeleted&&x.status==='pending').length>=5) return send(res,429,{error:'你还有 5 笔充值在审核中，请等管理员处理'});
+        const rec={id:String(newId()),user:n,amount:Math.round(amt*100)/100,method:b.method,note:str(b.note,100),status:'pending',time:new Date().toISOString()};
+        db.recharges.push(rec); persist(); return send(res,200,rec);
+      }
+      if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
+      if(p==='/api/admin/settings'&&GET) return send(res,200,S());
+      if(p==='/api/admin/settings'&&POST){
+        const b=await body(req), nx={...S()};
+        for(const k of ['postCost','claimCost','signupBonus']) if(b[k]!=null){const v=intIn(b[k],0,1000000); if(v==null) return send(res,400,{error:k+' 要是 0 以上的整数'}); nx[k]=v}
+        db.settings=nx; persist(); return send(res,200,S());
+      }
+      if(p==='/api/admin/recharges'&&GET){const st=u.searchParams.get('status'); return send(res,200,db.recharges.filter(x=>!st||x.status===st).slice().reverse().map(x=>({...x,userPoints:pts(x.user),userExists:!x.userDeleted&&!!db.users[x.user]})))}
+      const rm=p.match(/^\/api\/admin\/recharges\/([^/]+)\/(approve|reject)$/);
+      if(rm&&POST){
+        const b=await body(req), rec=db.recharges.find(x=>x.id===rm[1]); if(!rec) return send(res,404,{error:'充值记录不存在'});
+        if(rec.status!=='pending') return send(res,409,{error:'这笔充值已经处理过了'});
+        if(rm[2]==='approve'){ if(rec.userDeleted||!db.users[rec.user]) return send(res,404,{error:'用户已不存在'}); const v=intIn(b.points,1,1000000); if(v==null) return send(res,400,{error:'积分要是 1-1000000 的整数'});
+          rec.status='approved'; rec.points=v; addPoints(rec.user,v,'recharge','充值 '+rec.amount+' 元',rec.id); }
+        else { rec.status='rejected'; rec.reason=str(b.reason,100); }
+        rec.handledBy=n; rec.handledAt=new Date().toISOString(); persist(); return send(res,200,rec);
+      }
+      const pm=p.match(/^\/api\/admin\/users\/([^/]+)\/points$/);
+      if(pm&&POST){
+        let pu; try{pu=decodeURIComponent(pm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
+        if(!db.users[pu]) return send(res,404,{error:'用户不存在'});
+        const b=await body(req), d=intIn(b.delta,-1000000,1000000); if(d==null||d===0) return send(res,400,{error:'调整的积分要是非 0 整数'});
+        if(pts(pu)+d<0) return send(res,400,{error:'扣完会变成负数，当前只有 '+pts(pu)+' 积分'});
+        addPoints(pu,d,'admin',str(b.reason,100)||'管理员调整'); persist(); return send(res,200,{username:pu,points:pts(pu)});
+      }
+      return send(res,404,{error:'接口不存在'});
     }
     if(p==='/api/health') return send(res,200,{ok:true,uptime:Math.round(process.uptime())});
     if(p==='/api/channels') return send(res,200,CHANNELS.map(c=>({name:c,count:db.messages[c].filter(alive).length})));
@@ -167,6 +236,7 @@ const handle=async(req,res)=>{
       const act=am2[3],now=new Date().toISOString();
       if(act==='delete'){ // 管理员可删任何消息；普通用户可删自己没人接的消息
         if(!isAdmin(n)&&!(msg.user===n&&!msg.claimedBy)) return send(res,403,{error:'没有权限删除这条消息'});
+        if(msg.task&&msg.cost&&!msg.refunded&&!msg.cancelled&&!msg.claimedBy&&!msg.done){addPoints(msg.user,msg.cost,'refund','删除未接任务退还',msg.id);msg.refunded=true}
         db.deletedTexts[msg.id]=msg.text;msg.deleted=true;msg.text='';msg.deletedBy=n;msg.deletedAt=now;
       } else {
         if(!msg.task) return send(res,404,{error:'任务不存在'});
@@ -175,6 +245,7 @@ const handle=async(req,res)=>{
           if(msg.user===n) return send(res,400,{error:'不能接自己发布的任务'});
           if(msg.claimedBy) return send(res,409,{error:'已被 '+msg.claimedBy+' 接单'});
           if(expired(msg)) return send(res,409,{error:'任务已过期'});
+          if(!isAdmin(n)){const c=S().claimCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'claim','接单',msg.id); msg.claimCost=c}}
           msg.claimedBy=n;msg.claimedAt=now;
         } else if(act==='unclaim'){ // 接单人放弃，任务回到待接单
           if(msg.claimedBy!==n) return send(res,403,{error:'只有接单人能放弃接单'});
@@ -183,12 +254,12 @@ const handle=async(req,res)=>{
         } else if(act==='cancel'){ // 发布者撤销没人接的任务
           if(msg.user!==n) return send(res,403,{error:'只有发布者能撤销'});
           if(msg.claimedBy) return send(res,409,{error:'任务已被接单，不能撤销'});
-          msg.cancelled=true;msg.cancelledAt=now;
+          msg.cancelled=true;msg.cancelledAt=now; if(msg.cost&&!msg.refunded){addPoints(msg.user,msg.cost,'refund','撤销任务退还',msg.id);msg.refunded=true}
         } else { // complete / done
           if(msg.user!==n) return send(res,403,{error:"只有发布者能确认完成"});
           if(!msg.claimedBy) return send(res,400,{error:"任务还没人接单"});
           if(msg.done) return send(res,409,{error:"任务已完成"});
-          msg.done=true;msg.doneAt=now;
+          msg.done=true;msg.doneAt=now; if(msg.bonusPoints&&!msg.bonusPaid&&!msg.claimerDeleted&&db.users[msg.claimedBy]){addPoints(msg.claimedBy,msg.bonusPoints,'bonus','完成积分任务',msg.id);msg.bonusPaid=true}
         }
       }
       msg.rev=nextRev(); persist(); return send(res,200,out(msg));
@@ -227,6 +298,10 @@ const handle=async(req,res)=>{
           const reward=str(b.reward,20),place=str(b.place,50);
           if(reward) msg.reward=reward; if(place) msg.place=place;
           if(b.deadline){const t=Date.parse(b.deadline); if(isNaN(t)) return send(res,400,{error:'截止时间格式不对'}); if(t<=Date.now()) return send(res,400,{error:'截止时间要晚于现在'}); msg.deadline=new Date(t).toISOString();}
+        }
+        if(msg.task){
+          if(b.bonusPoints!=null&&b.bonusPoints!==''&&b.bonusPoints!==0){ if(!isAdmin(n)) return send(res,403,{error:'只有管理员能发积分任务'}); const bp=intIn(b.bonusPoints,1,100000); if(bp==null) return send(res,400,{error:'奖励积分要是 1-100000 的整数'}); msg.bonusPoints=bp; }
+          if(!isAdmin(n)){const c=S().postCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'post','发布任务',msg.id); msg.cost=c}}
         }
         msg.rev=nextRev(); db.messages[ch].push(msg); persist(); return send(res,200,out(msg));
       }

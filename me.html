@@ -25,6 +25,11 @@ main{max-width:1100px;margin:0 auto;padding:36px 20px}
 @media(max-width:720px){.cols{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}nav a{margin-left:12px;font-size:14px}}
 @media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
 nav a{white-space:nowrap}
+.pts{background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff;border-radius:14px;padding:20px 22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.pts b{font-size:38px;margin-right:6px}.pts .rc{background:#fff;color:#1e3a8a;padding:10px 22px;border-radius:8px;font-weight:600}
+.led{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05);margin-bottom:24px}.led h2{font-size:18px;margin-bottom:12px}
+.led ul{list-style:none;max-height:260px;overflow:auto}.led li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f1f3f6;font-size:14px}
+.led .pl{color:#16a34a;font-weight:600}.led .mi{color:#dc2626;font-weight:600}.led small{color:#9ca3af}
 #pwf input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:10px;font-size:15px}#pwf button{background:#1e3a8a;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;margin-top:6px}
 </style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="og.png"><meta name="theme-color" content="#1e3a8a"></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
@@ -51,8 +56,12 @@ async function load(){
     else{posted=d.posted||d.published||[];claimed=d.claimed||d.taken||[]}
   }catch{M.innerHTML='<div class="need"><h2>⚠️ 服务暂未开通</h2><p style="color:#6b7280;margin-top:8px">后端还没上线，个人中心暂时用不了，稍后再来看看</p><a href="index.html">回首页</a></div>';return}
   const n=(a,f)=>a.filter(f).length;
+  let pts=null,led=[];try{const r3=await fetch((window.API_BASE||'')+'/api/my/points',{headers:{Authorization:'Bearer '+token}});if(r3.ok){const d3=await r3.json();pts=d3.points??d3.balance;led=d3.log||d3.history||d3.logs||d3.ledger||d3.records||[]}}catch{}
+  const dl=x=>Number(x.delta??x.change??x.amount??0);
+  const ptsHtml=pts==null?'':`<div class="pts"><div><div style="opacity:.85;font-size:14px">我的积分</div><b>${esc(pts)}</b>分</div><a class="rc" href="recharge.html">💰 充值</a></div>
+  <div class="led"><h2>📒 积分明细</h2><ul>${led.slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0)).map(x=>`<li><span>${esc(x.reason||({signup:'注册赠送',post:'发布任务',claim:'接单',refund:'撤销退还',bonus:'积分任务奖励',recharge:'充值',admin:'管理员调整'})[x.type]||'积分变动')}<br><small>${x.time?new Date(x.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}${x.balance!=null?' · 余额 '+esc(x.balance):''}</small></span><span class="${dl(x)>=0?'pl':'mi'}">${dl(x)>=0?'+':''}${dl(x)}</span></li>`).join('')||'<li class="empty">还没有积分变动</li>'}</ul></div>`;
   let ban=false;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok)ban=!!(await r2.json()).banned}catch{}
-  M.innerHTML=`${ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':''}<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>
+  M.innerHTML=`${ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':''}<div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div>${ptsHtml}
   <div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
   <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>
   <div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
@@ -74,4 +83,4 @@ function bindPw(){const f=document.getElementById('pwf');f.onsubmit=async e=>{e.
     f.reset();msg.style.color='#166534';msg.textContent='✅ 密码已修改';
   }catch{bad('服务暂未开通，暂时改不了密码')}}}
 load();setInterval(()=>{if(![...document.querySelectorAll('#pwf input')].some(i=>i.value))load()},15000);
-</script></body></html>
+</script><script src="feedback.js"></script></body></html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>积分充值 · Aevon校园交流网</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f5f7fb;color:#1f2937}
+a{color:inherit;text-decoration:none}
+header{background:#1e3a8a;color:#fff;position:sticky;top:0;z-index:9}
+.bar{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+.logo{font-size:20px;font-weight:bold}nav a{margin-left:22px;opacity:.9;white-space:nowrap}nav a:hover{opacity:1;text-decoration:underline}
+main{max-width:760px;margin:0 auto;padding:30px 20px}
+.card{background:#fff;border-radius:14px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.05);margin-bottom:18px}
+h1{font-size:24px;margin-bottom:6px}h2{font-size:17px;margin-bottom:14px}
+.sub{color:#6b7280;font-size:14px}
+.bal{display:flex;align-items:baseline;gap:8px;margin-top:10px}.bal b{font-size:34px;color:#1e3a8a}
+.steps{color:#4b5563;font-size:14px;line-height:1.9;padding-left:20px;margin-bottom:16px}
+.pays{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pay{border:2px solid #e5e7eb;border-radius:12px;padding:16px;font-size:17px;font-weight:600;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:center;gap:8px}
+.pay.ali{color:#1677ff}.pay.wx{color:#07c160}.pay:hover{border-color:currentColor}
+form .row{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:8px;font-size:15px}
+label{display:block;font-size:13px;color:#6b7280;margin-bottom:4px}
+.btn{background:#1e3a8a;color:#fff;border:none;padding:11px 22px;border-radius:8px;cursor:pointer;font-size:15px;margin-top:14px}
+.btn:disabled{background:#9ca3af;cursor:not-allowed}
+#msg{font-size:14px;min-height:20px;margin-top:10px}
+td,th{white-space:nowrap}td:nth-child(3){white-space:normal;min-width:120px}.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}table{width:100%;min-width:520px;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #f1f3f6}th{color:#6b7280;font-weight:normal;font-size:13px}
+.st{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap}.p{background:#fef3c7;color:#92400e}.ok{background:#dcfce7;color:#166534}.no{background:#fee2e2;color:#b91c1c}
+.empty{color:#9ca3af;font-size:14px;text-align:center;padding:16px}
+.need{text-align:center;padding:40px}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:20;padding:20px}
+.mask.on{display:flex}
+.qr{background:#fff;border-radius:16px;padding:22px;text-align:center;max-width:340px;width:100%}
+.qr h3{margin-bottom:12px}.warn{background:#fff7ed;border:2px solid #f97316;color:#c2410c;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px;font-weight:600;text-align:left;line-height:1.6}.warn b{color:#dc2626;font-size:16px;word-break:break-all}.warn button{margin:0 0 0 6px!important;padding:3px 12px!important;background:#f97316!important;color:#fff;border-radius:6px;font-size:13px}.qr img{width:100%;max-width:260px;height:auto;max-height:60vh;object-fit:contain;border-radius:8px;background:#f3f4f6}
+.qr .ph{width:240px;height:240px;margin:0 auto;border:2px dashed #d1d5db;border-radius:8px;display:none;align-items:center;justify-content:center;color:#9ca3af;font-size:14px;line-height:1.7}
+.qr p{color:#6b7280;font-size:13px;margin-top:10px}.qr button{margin-top:14px;background:#f3f4f6;border:none;padding:9px 26px;border-radius:8px;cursor:pointer}
+@media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%}nav a{margin:0 14px 0 0;font-size:14px}form .row{grid-template-columns:1fr}}
+</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><meta name="theme-color" content="#1e3a8a"></head><body>
+<header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
+<nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
+<main id="main"></main>
+<div class="mask" id="mask"><div class="qr"><h3 id="qt"></h3><div class="warn">⚠️ 重要：付款时请在备注里填写你的用户名：<b id="qu"></b><button id="qcp" type="button">复制</button></div><img id="qi" alt="收款码"><div class="ph" id="qph">收款码还没上传<br>请稍后再来</div><p>付款时请在备注里写上你的用户名，付完回到本页填写金额并提交</p><button id="qc">关闭</button></div></div>
+<script src="config.js"></script>
+<script>
+const API=window.API_BASE||'',token=localStorage.getItem('token'),me=localStorage.getItem('username');
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+const M=document.getElementById('main');
+const call=async(p,o={})=>{const r=await fetch(API+p,{...o,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(r.status===429?'操作太频繁，请稍后再试':(d.error||'请求失败 '+r.status)),{status:r.status});return d};
+const PAY={alipay:['支付宝','pay-alipay.png'],wechat:['微信','pay-wechat.png']};
+let method='';
+function showQR(k){method=k;qu.textContent=me||'';const[n,src]=PAY[k];qt.textContent=n+'扫码付款';qph.style.display='none';qi.style.display='';qi.onerror=()=>{qi.style.display='none';qph.style.display='flex'};qi.src=src;mask.classList.add('on')}
+qcp.onclick=async()=>{const t=me||'';let ok=false;try{await navigator.clipboard.writeText(t);ok=true}catch{const x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();try{ok=document.execCommand('copy')}catch{}x.remove()}qcp.textContent=ok?'已复制':'复制失败，请手动输入';setTimeout(()=>qcp.textContent='复制',1500)};
+qc.onclick=()=>mask.classList.remove('on');mask.onclick=e=>{if(e.target===mask)mask.classList.remove('on')};
+function stTag(s){s=String(s||'pending');return s==='approved'?'<span class="st ok">已通过</span>':s==='rejected'?'<span class="st no">已拒绝</span>':'<span class="st p">待审核</span>'}
+async function load(){
+  if(!token||!me){M.innerHTML='<div class="card need"><h2>请先登录</h2><p class="sub">登录后才能充值积分</p><a href="login.html?next=recharge.html">去登录</a></div>';return}
+  let pts='-',list=[];
+  try{const d=await call('/api/my/points');pts=d.points??d.balance??'-'}catch(e){
+    if(e.status===401){localStorage.removeItem('token');localStorage.removeItem('username');location.href='login.html?next=recharge.html';return}
+    if(e.status===undefined||e.message.startsWith('Failed')){M.innerHTML='<div class="card need"><h2>⚠️ 服务暂未开通</h2><p class="sub">暂时无法充值，稍后再来看看</p><a href="index.html">回首页</a></div>';return}}
+  try{const d=await call('/api/my/recharges');list=Array.isArray(d)?d:(d.recharges||d.list||[])}catch{}
+  M.innerHTML=`<div class="card"><h1>💰 积分充值</h1><p class="sub">积分用来发布任务和接单。充值提交后由管理员审核，通过后积分自动到账。</p>
+  <div class="bal"><span class="sub">当前余额</span><b>${esc(pts)}</b><span class="sub">积分</span></div></div>
+  <div class="card"><h2>① 选择付款方式</h2><ol class="steps"><li>点下面的按钮，扫码付款，付款备注里写上你的用户名「${esc(me)}」</li><li>付完款回来，在第 ② 步填写金额和备注，点「我已付款」</li><li>管理员核对后给你加积分，可以在下方记录里查看进度</li></ol>
+  <div class="pays"><button class="pay ali" data-k="alipay">🔵 支付宝</button><button class="pay wx" data-k="wechat">🟢 微信</button></div></div>
+  <div class="card"><h2>② 提交付款信息</h2><form id="rf"><div class="row"><div><label>付款金额（元）</label><input id="ra" type="number" min="0.01" step="0.01" placeholder="例如 10" required></div>
+  <div><label>备注（选填）</label><input id="rn" maxlength="100" placeholder="例如：微信付款，交易单号后四位 1234"></div></div>
+  <button class="btn" id="rb">我已付款，提交审核</button><div id="msg"></div></form></div>
+  <div class="card"><h2>③ 我的充值记录</h2><div class="tw"><table><thead><tr><th>时间</th><th>金额</th><th>备注</th><th>状态</th><th>到账积分</th></tr></thead><tbody>
+  ${list.map(r=>`<tr><td>${fmt(r.time||r.created)}</td><td>¥${esc(r.amount)}<br><small style="color:#6b7280">${r.method==='wechat'?'微信':r.method==='alipay'?'支付宝':''}</small></td><td>${esc(r.note||'')}</td><td>${stTag(r.status)}${r.reason||r.rejectReason?`<br><small style="color:#6b7280">${esc(r.reason||r.rejectReason)}</small>`:''}</td><td>${r.status==='approved'?'+'+esc(r.points??''):'-'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">还没有充值记录</td></tr>'}</tbody></table></div></div>`;
+  document.querySelectorAll('.pay').forEach(b=>b.onclick=()=>showQR(b.dataset.k));
+  rf.onsubmit=async e=>{e.preventDefault();const amount=Number(ra.value);
+    if(!method){msg.style.color='#b91c1c';msg.textContent='请先在第 ① 步选择支付宝或微信付款';return}
+    if(!(amount>0)){msg.style.color='#b91c1c';msg.textContent='请填写正确的金额';return}
+    if(!confirm(`确认已经付款 ¥${amount} 吗？\n提交后管理员会核对收款，虚假提交可能被封号。`))return;
+    rb.disabled=true;try{await call('/api/recharge',{method:'POST',body:JSON.stringify({amount,method,note:rn.value.trim()})});load();setTimeout(()=>{const m=document.getElementById('msg');if(m){m.style.color='#166534';m.textContent='✅ 已提交，等待管理员审核'}},50)}
+    catch(err){msg.style.color='#b91c1c';msg.textContent=err.message;rb.disabled=false}};
+}
+load();
+</script><script src="feedback.js"></script></body></html>
