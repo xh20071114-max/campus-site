@@ -228,13 +228,15 @@ async function auth(kind){lerr.textContent='';
 let lmode='login';function setLMode(k){lmode=k;bLogin.classList.toggle('on',k==='login');bReg.classList.toggle('on',k==='register');bGo.textContent=k==='login'?'登录':'注册';lhint.style.display=k==='login'?'none':'block';lp.autocomplete=k==='login'?'current-password':'new-password';lp2.style.display=k==='login'?'none':'';lp2.required=k!=='login';lp2.value='';lerr.textContent=''}
 bLogin.onclick=()=>setLMode('login');bReg.onclick=()=>setLMode('register');
 bGo.onclick=()=>lf.reportValidity()&&auth(lmode);
-const revs={};let online=null,refreshSeq=0;
+const revs={};let online=null,refreshSeq=0,refreshInFlight=false,refreshPending=false;
 function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
   [...f.elements].forEach(x=>x.disabled=!v||isBanned||posting);applyMode();
   if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token&&!browsing)showLogin(true)}
 retry.onclick=()=>refresh();
 bGuest.onclick=()=>{browsing=true;showLogin(false)};
 async function refresh(){
+  if(refreshInFlight){refreshPending=true;return}
+  refreshInFlight=true;
   const seq=++refreshSeq;
   try{
     const channels=await (await api('/api/channels')).json();if(seq!==refreshSeq)return;CHANNELS=channels;
@@ -248,7 +250,10 @@ async function refresh(){
     if(list.length){seen[ch]=Math.max(seen[ch]||0,list[list.length-1].id);localStorage.setItem(seenKey,JSON.stringify(seen))}
     renderSide();if(searching())runSearch(true);else if(ch===cur&&(more.length||first))renderMsgs();
     setOnline(true);
-  }catch(e){if(seq===refreshSeq)setOnline(false)}
+  }catch(e){if(seq===refreshSeq)setOnline(false)}finally{
+    refreshInFlight=false;
+    if(refreshPending){refreshPending=false;queueMicrotask(refresh)}
+  }
 }
 async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]||!l||!l.length)return;loadingOld=true;more_(true);
   try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?before='+l[0].id);if(!r.ok)return;const old=await r.json();
