@@ -27,10 +27,11 @@ const PERMISSION_KEYS=new Set(PERMISSIONS.map(x=>x.key));
 // 读数据：data.json 坏了绝不用空库覆盖。先把坏文件改名，再从最近一份能解析的备份恢复；都不行就拒绝启动
 const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Array.isArray(x),check=(ok,field)=>{if(!ok)throw new Error('数据结构无效：'+field)};
   check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
-  for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily'])if(Object.hasOwn(d,k))check(object(d[k]),k);
+  for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily','savedTasks'])if(Object.hasOwn(d,k))check(object(d[k]),k);
   for(const k of ['ledger','recharges','feedback','reports','announcements'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
   for(const k of ['messages','taskChats','events','offers'])for(const l of Object.values(d[k]||{}))check(Array.isArray(l)&&l.every(x=>object(x)&&/^[0-9]+$/.test(String(x.id))&&Number.isSafeInteger(Number(x.id))&&Number(x.id)>0),k);
   for(const k of ['taskChats','chatRead','offers'])for(const id of Object.keys(d[k]||{}))check(/^[0-9]+$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0,k+' 任务 ID');
+  for(const ids of Object.values(d.savedTasks||{}))check(Array.isArray(ids)&&ids.length<=200&&ids.every(id=>/^[0-9]+$/.test(String(id))&&Number.isSafeInteger(Number(id))&&Number(id)>0),'savedTasks 记录');
   for(const l of Object.values(d.taskChats||{}))for(const x of l)if(x.image)check(['jpg','png'].includes(x.imageExt),'taskChats 图片类型');
   for(const u of Object.values(d.users)){check(object(u)&&typeof u.pw==='string'&&u.pw.length>0&&(typeof u.created==='number'||typeof u.created==='string')&&Number.isFinite(new Date(u.created).getTime())&&(!Object.hasOwn(u,'points')||(Number.isSafeInteger(u.points)&&u.points>=0)),'users 记录');
     if(Object.hasOwn(u,'adminPermissions'))check(Array.isArray(u.adminPermissions)&&u.adminPermissions.every(k=>PERMISSION_KEYS.has(k)),'users 管理权限');}
@@ -116,7 +117,7 @@ const addFail=n=>{const k=failKey(n);fails.set(k,[...(fails.get(k)||[]),Date.now
 const limited=(key,max=20)=>{if(!hits.has(key)&&hits.size>=RATE_KEYS_MAX)return true;const now=Date.now(),a=(hits.get(key)||[]).filter(t=>now-t<60e3);a.push(now);hits.set(key,a.slice(-(max+1)));return a.length>max};
 const nextRev=()=>db.rev=(db.rev||0)+1;
 // ===== 积分 =====
-db.settings=Object.assign({postCost:1,claimCost:1,signupBonus:10},db.settings||{}); db.ledger=db.ledger||[]; db.recharges=db.recharges||[]; db.feedback=db.feedback||[];
+db.settings=Object.assign({postCost:1,claimCost:1,signupBonus:10},db.settings||{}); db.ledger=db.ledger||[]; db.recharges=db.recharges||[]; db.feedback=db.feedback||[]; db.savedTasks=Object.assign(Object.create(null),db.savedTasks||{});
 // 任务私聊：taskChats[任务id]=[{id,user,text,time,claimer}]；chatRead[任务id][用户]=读到的最后一条 id
 db.taskChats=Object.assign(Object.create(null),db.taskChats||{}); db.chatRead=Object.assign(Object.create(null),db.chatRead||{}); for(const k in db.chatRead) db.chatRead[k]=Object.assign(Object.create(null),db.chatRead[k]);
 const S=()=>db.settings, pts=n=>(db.users[n]&&db.users[n].points)||0;
@@ -403,6 +404,7 @@ const handle=async(req,res)=>{
     if(dm&&POST){ let du; try{du=decodeURIComponent(dm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
       if(!db.users[du]) return send(res,404,{error:'用户不存在'}); if(protectedUser(n,du)) return send(res,403,{error:'不能删除总管理员或其他管理员'});
+      delete db.savedTasks[db.users[du].id];
       const now=new Date().toISOString(); let msgs=0,cancelled=0,released=0,disputed=0;
       for(const c of CHANNELS) for(const m of db.messages[c]){
         let ch=false;
@@ -818,6 +820,25 @@ const handle=async(req,res)=>{
         o.push({taskId:Number(tid),channel:t?t.ch:null,text:t?(t.msg.deleted?db.deletedTexts[t.msg.id]:t.msg.text):null,user:t?t.msg.user:null,claimedBy:t?t.msg.claimedBy||null:null,count:list.length,last:{user:l.user,text:l.text,time:l.time}})}
       return send(res,200,o.sort((a,b)=>b.last.time.localeCompare(a.last.time)));
     }
+    // 收藏按不可复用的账号 ID 保存，最多 200 条；注销账号时随账号数据清理。
+    const savedTask=p.match(/^\/api\/my\/saved(?:\/(\d+))?$/);
+    if(savedTask){
+      const n=userOf(req); if(!n)return send(res,401,{error:'请先登录'});
+      const uid=db.users[n].id,ids=db.savedTasks[uid]||[];
+      if(GET&&!savedTask[1]){
+        const tasks=ids.map(id=>{const t=findTask(id);return t&&!t.msg.deleted?out(t.msg,t.ch,n):null}).filter(Boolean);
+        return send(res,200,{tasks});
+      }
+      if(POST&&savedTask[1]){
+        if(banned(n))return send(res,403,BANNED);
+        const t=findTask(savedTask[1]); if(!t||!t.msg.task||t.msg.deleted)return send(res,404,{error:'任务不存在或已删除'});
+        const b=await body(req); if(typeof b.saved!=='boolean')return send(res,400,{error:'saved 必须是布尔值'});
+        const key=String(t.msg.id),next=ids.filter(id=>String(id)!==key);
+        if(b.saved){if(!ids.some(id=>String(id)===key)&&next.length>=200)return send(res,409,{error:'最多收藏 200 个任务'});next.push(key)}
+        if(next.length)db.savedTasks[uid]=next;else delete db.savedTasks[uid];
+        persist();return send(res,200,{ok:true,saved:b.saved,id:key});
+      }
+    }
     // GET /api/my/tasks  我的任务（需登录）-> {posted:[...], claimed:[...]}，每条带 channel，按时间倒序，不含已删除的
     const oneTask=p.match(/^\/api\/tasks\/(\d+)$/);
     if(oneTask&&GET){const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});const t=findTask(oneTask[1]);if(!t)return send(res,404,{error:'订单不存在'});if(!isPoster(t.msg,n)&&!isClaimer(t.msg,n)&&!canInspect(n))return send(res,403,{error:'无权查看该订单'});return send(res,200,withUnread(out(t.msg,t.ch,n),n))}
@@ -885,11 +906,13 @@ const handle=async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405,{'Allow':'GET, HEAD'});return res.end()}
   const f=path.join(ROOT,publicName);
   fs.stat(f,(e,st)=>{if(e||!st.isFile()){res.writeHead(404);return res.end('Not found')}
-    const ext=path.extname(f).toLowerCase(), img=/^\.(png|jpe?g|webp|svg|ico|gif)$/.test(ext), etag='"'+st.size.toString(36)+'-'+Math.floor(st.mtimeMs).toString(36)+'"';
-    const h={'Content-Type':MIME[ext]||'application/octet-stream','ETag':etag,'Cache-Control':img?'public, max-age=604800':'no-cache',...(/\/sw\.js$/.test(f)?{'Service-Worker-Allowed':'/'}:{}),'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN'};
-    if(req.headers['if-none-match']===etag){res.writeHead(304,h);return res.end()}
+    const ext=path.extname(f).toLowerCase(), img=/^\.(png|jpe?g|webp|svg|ico|gif)$/.test(ext), compressible=/^\.(html|js|css|json|svg|txt)$/.test(ext), etag='W/"'+st.size.toString(36)+'-'+Math.floor(st.mtimeMs).toString(36)+'"';
+    const h={'Content-Type':MIME[ext]||'application/octet-stream','ETag':etag,'Cache-Control':img?'public, max-age=604800':'no-cache',...(compressible?{'Vary':'Accept-Encoding'}:{}),...(/\/sw\.js$/.test(f)?{'Service-Worker-Allowed':'/'}:{}),'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN'};
+    const inm=String(req.headers['if-none-match']||'').split(',').map(x=>x.trim()), weakTag=x=>x.replace(/^W\//,'');
+    if(inm.includes('*')||inm.some(x=>weakTag(x)===weakTag(etag))){res.writeHead(304,h);return res.end()}
     fs.readFile(f,(e,d)=>{if(e){res.writeHead(404);return res.end('Not found')}
-      const gz=/gzip/.test(req.headers['accept-encoding']||'')&&/^\.(html|js|css|json|svg|txt)$/.test(ext)&&d.length>512;
+      const acceptsGzip=String(req.headers['accept-encoding']||'').split(',').some(part=>{const [name,...params]=part.trim().toLowerCase().split(';');if(name!=='gzip')return false;const q=params.map(x=>x.trim()).find(x=>x.startsWith('q='));return q==null||Number(q.slice(2))>0});
+      const gz=acceptsGzip&&compressible&&d.length>512;
       if(gz){let c=gzCache.get(f); if(!c||c.etag!==etag){c={etag,data:zlib.gzipSync(d)};gzCache.set(f,c)} h['Content-Encoding']='gzip';h['Vary']='Accept-Encoding';d=c.data}
       res.writeHead(200,h);res.end(req.method==='HEAD'?undefined:d)})});
 };

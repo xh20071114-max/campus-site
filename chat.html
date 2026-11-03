@@ -125,6 +125,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 #sInfo{font-size:12px;color:#6b7280;padding:0 0 6px}
 .un{cursor:pointer}.un:hover{text-decoration:underline}
 .rep{background:transparent;color:#9ca3af;font-size:12px;padding:0 4px}.rep:hover{color:#ef4444}
+.saveB{background:transparent;color:#475569;font-size:12px;padding:3px 6px;border-radius:6px}.saveB:hover{background:#fef3c7;color:#92400e}.saveB:disabled{opacity:.6;cursor:wait}
 .crow{display:flex;justify-content:flex-end;align-items:center;gap:6px}
 .rateB{margin-left:8px;background:#f59e0b;font-size:12px;padding:3px 9px;border-radius:12px}.rated{margin-left:8px;color:#9ca3af;font-size:12px}
 #pop{position:fixed;inset:0;background:rgba(17,24,39,.55);display:none;align-items:center;justify-content:center;z-index:60}#pop.show{display:flex}
@@ -158,7 +159,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>
   <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
   <div id="notice"><div class="nb"><div><span class="nt" id="nTitle"></span><span id="nMini" style="display:none;color:#6366f1;font-size:12px"></span></div><div class="nx" id="nText"></div><div class="nm" id="nMeta"></div></div><div class="na"><button type="button" id="nAllB">全部公告</button><button type="button" id="nToggle">收起</button></div></div>
-  <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
+  <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span><span data-f="saved">⭐ 我的收藏</span></div>
   <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务标题或内容"><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
   <div id="msgs"></div>
   <div id="tip"></div>
@@ -227,13 +228,15 @@ async function auth(kind){lerr.textContent='';
 let lmode='login';function setLMode(k){lmode=k;bLogin.classList.toggle('on',k==='login');bReg.classList.toggle('on',k==='register');bGo.textContent=k==='login'?'登录':'注册';lhint.style.display=k==='login'?'none':'block';lp.autocomplete=k==='login'?'current-password':'new-password';lp2.style.display=k==='login'?'none':'';lp2.required=k!=='login';lp2.value='';lerr.textContent=''}
 bLogin.onclick=()=>setLMode('login');bReg.onclick=()=>setLMode('register');
 bGo.onclick=()=>lf.reportValidity()&&auth(lmode);
-const revs={};let online=null,refreshSeq=0;
+const revs={};let online=null,refreshSeq=0,refreshInFlight=false,refreshPending=false;
 function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
   [...f.elements].forEach(x=>x.disabled=!v||isBanned||posting);applyMode();
   if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token&&!browsing)showLogin(true)}
 retry.onclick=()=>refresh();
 bGuest.onclick=()=>{browsing=true;showLogin(false)};
 async function refresh(){
+  if(refreshInFlight){refreshPending=true;return}
+  refreshInFlight=true;
   const seq=++refreshSeq;
   try{
     const channels=await (await api('/api/channels')).json();if(seq!==refreshSeq)return;CHANNELS=channels;
@@ -247,7 +250,10 @@ async function refresh(){
     if(list.length){seen[ch]=Math.max(seen[ch]||0,list[list.length-1].id);localStorage.setItem(seenKey,JSON.stringify(seen))}
     renderSide();if(searching())runSearch(true);else if(ch===cur&&(more.length||first))renderMsgs();
     setOnline(true);
-  }catch(e){if(seq===refreshSeq)setOnline(false)}
+  }catch(e){if(seq===refreshSeq)setOnline(false)}finally{
+    refreshInFlight=false;
+    if(refreshPending){refreshPending=false;queueMicrotask(refresh)}
+  }
 }
 async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]||!l||!l.length)return;loadingOld=true;more_(true);
   try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?before='+l[0].id);if(!r.ok)return;const old=await r.json();
@@ -309,9 +315,11 @@ fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
 function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false||posting);applyMode();renderMsgs()}
 async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);loadMe();return}if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
-let flt='all',forceBottom=true;
-const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done&&!m.cancelled&&!m.closed&&m.status!=='closed',done:m=>m.task&&m.done&&!m.cancelled,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
-document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;renderMsgs()});
+let flt='all',forceBottom=true,savedTasks=[],savedTaskIds=new Set();
+const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done&&!m.cancelled&&!m.closed&&m.status!=='closed',done:m=>m.task&&m.done&&!m.cancelled,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted,saved:m=>m.task&&savedTaskIds.has(String(m.id))};
+async function loadSaved(){if(!token){savedTasks=[];savedTaskIds.clear();return}try{const r=await api('/api/my/saved');if(r.status===401)return;if(!r.ok)return;const d=await r.json();savedTasks=(d.tasks||[]).map(m=>(m._ch=m.channel,m));savedTaskIds=new Set(savedTasks.map(m=>String(m.id)))}catch{}}
+async function saveTask(id,button){if(!token)return showLogin(true);button.disabled=true;const saved=!savedTaskIds.has(String(id));try{const r=await api('/api/my/saved/'+encodeURIComponent(id),{method:'POST',body:JSON.stringify({saved})});if(r.status===401)return expired();if(!r.ok){const d=await r.json().catch(()=>({}));alert(d.error||'收藏操作失败');return}await loadSaved();renderMsgs()}catch{alert('网络异常，收藏操作失败')}finally{button.disabled=false}}
+document.querySelectorAll('#flt span').forEach(x=>x.onclick=()=>{if(x.dataset.f==='saved'&&!token)return showLogin(true);document.querySelectorAll('#flt span').forEach(y=>y.classList.remove('on'));x.classList.add('on');flt=x.dataset.f;if(flt==='saved')loadSaved().then(renderMsgs);else renderMsgs()});
 const refundOf=m=>m.cost!=null?+m.cost:(m.official?0:cost.post);
 function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
   if(!m.task)return ['',''];
@@ -332,30 +340,32 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const S=searching(),list=(S?sorted(sres[cur]||[]):(cache[cur]||[])).filter(m=>!m.deleted&&!(m.official&&!m.task)).filter(FL[flt]).filter(m=>!S||match(m));
+  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted&&!(m.official&&!m.task)).filter(FL[flt]).filter(m=>!S||match(m));
   sInfo_(S,list.length);
-  const top=S?'<div id="sInfo"></div>':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
+  const top=S?'<div id="sInfo"></div>':flt==='saved'?'':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
   msgs.innerHTML=top+list.map(m=>{
     const canDel=can('deleteMessages')||(m.user===me&&!m.claimedBy);
-    const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'';
-    const ops=acts||del||rep_||chat?`<div class="ops">${acts}${del}<span class="sp"></span>${rep_}${chat}</div>`:'';
-    return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':'<p style="color:#9ca3af">这里还没有消息</p>');
+    const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'',save=m.task?`<button class="saveB" type="button" data-save="${m.id}" aria-label="${savedTaskIds.has(String(m.id))?'取消收藏':'收藏任务'}">${savedTaskIds.has(String(m.id))?'⭐ 已收藏':'☆ 收藏'}</button>`:'';
+    const ops=acts||del||rep_||chat||save?`<div class="ops">${acts}${del}<span class="sp"></span>${rep_}${chat}${save}</div>`:'';
+    return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':flt==='saved'?'<p style="color:#9ca3af">还没有收藏任务，点任务下方的「收藏」就能稍后再看。</p>':'<p style="color:#9ca3af">这里还没有消息</p>');
   const mo=document.getElementById('more');if(mo&&hasMore[cur])mo.onclick=loadOlder;
   msgs.querySelectorAll('.cbtn').forEach(b=>b.onclick=()=>openChat(b.dataset.chat));
+  msgs.querySelectorAll('.saveB').forEach(b=>b.onclick=()=>saveTask(b.dataset.save,b));
   msgs.querySelectorAll('.un').forEach(b=>b.onclick=()=>showProfile(b.dataset.u));
   msgs.querySelectorAll('.rep').forEach(b=>b.onclick=()=>report('task',b.dataset.rep));
   msgs.querySelectorAll('.rateB').forEach(b=>b.onclick=()=>rate(b.dataset.rate));
   msgs.querySelectorAll('.ofB').forEach(b=>b.onclick=()=>{if(!token)return showLogin(true);offerList(b.dataset.of)});
   msgs.querySelectorAll('.act').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);
     if(b.dataset.confirm&&!confirm(b.dataset.confirm))return;
-    const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
+    const task=findTask(b.dataset.id),ch=task&&task._ch||cur;
+    const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
     if(r.status===401)return expired();if(!r.ok)await failed(r);else loadMe();refresh()});
   if(S){if(forceTop)msgs.scrollTop=0;forceTop=false;sInfo_(S,list.length)}else if(!keepScroll&&(atBottom||forceBottom))msgs.scrollTop=msgs.scrollHeight;forceBottom=false;keepScroll=false;
 }
 const canChat=m=>m.task&&me&&m.claimedBy&&!m.deleted&&(m.user===me||m.claimedBy===me||can('viewChats')||can('joinChats'));
 let tc=null;
 const linkedTasks=new Map();
-function findTask(id){if(linkedTasks.has(String(id)))return linkedTasks.get(String(id));for(const source of [cache,sres])for(const ch in source){const m=(source[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}}
+function findTask(id){if(linkedTasks.has(String(id)))return linkedTasks.get(String(id));for(const source of [cache,sres])for(const ch in source){const m=(source[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}return savedTasks.find(m=>String(m.id)===String(id))}
 function tcNote(t){tcNote_.textContent=t||'';tcNote_.style.display=t?'block':'none'}
 const tcNote_=document.getElementById('tcNote');
 function openChat(id){const m=findTask(id);if(!m)return;closeChat();
@@ -604,10 +614,10 @@ if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
 renderMe();
 async function openLinkedOrder(){const id=new URLSearchParams(location.search).get('task');if(!id||!/^\d+$/.test(id)||!token)return;try{const r=await api('/api/tasks/'+id),m=await r.json();if(!r.ok){alert(m.error||'订单无法打开');return}m._ch=m.channel;linkedTasks.set(String(m.id),m);if(m.claimedBy&&!m.deleted)openChat(m.id);else if(window.openOrders)window.openOrders({taskId:m.id,view:m.done||m.cancelled||m.deleted||m.expired?'history':'active'})}catch{alert('订单加载失败，请刷新重试')}}
 openLinkedOrder();
-loadCost();loadMe();renderPts();setInterval(()=>{if(!document.hidden)loadMe()},30000);
+loadCost();loadMe();loadSaved();renderPts();setInterval(()=>{if(!document.hidden)loadMe()},30000);
 (function(){const b=document.getElementById('fbBtn');if(b)fbSlot.appendChild(b)})();
 refresh();setInterval(()=>{if(!document.hidden)refresh()},8000);
 setInterval(()=>{if(!document.hidden)loadNotices()},60000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();if(tc)pullChat()}});setInterval(()=>renderMsgs(),30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();if(tc)pullChat();if(flt==='saved')loadSaved().then(renderMsgs)}});setInterval(()=>{if(flt==='saved')loadSaved().then(renderMsgs);else renderMsgs()},30000);
 </script>
 </body></html>

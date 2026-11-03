@@ -34,6 +34,8 @@
 | POST | /api/channels/<频道>/messages/<id>/complete | 发布者确认完成（需已接单） |
 | GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 跨频道任务 |
 | GET | /api/my/tasks | `{posted,claimed}` |
+| GET | /api/my/saved | 当前账号收藏的任务 |
+| POST | /api/my/saved/<任务ID> | `{saved:true\|false}` 收藏或取消收藏；每个账号最多 200 个 |
 
 需要登录的接口请求头带 `Authorization: Bearer <token>`。token 7 天过期，每账号最多保留 10 个登录。登录、注册和修改密码共用每 IP 每分钟 60 次限额；登录另有同账号同 IP 15 分钟 10 次失败、跨 IP 合计 50 次失败限制（历史成功 IP 豁免后者）。频道发布每人每分钟 10 条，超出返回 429。
 
@@ -149,6 +151,8 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 首页、频道及个人中心提供「我的订单」。窗口分进行中和历史订单，显示数量、待办、报酬、状态、交易双方、地点、截止时间和下一步操作，支持发布/接单角色筛选、搜索及每页 20 条展示；进行中包含待接单、已接单、待付款、待收款和纠纷，历史包含完成、撤销、关闭、过期及本人已删除任务的状态记录。
 
 `GET /api/my/tasks?includeHistory=1` 包含本人已删除任务的状态，原接口不带参数时保持不返回已删除任务。`GET /api/tasks/<id>` 只允许当前交易当事人或获授权管理员读取订单，已删除任务不会向普通用户恢复原文。`chat.html?task=<id>#<频道>` 可直接打开交易聊天，不依赖该任务仍在最近频道缓存里。
+
+频道消息区可收藏任务，并在「⭐ 我的收藏」中跨频道查看。收藏与账号 ID 绑定，不会因用户名被重新注册而转移；每个账号最多收藏 200 个任务。
 
 ## 任务状态补充
 - `POST /api/channels/<ch>/messages/<id>/release`（也可以写 `kick`）：发布人取消接单人，任务回到待接单，退还接单人的接单积分（返回的任务带 `releasedBy`）。
