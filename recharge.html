@@ -37,7 +37,7 @@ td,th{white-space:nowrap}td:nth-child(3){white-space:normal;min-width:120px}.tw{
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
 <main id="main"></main>
-<div class="mask" id="mask"><div class="qr"><h3 id="qt"></h3><div class="warn">⚠️ 重要：付款时请在备注里填写你的用户名：<b id="qu"></b><button id="qcp" type="button">复制</button></div><div class="rate" style="margin-bottom:12px">💱 1 积分 = 1 元，到账积分按付款金额向下取整</div><img id="qi" alt="收款码"><div class="ph" id="qph">收款码还没上传<br>请稍后再来</div><p>付完回到本页，填写金额并提交审核</p><button id="qc">关闭</button></div></div>
+<div class="mask" id="mask"><div class="qr"><h3 id="qt"></h3><div class="warn">⚠️ 重要：付款时请在备注里填写你的用户名：<b id="qu"></b><button id="qcp" type="button">复制</button></div><div class="rate" style="margin-bottom:12px">💱 参考比例：1 元 = 1 积分，按金额向下取整；具体积分以管理员审核为准。不足 1 元请联系管理员处理。</div><img id="qi" alt="收款码"><div class="ph" id="qph">收款码还没上传<br>请稍后再来</div><p>付完回到本页，填写金额并提交审核</p><button id="qc">关闭</button></div></div>
 <script src="session.js"></script>
 <script src="config.js"></script>
 <script>
@@ -63,20 +63,20 @@ async function load(){
   <div class="bal"><span class="sub">当前余额</span><b>${esc(pts)}</b><span class="sub">积分</span></div></div>
   <div class="card"><h2>① 选择付款方式</h2><ol class="steps"><li>点下面的按钮，扫码付款，付款备注里写上你的用户名「${esc(me)}」</li><li>付完款回来，在第 ② 步填写金额和备注，点「我已付款」</li><li>管理员核对后给你加积分，可以在下方记录里查看进度</li></ol>
   <div class="pays"><button class="pay ali" data-k="alipay">🔵 支付宝</button><button class="pay wx" data-k="wechat">🟢 微信</button></div></div>
-  <div class="card"><h2>② 提交付款信息</h2><form id="rf"><div class="rate">💱 1 积分 = 1 元</div><div class="row"><div><label>付款金额（元）</label><input id="ra" type="number" min="0.01" step="0.01" placeholder="例如 10" required><div id="rget" class="get"></div></div>
+  <div class="card"><h2>② 提交付款信息</h2><form id="rf"><div class="rate">💱 参考比例：1 元 = 1 积分，按金额向下取整；具体以审核为准</div><div class="row"><div><label>付款金额（元）</label><input id="ra" type="number" min="0.01" step="0.01" placeholder="例如 10" required><div id="rget" class="get"></div></div>
   <div><label>备注（选填）</label><input id="rn" maxlength="100" placeholder="例如：微信付款，交易单号后四位 1234"></div></div>
   <button class="btn" id="rb">我已付款，提交审核</button><div id="msg"></div></form></div>
   <div class="card"><h2>③ 我的充值记录</h2><div class="tw"><table><thead><tr><th>时间</th><th>金额</th><th>备注</th><th>状态</th><th>到账积分</th></tr></thead><tbody>
   ${list.map(r=>`<tr><td data-l="时间">${fmt(r.time||r.created)}</td><td data-l="金额">¥${esc(r.amount)}<br><small style="color:#6b7280">${r.method==='wechat'?'微信':r.method==='alipay'?'支付宝':''}</small></td><td data-l="备注">${esc(r.note||'—')}</td><td data-l="状态">${stTag(r.status)}${r.reason||r.rejectReason?`<br><small style="color:#6b7280">${esc(r.reason||r.rejectReason)}</small>`:''}</td><td data-l="到账积分">${r.status==='approved'?'+'+esc(r.points??''):'-'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">还没有充值记录</td></tr>'}</tbody></table></div></div>`;
   document.querySelectorAll('.pay').forEach(b=>b.onclick=()=>showQR(b.dataset.k));
-  const upd=()=>{const v=Number(ra.value),g=document.getElementById('rget');if(!g)return;if(!(v>0)){g.textContent='';return}const p=Math.floor(v+1e-9);g.style.color=p?'#047857':'#b45309';g.textContent=p?`将获得 ${p} 积分`:'不足 1 元，无法兑换积分'};
+  const upd=()=>{const v=Number(ra.value),g=document.getElementById('rget');if(!g)return;if(!(v>0)){g.textContent='';return}const p=Math.floor(v+1e-9);g.style.color=p?'#047857':'#b45309';g.textContent=p?`预计 ${p} 积分，具体以审核为准`:'不足 1 元，请联系管理员处理'};
   ra.addEventListener('input',upd);upd();
   rf.onsubmit=async e=>{e.preventDefault();const amount=Number(ra.value);
     if(!method){msg.style.color='#b91c1c';msg.textContent='请先在第 ① 步选择支付宝或微信付款';return}
     if(!(amount>0)){msg.style.color='#b91c1c';msg.textContent='请填写正确的金额';return}
-    if(!confirm(`确认已经付款 ¥${amount} 吗？（审核通过后获得 ${Math.floor(amount+1e-9)} 积分）\n提交后管理员会核对收款，虚假提交可能被封号。`))return;
+    if(!confirm(`确认已经付款 ¥${amount} 吗？（参考积分 ${Math.floor(amount+1e-9)}，具体以审核为准）\n提交后管理员会核对收款，虚假提交可能被封号。`))return;
     rb.disabled=true;try{await call('/api/recharge',{method:'POST',body:JSON.stringify({amount,method,note:rn.value.trim()})});load();setTimeout(()=>{const m=document.getElementById('msg');if(m){m.style.color='#166534';m.textContent='✅ 已提交，等待管理员审核'}},50)}
-    catch(err){msg.style.color='#b91c1c';msg.textContent=err.message;rb.disabled=false}};
+    catch(err){msg.style.color='#b91c1c';msg.textContent=err.status===undefined?'提交结果暂未确认，请先刷新并查看下方充值记录，确认没有该笔记录后再提交。':err.message;rb.disabled=false}};
 }
 load();
 </script><script src="feedback.js"></script></body></html>
