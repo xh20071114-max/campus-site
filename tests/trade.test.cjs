@@ -13,3 +13,11 @@ test('revocation prevents late moderator text and image submissions',()=>fixture
 test('order detail and opt-in history are private and deleted task text is not disclosed',()=>fixture(async({call,task,act})=>{
  const m=await task('Alice',{text:'history private task'});assert.equal((await call('/api/tasks/'+m.id,'Bob')).status,403);assert.equal((await call('/api/tasks/'+m.id,'')).status,401);assert.equal((await call('/api/tasks/'+m.id,'Alice')).data.channel,'校园跑');await act(m,'Alice','delete');assert.equal((await call('/api/my/tasks','Alice')).data.posted.length,0);const history=(await call('/api/my/tasks?includeHistory=1','Alice')).data.posted;assert.equal(history.length,1);assert.equal(history[0].deleted,true);assert.equal(history[0].text,'');assert.equal((await call('/api/my/tasks?includeHistory=1','Bob')).data.posted.length,0);
 }));
+test('former claim history is private, survives reassignment and is bound to the original account',()=>fixture(async({call,task,act})=>{
+ const m=await task('Alice',{text:'Parcel history'});await act(m,'Bob','claim');await act(m,'Bob','unclaim');await act(m,'Carol','claim');
+ let history=(await call('/api/my/tasks?includeHistory=1','Bob')).data.claimed;assert.equal(history.length,1);assert.equal(history[0].formerStatus,'unclaimed');assert.equal(history[0].claimedBy,'Bob');assert.equal(history[0].text,'Parcel history');assert.equal(history[0].formerClaims,undefined);assert.equal(JSON.stringify(history).includes('Carol'),false);
+ assert.equal((await call('/api/my/tasks','Bob')).data.claimed.length,0);assert.equal((await call('/api/tasks/'+m.id+'/chat','Bob')).status,403);
+ await act(m,'Alice','release');assert.equal((await call('/api/my/tasks?includeHistory=1','Carol')).data.claimed[0].formerStatus,'released');
+ await act(m,'Bob','claim');history=(await call('/api/my/tasks?includeHistory=1','Bob')).data.claimed;assert.equal(history.length,1);assert.notEqual(history[0].formerClaim,true);
+ await act(m,'Bob','unclaim');await call('/api/admin/users/Bob/delete','AevonEcho',{});const reg=await call('/api/register','',{username:'Bob',password:'password123'});assert.equal(reg.status,200);assert.equal((await call('/api/my/tasks?includeHistory=1',reg.data.token)).data.claimed.length,0);
+}));

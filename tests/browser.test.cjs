@@ -26,6 +26,10 @@ test('repeated refreshes share an in-flight order request and display its result
  try{await page.locator('#ordersRefresh').click();await waiting;await page.locator('#ordersRefresh').click();await page.locator('#ordersRefresh').click();await page.waitForTimeout(200);assert.equal(arrivals,1)}finally{release()}await page.locator('#orderRows').getByText('New order after refresh',{exact:true}).waitFor();
 }));
 
+test('former claims appear in history without linking to a later private conversation',t=>fixture(async({base,task,act})=>{
+ const m=await task('Alice',{text:'Previously accepted'});await act(m,'Bob','claim');await act(m,'Bob','unclaim');await act(m,'Carol','claim');const page=await pageFor(t,base,'Bob');await page.locator('#ordersOpen').click();await page.getByRole('tab',{name:'历史订单 · 1',exact:true}).click();const card=page.locator('.order-card').filter({hasText:'Previously accepted'});await card.getByText('已放弃接单').waitFor();assert.equal(await card.locator('a').count(),0);
+}));
+
 test('a late order response cannot display the previous account after the token changes',t=>fixture(async({base,task})=>{
  await task('Bob',{text:'Bob private order'});const page=await pageFor(t,base,'Bob');let arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/my/tasks?includeHistory=1',async route=>{arrived();await gate;await route.continue()});await page.locator('#ordersOpen').click();await waiting;await page.evaluate(()=>{localStorage.setItem('token','Carol');localStorage.setItem('username','Carol')});release();await page.waitForFunction(()=>!document.querySelector('.orders-mask'));assert.equal(await page.getByText('Bob private order',{exact:true}).count(),0);
 }));

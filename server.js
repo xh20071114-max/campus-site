@@ -197,10 +197,13 @@ const expired=x=>!!(x.deadline&&!x.claimedBy&&Date.parse(x.deadline)<Date.now())
 const overdue=x=>!!(x.task&&x.deadline&&x.claimedBy&&!x.done&&!x.cancelled&&!x.stage&&Date.parse(x.deadline)+24*3600e3<Date.now());
 // 任务状态：open 待接单 → claimed 已接单 → finished 接单人已完成 → paid 发布人已付款 → done 已完成；cancelled 已撤回，closed 管理员关闭
 const status=x=>!x.task?undefined:x.closed?'closed':x.cancelled?'cancelled':x.done?'done':x.stage?x.stage:x.claimedBy?'claimed':'open';
+// 只保存退出时的交易快照；账号 ID 防止同名重注册后继承旧记录。
+const rememberFormerClaim=(m,reason,now)=>{const user=db.users[m.claimedBy];if(!user)return;const history=m.formerClaims||(m.formerClaims={});history[user.id]={reason,time:now,reward:m.reward||'',bonusPoints:m.bonusPoints||0}};
 const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOverlap,...v}=rs[k];o[k]=v}return o};
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
 const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
+  delete o.formerClaims;
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
 const alive=x=>!x.deleted&&!x.cancelled;
@@ -557,6 +560,7 @@ const handle=async(req,res)=>{
           if(msg.done) return send(res,409,{error:'任务已完成，不能放弃'});
           if(msg.stage) return send(res,409,{error:'你已经点了「我已完成」，不能再放弃'});
           sysChat(msg,msg.claimedBy+' 放弃了接单');
+          rememberFormerClaim(msg,'unclaimed',now);
           delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='release'){ // 发布人取消接单人：任务回到待接单，退还接单人的接单分
           if(msg.user!==n) return send(res,403,{error:'只有发布者能取消接单人'});
@@ -564,6 +568,7 @@ const handle=async(req,res)=>{
           if(msg.done) return send(res,409,{error:'任务已完成'});
           if(msg.stage) return send(res,409,{error:'接单人已完成任务，不能再取消接单人'});
           sysChat(msg,'发布人取消了接单人 '+msg.claimedBy);
+          rememberFormerClaim(msg,'released',now);
           if(msg.claimCost&&!msg.claimerDeleted&&db.users[msg.claimedBy]) addPoints(msg.claimedBy,msg.claimCost,'refund','发布人取消接单，退还接单积分',msg.id);
           msg.releasedBy=msg.claimedBy;delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='cancel'){ // 发布者撤销没人接的任务，或已超时的任务
@@ -810,7 +815,9 @@ const handle=async(req,res)=>{
     if(p==="/api/my/tasks"&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:"请先登录"});
       const all=CHANNELS.flatMap(c=>db.messages[c].filter(x=>x.task&&(!x.deleted||u.searchParams.get('includeHistory')==='1')&&(isPoster(x,n)||isClaimer(x,n))).map(x=>out(x,c,n))).sort((a,b)=>b.id-a.id);
-      return send(res,200,{posted:all.filter(x=>x.user===n).map(x=>withUnread(x,n)),claimed:all.filter(x=>x.claimedBy===n).map(x=>withUnread(x,n))});
+      const claimed=all.filter(x=>x.claimedBy===n).map(x=>withUnread(x,n));
+      if(u.searchParams.get('includeHistory')==='1')for(const c of CHANNELS)for(const x of db.messages[c]){const h=x.formerClaims&&x.formerClaims[db.users[n].id];if(!x.task||!h||isClaimer(x,n))continue;claimed.push({id:x.id,channel:c,task:true,user:x.user,userDeleted:!!x.userDeleted,claimedBy:n,text:x.deleted?'':x.text,deleted:!!x.deleted,time:x.time,place:x.deleted?'':x.place,deadline:x.deadline,reward:h.reward,bonusPoints:h.bonusPoints,formerClaim:true,formerStatus:h.reason,formerAt:h.time,status:'former'});}
+      claimed.sort((a,b)=>b.id-a.id);return send(res,200,{posted:all.filter(x=>x.user===n).map(x=>withUnread(x,n)),claimed});
     }
     // GET /api/tasks?status=open|claimed|done|all&limit=10  跨频道任务；open=没人接、没撤销、没过期
     if(p==="/api/tasks"&&GET){
