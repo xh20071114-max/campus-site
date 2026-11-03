@@ -824,7 +824,7 @@ const handle=async(req,res)=>{
     const savedTask=p.match(/^\/api\/my\/saved(?:\/(\d+))?$/);
     if(savedTask){
       const n=userOf(req); if(!n)return send(res,401,{error:'请先登录'});
-      const uid=db.users[n].id,ids=db.savedTasks[uid]||[];
+      const uid=db.users[n].id,ids=(db.savedTasks[uid]||[]).filter(id=>{const t=findTask(id);return t&&!t.msg.deleted});
       if(GET&&!savedTask[1]){
         const tasks=ids.map(id=>{const t=findTask(id);return t&&!t.msg.deleted?out(t.msg,t.ch,n):null}).filter(Boolean);
         return send(res,200,{tasks});
