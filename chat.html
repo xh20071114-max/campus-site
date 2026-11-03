@@ -179,7 +179,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   </form>
 </main>
 <div id="tc" role="dialog" aria-label="任务私聊"><div class="h"><div><b>💬 任务私聊</b><small id="tcSub"></small></div><button id="tcRep" type="button" title="举报这单">🚩</button><button id="tcX" title="关闭">×</button></div>
-  <div id="tcFlow">💡 收款流程：接单人完成任务后，在微信/支付宝收款码页点「保存图片」，再用「发送收款码」从相册上传原图（避免截图或转发压缩图）→ 付款方长按识别；能否跳转取决于支付软件和收款码类型，请核对收款人、金额后付款 → 接单人确认实际到账</div><div id="tcP"></div><div id="tcList"></div><div id="tcNote"></div>
+  <div id="tcFlow">💡 交易流程：接单人完成任务 → 发送收款码 → 发布人核对并付款 → 接单人确认到账</div><div id="tcP"></div><div id="tcList"></div><div id="tcNote"></div>
   <form id="tcF"><button type="button" id="tcI" title="发图片">📷</button><input type="file" id="tcFile" accept="image/*" hidden><textarea id="tcT" rows="1" maxlength="500" placeholder="和对方说点什么，回车发送"></textarea><button id="tcS">发送</button></form></div>
 <div id="pop"><div class="box"><div class="h"><span id="popT"></span><button type="button" id="popX">×</button></div><div class="bd" id="popB"></div></div></div>
 <div id="lb"><img alt="大图"></div>
@@ -555,7 +555,7 @@ document.getElementById('tcRep').onclick=()=>{if(!tc)return;const m=tc.task;if(m
 const tcP=document.getElementById('tcP'),lb=document.getElementById('lb');
 lb.onclick=e=>{if(e.target===lb)lb.classList.remove('show')};
 const tstat=m=>m.status&&m.status!=='open'?m.status:(m.done?'done':m.cancelled?'closed':m.claimedBy?'claimed':'open');
-function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,free_pending:0,finished:1,paid:2,done:3}[s];
+function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,free_pending:0,finished:1,paid:2,done:3}[s];document.getElementById('tcFlow').textContent=s==='finished'?'💡 收款提醒：接单人请在微信/支付宝收款码页点「保存图片」，再从相册发送原图（不要截图或发压缩图）。付款方点开大图后可尝试长按识别；能否跳转视支付软件和二维码而定，请核对收款人、金额后付款。':'💡 交易流程：接单人完成任务 → 发送收款码 → 发布人核对并付款 → 接单人确认到账';
   if(idx==null){tcP.innerHTML='<div class="ac"><small>'+(s==='disputed'?'⚠️ 平台处理中：已申请平台介入，交易暂停，管理员会尽快处理':s==='closed'?'🔒 这单已被管理员关闭':s==='cancelled'?'🚫 这单已撤回':'这单当前不在交易流程中')+'</small></div>';tcP.style.display='block';return}
   const st=['接单','完成','标记付款','收款'].map((t,i)=>`<span class="${i<=idx?'on':''}">${t}</span>`).join('');
   const poster=m.user===me,taker=m.claimedBy===me,b=(a,l,col,cf)=>isBanned?'':`<button type="button" data-a="${a}" style="background:${col}"${cf?` data-c="${esc(cf)}"`:''}>${l}</button>`;let ac='';
