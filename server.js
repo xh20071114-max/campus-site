@@ -270,6 +270,9 @@ const diskInfo=()=>{let free=null,size=null;try{const st=fs.statfsSync(DATA_DIR)
 process.on('uncaughtException',e=>console.error('未捕获错误',e&&e.stack||e));process.on('unhandledRejection',e=>console.error('未处理的 Promise 错误',e&&e.stack||e));
 let chCache=null; const gzCache=new Map();
 const handle=async(req,res)=>{
+  // Keep browser referrers from exposing task URLs and disable device APIs this site does not use.
+  res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   let u,p; try{u=new URL(req.url.replace(/^\/+/,'/'),'http://x'); p=decodeURIComponent(u.pathname)}catch{res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});return res.end('{"error":"请求地址格式不对"}')}
   // 允许 GitHub Pages 上的前端跨域调用接口（ALLOW_ORIGINS 可用逗号追加其他来源）
   const origin=req.headers.origin||"",allow=(process.env.ALLOW_ORIGINS||"https://plgslzlexpmy.sealoshzh.site").split(",");
@@ -515,7 +518,16 @@ const handle=async(req,res)=>{
       }
       return send(res,404,{error:'接口不存在'});
     }
-    if(p==='/api/health') return send(res,200,{ok:true,uptime:Math.round(process.uptime())});
+    if(p==='/api/health'){
+      let storage={ok:false};
+      try{
+        fs.accessSync(DATA_DIR,fs.constants.R_OK|fs.constants.W_OK);
+        const dataBytes=fs.existsSync(DB)?fs.statSync(DB).size:0,stat=fs.statfsSync(DATA_DIR);
+        storage={ok:true,dataBytes,freeBytes:stat.bavail*stat.bsize};
+      }catch{}
+      const ok=storage.ok&&!storageError;
+      return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),storage});
+    }
     if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive);return{name:c,count:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
     const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|dispute)$/);
