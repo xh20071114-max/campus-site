@@ -204,6 +204,7 @@ const seenKey='lastRead:'+(me||'guest'),seen=Object.create(null);
 try{const v=JSON.parse(localStorage.getItem(seenKey)||'{}');if(v&&typeof v==='object'&&!Array.isArray(v))for(const[k,n]of Object.entries(v))if(Number.isSafeInteger(n)&&n>=0)seen[k]=n}catch{}
 const hasMore={};let loadingOld=false,keepScroll=false,browsing=false;
 const touch=matchMedia('(pointer:coarse)').matches;
+const MONEY_NOTICE='报酬由双方线下结算，平台不托管资金，也无法保证追回；只有实际到账后再确认收款。';
 function enterSend(e,form){if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229||touch)return;e.preventDefault();form.requestSubmit()}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
@@ -335,7 +336,7 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
   if(m.claimedBy)return [m.overdue?T('red',`⏰ 已超时 · ${who}`):T('green',`✅ 已接单 · ${who}`),
     (poster?btn('complete','申请无需付款完成','#16a34a',m.id,'普通任务需要接单人同意；纯积分任务将直接完成。确认继续吗？')+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?cancelB(`任务已超时，确定撤回吗？${ref?`撤回后退还 ${ref} 积分。`:''}`):''):'')+(taker?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'')];
   if(isExp(m))return [T('gray','⏰ 已过期'),''];
-  return poster?[T('amber','待接单'),cancelB(ref?`确定撤回这个任务吗？撤回后退还 ${ref} 积分。`:'确定撤回这个任务吗？')+ofBtn(m)]:[T('amber','待接单'),btn('claim',can('freeTasks')||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,can('freeTasks')||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`)+ofBtn(m)];
+  return poster?[T('amber','待接单'),cancelB(ref?`确定撤回这个任务吗？撤回后退还 ${ref} 积分。`:'确定撤回这个任务吗？')+ofBtn(m)]:[T('amber','待接单'),btn('claim',can('freeTasks')||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,`确认接单${can('freeTasks')||!cost.claim?'':`，将扣 ${cost.claim} 积分`}？\n${MONEY_NOTICE}`)+ofBtn(m)];
 }
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
@@ -495,8 +496,8 @@ async function offerList(id){const m=findTask(id);if(!m)return;const poster=m.us
         if(!r.ok){alert(await ofErr(r))}else{loadMe();refresh();if(a==='accept'){closePop();return}}offerList(id)};
       const canCt=o.canCounter!=null?!!o.canCounter:rs.length<MAXR;
       if(live(o)&&!isBanned&&(!canInspect()||poster)){
-        if(poster&&turn==='poster'){B('同意 '+cp+' 元','#16a34a',()=>run('accept',null,`同意以 ${cp} 元交给 ${who}？同意后任务立即算对方接单。`));if(canCt)B('还价','#2563eb',()=>counterBox(v,o,run));B('拒绝','#6b7280',()=>run('reject',null,'确定拒绝这个讨价吗？'))}
-        if(!poster&&turn==='claimer'){B(`接受 ${cp} 元并接单`,'#16a34a',()=>run('accept',null,`接受 ${cp} 元？接受即接单${cost.claim?'，扣 '+cost.claim+' 积分':''}。`));if(canCt)B('再还价','#2563eb',()=>counterBox(v,o,run));B('放弃','#6b7280',()=>run('withdraw',null,'确定放弃这次讨价吗？'))}
+        if(poster&&turn==='poster'){B('同意 '+cp+' 元','#16a34a',()=>run('accept',null,`同意以 ${cp} 元交给 ${who}？同意后任务立即算对方接单。\n${MONEY_NOTICE}`));if(canCt)B('还价','#2563eb',()=>counterBox(v,o,run));B('拒绝','#6b7280',()=>run('reject',null,'确定拒绝这个讨价吗？'))}
+        if(!poster&&turn==='claimer'){B(`接受 ${cp} 元并接单`,'#16a34a',()=>run('accept',null,`接受 ${cp} 元？接受即接单${cost.claim?'，扣 '+cost.claim+' 积分':''}。\n${MONEY_NOTICE}`));if(canCt)B('再还价','#2563eb',()=>counterBox(v,o,run));B('放弃','#6b7280',()=>run('withdraw',null,'确定放弃这次讨价吗？'))}
         if(!poster&&turn==='poster')B('撤回讨价','#6b7280',()=>run('withdraw',null,'确定撤回这次讨价吗？'))}
       if(ops.children.length)v.append(ops);b.append(v)});
     if(!mgr&&!l.some(live)&&!m.claimedBy&&!isExp(m)){const nb=el('button','ofB','💬 重新讨价');nb.type='button';nb.onclick=()=>offerNew(m);b.append(nb)}}
@@ -560,9 +561,9 @@ function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={cla
   const poster=m.user===me,taker=m.claimedBy===me,b=(a,l,col,cf)=>isBanned?'':`<button type="button" data-a="${a}" style="background:${col}"${cf?` data-c="${esc(cf)}"`:''}>${l}</button>`;let ac='';
   if(s==='done')ac='<small>🏁 交易完成'+(m.autoConfirmed?'（超时自动确认收款）':'')+'</small>'+(m.dispute||(m.claimerDeleted&&m.user===me)?'':(rated(m)?'<small>· 已评价</small>':b('rate','⭐ 评价对方','#f59e0b')));
   else if(taker){if(s==='free_pending')ac='<small>发布人申请无需付款完成，请确认是否同意</small>'+b('acceptfree','同意无需付款','#16a34a','确认同意无需付款并完成订单吗？')+b('declinefree','不同意','#6b7280','不同意后订单继续进行。确认吗？');if(s==='claimed')ac=b('finish','我已完成','#16a34a','确认任务已经完成了吗？');
-    if(s==='paid')ac+=b('received','确认收款','#4f46e5','确认已经收到对方的付款了吗？确认后交易完成。');
+    if(s==='paid')ac+=b('received','确认收款','#4f46e5',`确认已经实际收到对方的付款了吗？确认后交易完成。\n${MONEY_NOTICE}`);
     if(s==='finished')ac+='<small>等对方付款</small>'}
-  else if(poster){if(s==='finished')ac=b('paid','我已付款','#4f46e5','确认已经付款给对方了吗？');
+  else if(poster){if(s==='finished')ac=b('paid','我已付款','#4f46e5',`确认已经线下付款给对方了吗？\n${MONEY_NOTICE}`);
     else if(s==='claimed')ac='<small>等对方完成任务</small>'+b('complete','申请无需付款完成','#16a34a','普通任务需接单人同意；纯积分任务将直接完成。确认继续吗？');
     else if(s==='free_pending')ac='<small>等待接单人确认免付款申请</small>'+b('withdrawfree','撤回申请','#6b7280');
     else if(s==='paid')ac='<small>等对方确认收款</small>'}
