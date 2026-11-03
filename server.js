@@ -516,7 +516,7 @@ const handle=async(req,res)=>{
     if(p==='/api/health') return send(res,200,{ok:true,uptime:Math.round(process.uptime())});
     if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive);return{name:c,count:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
-    const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|cancel|delete|dispute)$/);
+    const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|dispute)$/);
     if(am2&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(banned(n)) return send(res,403,BANNED);
       if(limited('task:'+n,60))return send(res,429,{error:'任务操作太频繁，请一分钟后再试'});
@@ -541,7 +541,7 @@ const handle=async(req,res)=>{
         if(act==='dispute'){ // 申请平台介入：双方在 claimed/finished/paid 都能发起，之后状态动作全部冻结，只能由管理员 force
           const st=status(msg), role=isPoster(msg,n)?'poster':isClaimer(msg,n)?'claimer':null;
           if(!role) return send(res,403,{error:'只有发布人和接单人能申请平台介入'});
-          if(!['claimed','finished','paid'].includes(st)) return send(res,409,{error:'当前状态不能申请平台介入',status:st});
+          if(!['claimed','finished','paid','free_pending'].includes(st)) return send(res,409,{error:'当前状态不能申请平台介入',status:st});
           const b=await body(req); if(typeof b.reason!=='string'||!b.reason.trim()) return send(res,400,{error:'请填写申请介入的原因'});
           if(msg.stage==='disputed'||msg.done||msg.cancelled) return send(res,409,{error:'任务状态已经变了，请刷新'});
           msg.dispute={by:n,role,reason:str(b.reason,200),time:now,from:st}; msg.stage='disputed';
@@ -590,12 +590,18 @@ const handle=async(req,res)=>{
           if(act==='finish'){msg.stage='finished';msg.finishedAt=now;sysChat(msg,n+' 表示任务已完成，等待发布人付款')}
           else if(act==='paid'){msg.stage='paid';msg.paidAt=now;sysChat(msg,'发布人表示已付款，等待接单人确认收款')}
           else {finishTask(msg,now);sysChat(msg,n+' 已确认收款，任务完成')}
-        } else { // complete / done：发布人「无需付款，直接完成」
+        } else if(['acceptfree','declinefree','withdrawfree'].includes(act)){
+          if(status(msg)!=='free_pending')return send(res,409,{error:'当前没有等待确认的免付款申请'});
+          if(act==='withdrawfree'?!isPoster(msg,n):!isClaimer(msg,n))return send(res,403,{error:act==='withdrawfree'?'只有发布人能撤回申请':'只有接单人能处理申请'});
+          if(act==='acceptfree'){finishTask(msg,now);sysChat(msg,'接单人同意无需付款，任务完成')}
+          else {delete msg.stage;sysChat(msg,act==='withdrawfree'?'发布人撤回了免付款申请':'接单人不同意免付款，任务继续进行')}
+        } else { // 纯积分任务由发布人确认；其他任务需接单人同意无需付款
           if(msg.user!==n) return send(res,403,{error:"只有发布者能确认完成"});
           if(!msg.claimedBy) return send(res,400,{error:"任务还没人接单"});
           if(msg.done) return send(res,409,{error:"任务已完成"});
           if(status(msg)!=='claimed') return send(res,409,{error:'接单人已点「我已完成」，请按付款流程操作',status:status(msg)});
-          finishTask(msg,now); sysChat(msg,'发布人确认任务完成（无需付款）');
+          if(msg.bonusPoints&&!String(msg.reward||'').trim()){finishTask(msg,now);sysChat(msg,'发布人确认纯积分任务完成')}
+          else {msg.stage='free_pending';sysChat(msg,'发布人申请无需付款完成，等待接单人确认')}
         }
       }
       if(msg.task){const pc=prevClaimer;
@@ -606,7 +612,10 @@ const handle=async(req,res)=>{
         else if(act==='finish') ev(msg.user,'finish',msg,n+' 表示任务已完成，请付款',n);
         else if(act==='paid') ev(msg.claimedBy,'paid',msg,'发布人标记已付款，请核对到账后确认收款',n);
         else if(act==='received') ev(msg.user,'received',msg,n+' 已确认收款，任务完成',n);
-        else if(act==='complete'||act==='done') ev(msg.claimedBy,'done',msg,'发布人确认任务完成',n);
+        else if(act==='complete'||act==='done') ev(msg.claimedBy,msg.done?'done':'free_request',msg,msg.done?'发布人确认任务完成':'发布人申请无需付款完成，请确认或拒绝',n);
+        else if(act==='acceptfree')ev(msg.user,'done',msg,'接单人同意无需付款，任务完成',n);
+        else if(act==='declinefree')ev(msg.user,'free_declined',msg,'接单人不同意无需付款，任务继续进行',n);
+        else if(act==='withdrawfree')ev(msg.claimedBy,'free_withdrawn',msg,'发布人撤回了免付款申请',n);
         else if(act==='delete'&&can(n,'deleteMessages')){const dr=msg.deleteRefund||{}; ev(msg.user,'deleted',msg,'任务被管理员删除'+(dr.post?'，退还你 '+dr.post+' 发布积分':msg.cost&&!msg.refunded?'，发布积分不退':''),n); ev(pc,'deleted',msg,'任务被管理员删除'+(dr.claim?'，退还你 '+dr.claim+' 接单积分':msg.claimCost&&!msg.claimRefunded?'，接单积分不退':''),n)}}
       if(act==='delete'&&msg.task) rmImgs(msg.id);
       if(msg.task&&(act==='claim'||act==='cancel'||act==='delete')) expireOffers(msg,act==='claim'?'任务已被 '+n+' 接走':act==='cancel'?'发布人撤回了任务':'任务已被删除',n);

@@ -86,7 +86,7 @@ test('cancellation refunds once and insufficient points return 402',()=>fixture(
  await call('/api/admin/users/Bob/points','AevonEcho',{delta:-100});assert.equal((await call(ch,'Bob',{text:'no funds',task:true})).status,402);
 }));
 test('bonus tasks require the poster and reward only once; recharge approves once',()=>fixture(async({call,task,act})=>{
- const m=await task('AevonEcho',{bonusPoints:7});await act(m,'Bob','claim');assert.equal((await act(m,'Bob','complete')).status,403);assert.equal((await act(m,'AevonEcho','complete')).status,200);assert.equal((await act(m,'AevonEcho','complete')).status,409);assert.equal((await call('/api/my/points','Bob')).data.points,106);
+ const m=await task('AevonEcho',{bonusPoints:7,reward:''});await act(m,'Bob','claim');assert.equal((await act(m,'Bob','complete')).status,403);assert.equal((await act(m,'AevonEcho','complete')).status,200);assert.equal((await act(m,'AevonEcho','complete')).status,409);assert.equal((await call('/api/my/points','Bob')).data.points,106);
  const recharge=(await call('/api/recharge','Bob',{amount:3,method:'alipay'})).data;
  assert.equal((await call('/api/admin/recharges/'+recharge.id+'/approve','AevonEcho',{points:3})).status,200);assert.equal((await call('/api/admin/recharges/'+recharge.id+'/approve','AevonEcho',{points:3})).status,409);assert.equal((await call('/api/my/points','Bob')).data.points,109);
 }));

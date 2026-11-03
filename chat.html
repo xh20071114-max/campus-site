@@ -321,10 +321,11 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
   if(m.cancelled)return [T('gray','🚫 已撤回'),''];
   if(st==='closed'||m.closed)return [T('gray','🔒 已关闭'),''];
   if(st==='disputed')return [T('red','⚠️ 平台处理中'),party&&canChat(m)?go:''];
+  if(st==='free_pending')return [T('red','⚠️ 免付款申请待接单人确认'),party&&canChat(m)?go:''];
   if(m.done||m.doneAt||st==='done')return [T('gray',`🏁 已完成 · ${who}${m.claimerDeleted?'（已注销）':''}`),rateTag(m)];
   if(m.claimedBy&&(st==='finished'||st==='paid'))return [T('blue',`${st==='finished'?'📦 已完成，待付款':'💸 发布人标记已付款，待核对'} · ${who}`),party&&canChat(m)?go:''];
   if(m.claimedBy)return [m.overdue?T('red',`⏰ 已超时 · ${who}`):T('green',`✅ 已接单 · ${who}`),
-    (poster?btn('complete','直接完成','#16a34a',m.id,'确定不经付款流程，直接完成这个任务吗？')+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?cancelB(`任务已超时，确定撤回吗？${ref?`撤回后退还 ${ref} 积分。`:''}`):''):'')+(taker?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'')];
+    (poster?btn('complete','申请无需付款完成','#16a34a',m.id,'普通任务需要接单人同意；纯积分任务将直接完成。确认继续吗？')+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?cancelB(`任务已超时，确定撤回吗？${ref?`撤回后退还 ${ref} 积分。`:''}`):''):'')+(taker?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'')];
   if(isExp(m))return [T('gray','⏰ 已过期'),''];
   return poster?[T('amber','待接单'),cancelB(ref?`确定撤回这个任务吗？撤回后退还 ${ref} 积分。`:'确定撤回这个任务吗？')+ofBtn(m)]:[T('amber','待接单'),btn('claim',can('freeTasks')||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,can('freeTasks')||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`)+ofBtn(m)];
 }
@@ -543,16 +544,17 @@ document.getElementById('tcRep').onclick=()=>{if(!tc)return;const m=tc.task;if(m
 const tcP=document.getElementById('tcP'),lb=document.getElementById('lb');
 lb.onclick=()=>lb.classList.remove('show');
 const tstat=m=>m.status&&m.status!=='open'?m.status:(m.done?'done':m.cancelled?'closed':m.claimedBy?'claimed':'open');
-function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,finished:1,paid:2,done:3}[s];
+function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,free_pending:0,finished:1,paid:2,done:3}[s];
   if(idx==null){tcP.innerHTML='<div class="ac"><small>'+(s==='disputed'?'⚠️ 平台处理中：已申请平台介入，交易暂停，管理员会尽快处理':s==='closed'?'🔒 这单已被管理员关闭':s==='cancelled'?'🚫 这单已撤回':'这单当前不在交易流程中')+'</small></div>';tcP.style.display='block';return}
   const st=['接单','完成','标记付款','收款'].map((t,i)=>`<span class="${i<=idx?'on':''}">${t}</span>`).join('');
   const poster=m.user===me,taker=m.claimedBy===me,b=(a,l,col,cf)=>isBanned?'':`<button type="button" data-a="${a}" style="background:${col}"${cf?` data-c="${esc(cf)}"`:''}>${l}</button>`;let ac='';
   if(s==='done')ac='<small>🏁 交易完成'+(m.autoConfirmed?'（超时自动确认收款）':'')+'</small>'+(m.dispute||(m.claimerDeleted&&m.user===me)?'':(rated(m)?'<small>· 已评价</small>':b('rate','⭐ 评价对方','#f59e0b')));
-  else if(taker){if(s==='claimed')ac=b('finish','我已完成','#16a34a','确认任务已经完成了吗？');
+  else if(taker){if(s==='free_pending')ac='<small>发布人申请无需付款完成，请确认是否同意</small>'+b('acceptfree','同意无需付款','#16a34a','确认同意无需付款并完成订单吗？')+b('declinefree','不同意','#6b7280','不同意后订单继续进行。确认吗？');if(s==='claimed')ac=b('finish','我已完成','#16a34a','确认任务已经完成了吗？');
     if(s==='paid')ac+=b('received','确认收款','#4f46e5','确认已经收到对方的付款了吗？确认后交易完成。');
     if(s==='finished')ac+='<small>等对方付款</small>'}
   else if(poster){if(s==='finished')ac=b('paid','我已付款','#4f46e5','确认已经付款给对方了吗？');
-    else if(s==='claimed')ac='<small>等对方完成任务</small>'+b('complete','无需付款，直接完成','#16a34a','确定不需要付款，直接完成吗？');
+    else if(s==='claimed')ac='<small>等对方完成任务</small>'+b('complete','申请无需付款完成','#16a34a','普通任务需接单人同意；纯积分任务将直接完成。确认继续吗？');
+    else if(s==='free_pending')ac='<small>等待接单人确认免付款申请</small>'+b('withdrawfree','撤回申请','#6b7280');
     else if(s==='paid')ac='<small>等对方确认收款</small>'}
   if(taker&&s!=='done')ac+=b('qr','💰 发送收款码','#f59e0b');
   if((poster||taker)&&s!=='done'&&!m.claimerDeleted)ac+=b('dispute','⚠️ 申请平台介入','#dc2626');
@@ -561,7 +563,7 @@ function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={cla
 async function step(a,cf,el){const c=tc;if(!c||(cf&&!confirm(cf)))return;el.disabled=true;
   try{const r=await api('/api/channels/'+encodeURIComponent(c.ch)+'/messages/'+encodeURIComponent(c.id)+'/'+a,{method:'POST'});
     if(r.status===401)return expired();if(!r.ok){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);return}if(d.status)c.task.status=d.status;tcNote(d.error||'操作失败，请稍后再试');if(c===tc){renderProg();pullChat()}refresh();return}
-    tcNote('');const d=await r.json().catch(()=>({}));const t=d.task||d.message||d;if(t&&t.status)c.task.status=t.status;if(a==='complete'){c.task.done=true;c.task.status='done'}
+    tcNote('');const d=await r.json().catch(()=>({}));const t=d.task||d.message||d;if(t&&t.status)c.task.status=t.status;if(t&&t.status)c.task.done=t.status==='done'
     if(c===tc){renderProg();await pullChat()}loadMe();refresh()}
   catch(e){tcNote('网络异常，请稍后再试')}finally{el.disabled=false}}
 async function loadImg(c,mid,im){try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat/image/'+encodeURIComponent(mid));

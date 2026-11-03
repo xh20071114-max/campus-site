@@ -6,8 +6,8 @@
  const trigger=document.createElement('button');trigger.type='button';trigger.className='orders-button';trigger.id='ordersOpen';trigger.textContent='我的订单';const slot=document.querySelector('.topR')||document.querySelector('header nav');if(slot)slot.prepend(trigger);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ended=m=>m.formerClaim||m.deleted||m.done||m.cancelled||m.closed||['done','closed','cancelled'].includes(m.status)||m.expired&&!m.claimedBy;
- const label=m=>m.formerClaim?(m.formerStatus==='released'?'已被取消接单':'已放弃接单'):m.deleted?'已删除':m.closed||m.status==='closed'?'已关闭':m.cancelled?'已撤销':m.done||m.status==='done'?'已完成':m.status==='disputed'?'平台处理中':m.status==='paid'?'待确认收款':m.status==='finished'?'待付款':m.claimedBy?'进行中':m.expired?'已过期':'待接单';
- const next=(m,user)=>ended(m)?'订单已结束':m.status==='disputed'?'等待管理员处理':m.status==='paid'?(m.claimedBy===user?'请核对到账并确认收款':'等待接单人确认收款'):m.status==='finished'?(m.user===user?'请验收并结算报酬':'等待发布人验收付款'):m.claimedBy?(m.claimedBy===user?'完成任务后提交完成':'等待接单人完成任务'):'等待同学接单';
+ const label=m=>m.formerClaim?(m.formerStatus==='released'?'已被取消接单':'已放弃接单'):m.deleted?'已删除':m.closed||m.status==='closed'?'已关闭':m.cancelled?'已撤销':m.done||m.status==='done'?'已完成':m.status==='disputed'?'平台处理中':m.status==='free_pending'?'免付款待确认':m.status==='paid'?'待确认收款':m.status==='finished'?'待付款':m.claimedBy?'进行中':m.expired?'已过期':'待接单';
+ const next=(m,user)=>ended(m)?'订单已结束':m.status==='disputed'?'等待管理员处理':m.status==='free_pending'?(m.claimedBy===user?'请确认是否同意无需付款':'等待接单人确认免付款'):m.status==='paid'?(m.claimedBy===user?'请核对到账并确认收款':'等待接单人确认收款'):m.status==='finished'?(m.user===user?'请验收并结算报酬':'等待发布人验收付款'):m.claimedBy?(m.claimedBy===user?'完成任务后提交完成':'等待接单人完成任务'):'等待同学接单';
  let state=null,seq=0;
  function close(){seq++;if(!state)return;clearInterval(state.timer);state.mask.remove();document.body.style.overflow=state.overflow;state=null;trigger.focus()}
  window.openOrders=async(options={})=>{

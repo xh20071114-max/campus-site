@@ -27,6 +27,10 @@ test('payment status is presented as the publisher claim, not verified receipt',
  const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('发布人标记已付款，待核对',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人标记已付款，请核对到账后确认收款',{exact:false}).first().waitFor();await page.getByText('💸 发布人标记已付款，待核对',{exact:true}).first().waitFor();
 }));
 
+test('free completion request is clearly presented to the claimer',t=>fixture(async({base,task,act})=>{
+ const m=await task('Alice',{text:'Consent workflow'});await act(m,'Bob','claim');await act(m,'Alice','complete');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Consent workflow'}).getByText('免付款申请待接单人确认',{exact:false}).waitFor();await page.locator('.m').filter({hasText:'Consent workflow'}).locator('[data-chat]').click();await page.locator('#tcP').getByRole('button',{name:'不同意'}).waitFor();page.on('dialog',d=>d.accept());await page.locator('#tcP').getByRole('button',{name:'不同意'}).click();await page.locator('#tcP').getByRole('button',{name:'我已完成'}).waitFor();
+}));
+
 test('slow admin chat polling remains single-flight and eventually shows replies',t=>fixture(async({base,task,act,call})=>{
  const m=await task();await act(m,'Bob','claim');const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('[data-t=chats]').click();await page.locator('#cb [data-chat]').click();await page.locator('.admin-chat-form').waitFor({state:'visible'});
  let arrivals=0,arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/tasks/'+m.id+'/chat?after=*',async route=>{arrivals++;arrived();await gate;await route.continue()});await call('/api/tasks/'+m.id+'/chat','Bob',{text:'slow network reply'});try{await waiting;await page.waitForTimeout(4300);assert.equal(arrivals,1)}finally{release()}await page.locator('.cm .ci').filter({hasText:'slow network reply'}).waitFor({timeout:8000});
