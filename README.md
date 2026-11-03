@@ -20,6 +20,7 @@
 ## 部署
 - 前后端一起部署：把整个目录放到服务器上运行 `./run.sh`，`config.js` 里 `API_BASE` 留空。
 - 前端放 GitHub Pages、后端单独部署：后端用 Dockerfile 部署到任意支持 Docker 的平台，再把 `config.js` 里的 `API_BASE` 填成后端公网地址。注意平台需要持久化磁盘，否则重启后 `data.json` 会丢。
+- 当前数据保存在进程内存和单个 `data.json` 文件中，请将服务副本数设为 1；多副本可能互相覆盖数据。`backups/` 也位于同一数据目录，不能抵御数据卷丢失，需另行复制到异地保存。需要扩容前先迁移到支持并发访问的数据库。
 
 ## 接口
 | 方法 | 路径 | 说明 |
@@ -73,7 +74,7 @@
 docker build -t aevon .
 docker run -d --name aevon --restart=always -p 80:3000 -v aevon-data:/data -e ADMIN_PASSWORD=你的管理员密码 aevon
 ```
-数据（`data.json` 和 `backups/`）都放在 `/data` 存储卷里，重新部署也不会丢。
+数据（`data.json` 和 `backups/`）都放在 `/data` 存储卷里，重新部署也不会丢。保持单个服务副本；`backups/` 与主数据共用该卷，请定期下载或复制到其他存储位置。
 
 **不用 Docker（需要 Node.js 20 以上）**
 ```
