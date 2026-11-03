@@ -155,7 +155,7 @@ test('out-of-order channel refresh cannot overwrite a newer task or revision',t=
  const m=await task(),page=await pageFor(t,base);let release,arrived,calls=0;
  const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);
  await page.route('**/messages?rev=*',async route=>{const older=++calls===1;if(older){arrived();await gate}await route.fulfill({status:200,headers:{'X-Rev':older?'101':'102'},json:[{...m,text:older?'older':'newer',rev:older?101:102}]})});
- const old=page.evaluate(()=>refresh());await waiting;await page.evaluate(()=>refresh());release();await old;
+ const old=page.evaluate(()=>refresh());await waiting;await page.evaluate(()=>refresh());release();await old;await page.waitForFunction(id=>cache[cur].find(x=>x.id===id)?.text==='newer'&&revs[cur]===102,m.id);
  assert.equal(await page.evaluate(id=>cache[cur].find(x=>x.id===id).text,m.id),'newer');assert.equal(await page.evaluate(()=>revs[cur]),102);
 }));
 test('a searched task outside the recent page opens its private chat',async t=>{
