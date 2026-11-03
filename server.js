@@ -11,7 +11,8 @@ const PERMISSIONS=[
   ['managePoints','用户管理','调整用户积分','含查看用户；仅调整普通用户积分'],
   ['viewMessages','内容管理','查看消息与议价','查看全部频道消息、已删除原文和议价历史'],
   ['deleteMessages','内容管理','删除消息与任务','含查看消息；可选择退还任务积分'],
-  ['viewChats','内容管理','查看任务私聊','查看全部任务私聊、议价历史及图片；不能冒充双方发言'],
+  ['viewChats','内容管理','查看任务私聊','只读查看全部任务私聊、议价历史及图片'],
+  ['joinChats','内容管理','参与任务私聊','含查看私聊；可用管理员身份在进行中的订单发言及发送图片'],
   ['manageAnnouncements','内容管理','管理全站公告','发布与删除全站公告'],
   ['manageRecharges','积分与审核','审核充值','查看充值记录，核对后通过或拒绝并发放积分'],
   ['manageSettings','积分与审核','修改积分规则','设置注册送分、发布与接单消耗'],
@@ -90,7 +91,10 @@ const isAdmin=n=>hasAdminRole(n)&&!banned(n);
 const can=(n,key)=>isAdmin(n)&&(isSuperAdmin(n)||(db.users[n].adminPermissions||[]).includes(key));
 const canUsers=n=>['viewUsers','banUsers','deleteUsers','managePoints'].some(k=>can(n,k));
 const canMessages=n=>can(n,'viewMessages')||can(n,'deleteMessages');
-const canInspect=n=>canMessages(n)||can(n,'viewChats')||can(n,'manageDisputes');
+const canReadChat=n=>can(n,'viewChats')||can(n,'joinChats');
+const canInspect=n=>canMessages(n)||canReadChat(n)||can(n,'manageDisputes');
+const activeChat=m=>!!m.claimedBy&&!m.done&&!m.cancelled&&!m.closed&&!m.deleted;
+const canWriteChat=(m,n)=>(isPoster(m,n)||isClaimer(m,n)||can(n,'joinChats')&&activeChat(m))&&!!m.claimedBy&&!m.cancelled&&!m.deleted&&!banned(n);
 const roleInfo=n=>({admin:isAdmin(n),superAdmin:isSuperAdmin(n),permissions:isSuperAdmin(n)?[...PERMISSION_KEYS]:(db.users[n]?.adminPermissions||[]).slice()});
 const protectedUser=(actor,target)=>isSuperAdmin(target)||(!isSuperAdmin(actor)&&hasAdminRole(target));
 const legacy=p=>crypto.createHash("sha256").update("campus:"+p).digest("hex");
@@ -202,7 +206,7 @@ const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||is
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.webmanifest':'application/manifest+json','.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
 // 只提供明确公开的资源；新增测试、备份或运维文件不会自动暴露到公网。
-const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
+const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
 // 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
 const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
@@ -284,7 +288,7 @@ const handle=async(req,res)=>{
         p.startsWith('/api/admin/settings')?can(n,'manageSettings'):p.startsWith('/api/admin/recharges')?can(n,'manageRecharges'):
         p.startsWith('/api/admin/feedback')?can(n,'manageFeedback'):p.startsWith('/api/admin/reports')?can(n,'manageReports'):
         p==='/api/admin/disputes'||/^\/api\/admin\/tasks\/\d+\/force$/.test(p)?can(n,'manageDisputes'):
-        p==='/api/admin/chats'?can(n,'viewChats'):isSuperAdmin(n);
+        p==='/api/admin/chats'?canReadChat(n):isSuperAdmin(n);
       if(!allowed)return send(res,403,{error:'未获授权，只有总管理员可分配管理权限'});
     }
     if(p==='/api/admin/roles'&&GET)return send(res,200,{catalog:PERMISSIONS,users:Object.entries(db.users).map(([username,v])=>({username,userId:v.id,...roleInfo(username),permissionsVersion:v.permissionsVersion||0,permissionsUpdatedAt:v.permissionsUpdatedAt||null,banned:!!v.banned}))});
@@ -735,12 +739,13 @@ const handle=async(req,res)=>{
     const ti=p.match(/^\/api\/tasks\/(\d+)\/chat\/image(?:\/(\d+))?$/);
     if(ti&&((POST&&!ti[2])||(GET&&ti[2]))){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      const t=findTask(ti[1]); if(!t||(t.msg.deleted&&!can(n,'viewChats'))) return send(res,404,{error:'任务不存在'});
-      const m=t.msg, adm=can(n,'viewChats'), mine=isPoster(m,n)||isClaimer(m,n),account=db.users[n];
+      const t=findTask(ti[1]); if(!t||(t.msg.deleted&&!canReadChat(n))) return send(res,404,{error:'任务不存在'});
+      const m=t.msg, adm=canReadChat(n), mine=isPoster(m,n)||isClaimer(m,n),account=db.users[n];
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
       if(GET){ const x=chatOf(m,adm).find(y=>String(y.id)===ti[2]&&y.image); if(!x) return send(res,404,{error:'图片不存在'});
-        fs.readFile(path.join(UPLOADS,String(m.id),x.id+'.'+x.imageExt),(e,d)=>{if(userOf(req)!==n||(!can(n,'viewChats')&&!(isPoster(m,n)||isClaimer(m,n))))return send(res,403,{error:'查看权限已变化'});if(e) return send(res,404,{error:'图片不存在'}); res.writeHead(200,{'Content-Type':x.imageExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'}); res.end(d)}); return; }
-      if(adm&&!mine) return send(res,403,{error:'管理员只能查看私聊，不能发消息'});
+        fs.readFile(path.join(UPLOADS,String(m.id),x.id+'.'+x.imageExt),(e,d)=>{if(userOf(req)!==n||(!canReadChat(n)&&!(isPoster(m,n)||isClaimer(m,n))))return send(res,403,{error:'查看权限已变化'});if(e) return send(res,404,{error:'图片不存在'}); res.writeHead(200,{'Content-Type':x.imageExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'}); res.end(d)}); return; }
+      if(!mine&&!can(n,'joinChats'))return send(res,403,{error:'未获参与任务私聊权限，只能查看'});
+      if(!canWriteChat(m,n))return send(res,409,{error:'订单已结束或账号不可发言'});
       if(banned(n)) return send(res,403,BANNED);
       if(!m.claimedBy) return send(res,409,{error:'任务还没人接，不能私聊'});
       if(m.cancelled||m.deleted) return send(res,409,{error:'任务已撤销'});
@@ -749,7 +754,7 @@ const handle=async(req,res)=>{
       if(userOf(req)!==n||db.users[n]!==account)return send(res,401,{error:'登录状态已变化，请重新登录'});
       if(banned(n))return send(res,403,BANNED);
       if(/json/.test(req.headers['content-type']||'')){try{const j=JSON.parse(buf.toString());buf=Buffer.from(String(j.data||'').replace(/^data:[^,]*,/,''),'base64'); if(j.kind==='payqr') kind='payqr'; if(typeof j.text==='string') cap=j.text.trim().slice(0,100)}catch{return send(res,400,{error:'图片格式不对'})}}
-      if(!(isPoster(m,n)||isClaimer(m,n))||!m.claimedBy||m.cancelled||m.deleted) return send(res,409,{error:'任务状态已经变了，请刷新'});
+      if(!canWriteChat(m,n)) return send(res,409,{error:'任务状态已经变了，请刷新'});
       if(!buf.length) return send(res,400,{error:'图片不能为空'}); if(buf.length>IMG_MAX) return send(res,413,{error:'图片不能超过 300KB'});
       const ext=buf[0]===0xFF&&buf[1]===0xD8&&buf[2]===0xFF?'jpg':buf.slice(0,8).equals(Buffer.from([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A]))?'png':null;
       if(!ext) return send(res,400,{error:'只支持 JPEG 或 PNG 图片'});
@@ -758,7 +763,7 @@ const handle=async(req,res)=>{
       if(uploadBytes+buf.length>UPLOAD_MAX) return send(res,507,{error:'服务器图片空间已满，请联系管理员'});
       if((UB.get(n)||0)+buf.length>USER_IMG_MAX) return send(res,409,{error:'你的图片空间已满（每人最多 20MB），旧任务结束 30 天后会自动清理'});
       const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
-      const x={id:newId(),user:n,text:cap,time:new Date().toISOString(),claimer:m.claimedBy,imageExt:ext,imageSize:buf.length,...(kind?{kind}:{})};
+      const x={id:newId(),user:n,text:cap,time:new Date().toISOString(),claimer:m.claimedBy,...(!isPoster(m,n)&&!isClaimer(m,n)?{moderator:true}:{}),imageExt:ext,imageSize:buf.length,...(kind?{kind}:{})};
       x.image='/api/tasks/'+m.id+'/chat/image/'+x.id;
       try{fs.mkdirSync(path.join(UPLOADS,String(m.id)),{recursive:true});fs.writeFileSync(path.join(UPLOADS,String(m.id),x.id+'.'+ext),buf)}catch(e){console.error('存图失败',e.message);return send(res,500,{error:'图片保存失败'})}
       uploadBytes+=buf.length; UB.set(n,(UB.get(n)||0)+buf.length); db.imgDaily[n]={day,count:dc+1};
@@ -768,24 +773,25 @@ const handle=async(req,res)=>{
     const tc=p.match(/^\/api\/tasks\/(\d+)\/chat$/);
     if(tc&&(GET||POST)){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      const t=findTask(tc[1]); if(!t||(t.msg.deleted&&!can(n,'viewChats'))) return send(res,404,{error:'任务不存在'});
-      const m=t.msg, adm=can(n,'viewChats'), mine=isPoster(m,n)||isClaimer(m,n);
+      const t=findTask(tc[1]); if(!t||(t.msg.deleted&&!canReadChat(n))) return send(res,404,{error:'任务不存在'});
+      const m=t.msg, adm=canReadChat(n), mine=isPoster(m,n)||isClaimer(m,n);
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
       if(GET){
         const a=u.searchParams.get('after'); let list=chatOf(m,adm);
         if(a){const v=Number(a); if(!isNaN(v)&&v>1e14) list=list.filter(x=>x.id>v); else {const ms=isNaN(v)?Date.parse(a):v; if(!isNaN(ms)) list=list.filter(x=>Date.parse(x.time)>ms)}}
         if(mine){const all=chatOf(m); if(all.length){const r=(db.chatRead[m.id]=db.chatRead[m.id]||Object.create(null)), last=all[all.length-1].id; if(r[n]!==last){r[n]=last; recalc(m); persist()}}}
-        return send(res,200,{poster:m.user,task:{id:m.id,channel:t.ch,user:m.user,status:status(m),claimerDeleted:!!m.claimerDeleted,claimedBy:m.claimedBy||null,done:!!m.done,cancelled:!!m.cancelled,canWrite:mine&&!!m.claimedBy&&!m.cancelled&&!m.deleted,...(m.dispute?{dispute:out(m,null,adm||n).dispute}:{}),...(m.autoConfirmed?{autoConfirmed:true}:{})},messages:list});
+        return send(res,200,{poster:m.user,task:{id:m.id,channel:t.ch,user:m.user,status:status(m),claimerDeleted:!!m.claimerDeleted,claimedBy:m.claimedBy||null,done:!!m.done,cancelled:!!m.cancelled,canWrite:canWriteChat(m,n),moderator:!mine&&can(n,'joinChats'),...(m.dispute?{dispute:out(m,null,adm||n).dispute}:{}),...(m.autoConfirmed?{autoConfirmed:true}:{})},messages:list});
       }
-      if(adm&&!mine) return send(res,403,{error:'管理员只能查看私聊，不能发消息'});
+      if(!mine&&!can(n,'joinChats'))return send(res,403,{error:'未获参与任务私聊权限，只能查看'});
+      if(!canWriteChat(m,n))return send(res,409,{error:'订单已结束或账号不可发言'});
       if(banned(n)) return send(res,403,BANNED);
       if(!m.claimedBy) return send(res,409,{error:'任务还没人接，不能私聊'});
       if(m.cancelled||m.deleted) return send(res,409,{error:'任务已撤销'});
-      const b=await body(req); if(!(isPoster(m,n)||isClaimer(m,n))||!m.claimedBy||m.cancelled||m.deleted) return send(res,409,{error:'任务状态已经变了，请刷新'});
+      const b=await body(req); if(!canWriteChat(m,n)) return send(res,409,{error:'任务状态已经变了，请刷新'});
       if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'消息不能为空'});
       if(limited('tchat:'+n,20)) return send(res,429,{error:'发得太快了，请稍后再试'});
       const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
-      const x={id:newId(),user:n,text:b.text.trim().slice(0,500),time:new Date().toISOString(),claimer:m.claimedBy};
+      const x={id:newId(),user:n,text:b.text.trim().slice(0,500),time:new Date().toISOString(),claimer:m.claimedBy,...(!isPoster(m,n)&&!isClaimer(m,n)?{moderator:true}:{})};
       list.push(x); (db.chatRead[m.id]=db.chatRead[m.id]||Object.create(null))[n]=x.id; recalc(m); m.rev=nextRev(); persist(); return send(res,200,x);
     }
     if(p==='/api/my/chat-unread'&&GET){
@@ -799,9 +805,11 @@ const handle=async(req,res)=>{
       return send(res,200,o.sort((a,b)=>b.last.time.localeCompare(a.last.time)));
     }
     // GET /api/my/tasks  我的任务（需登录）-> {posted:[...], claimed:[...]}，每条带 channel，按时间倒序，不含已删除的
+    const oneTask=p.match(/^\/api\/tasks\/(\d+)$/);
+    if(oneTask&&GET){const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});const t=findTask(oneTask[1]);if(!t)return send(res,404,{error:'订单不存在'});if(!isPoster(t.msg,n)&&!isClaimer(t.msg,n)&&!canInspect(n))return send(res,403,{error:'无权查看该订单'});return send(res,200,withUnread(out(t.msg,t.ch,n),n))}
     if(p==="/api/my/tasks"&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:"请先登录"});
-      const all=CHANNELS.flatMap(c=>db.messages[c].filter(x=>x.task&&!x.deleted&&(isPoster(x,n)||isClaimer(x,n))).map(x=>out(x,c,n))).sort((a,b)=>b.id-a.id);
+      const all=CHANNELS.flatMap(c=>db.messages[c].filter(x=>x.task&&(!x.deleted||u.searchParams.get('includeHistory')==='1')&&(isPoster(x,n)||isClaimer(x,n))).map(x=>out(x,c,n))).sort((a,b)=>b.id-a.id);
       return send(res,200,{posted:all.filter(x=>x.user===n).map(x=>withUnread(x,n)),claimed:all.filter(x=>x.claimedBy===n).map(x=>withUnread(x,n))});
     }
     // GET /api/tasks?status=open|claimed|done|all&limit=10  跨频道任务；open=没人接、没撤销、没过期

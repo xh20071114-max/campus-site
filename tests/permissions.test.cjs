@@ -5,7 +5,7 @@ async function grant(call,name,permissions){const d=await call('/api/admin/roles
 
 test('only the exact super administrator can grant permissions; role editing is versioned and bound to account ID',()=>fixture(async({call,restart})=>{
  const {data:d}=await call('/api/admin/roles','AevonEcho'),u=d.users.find(x=>x.username==='Bob'),body={permissions:['viewUsers'],userId:u.userId,version:0};
- assert.equal(d.catalog.length,16);assert.equal((await call('/api/admin/roles','Alice')).status,403);
+ assert.equal(d.catalog.length,17);assert.equal((await call('/api/admin/roles','Alice')).status,403);
  assert.equal((await call('/api/admin/users/Bob/permissions','Bob',body)).status,403);
  assert.equal((await call('/api/admin/users/Bob/permissions','AevonEcho',{...body,permissions:['grantAdmin']})).status,400);
  assert.equal((await call('/api/admin/users/Bob/permissions','AevonEcho',{...body,permissions:['viewUsers','viewUsers']})).status,400);
@@ -28,6 +28,7 @@ const cases={
  viewMessages:async c=>assert.equal((await c.call('/api/admin/messages','Bob')).status,200),
  deleteMessages:async c=>assert.equal((await c.act(c.m,'Bob','delete')).status,200),
  viewChats:async c=>{assert.equal((await c.call('/api/admin/chats','Bob')).status,200);assert.ok((await c.call('/api/tasks/'+c.m.id+'/chat','Bob')).data.messages.some(x=>x.text==='private evidence'))},
+ joinChats:async c=>{assert.equal((await c.call('/api/admin/chats','Bob')).status,200);assert.equal((await c.call('/api/tasks/'+c.m.id+'/chat','Bob',{text:'moderator joins'})).data.moderator,true)},
  manageAnnouncements:async c=>assert.equal((await c.call('/api/announcements','Bob',{title:'notice'})).status,200),
  manageRecharges:async c=>{const r=await c.call('/api/recharge','Alice',{amount:1,method:'wechat'});assert.equal((await c.call('/api/admin/recharges/'+r.data.id+'/approve','Bob',{points:2})).status,200)},
  manageSettings:async c=>assert.equal((await c.call('/api/admin/settings','Bob',{postCost:2})).status,200),
@@ -43,7 +44,7 @@ for(const [key,check] of Object.entries(cases))test('delegated permission works 
  assert.equal((await grant(c.call,'Bob',[key])).status,200);await check(c);
  assert.equal((await c.call('/api/admin/roles','Bob')).status,403);assert.equal((await c.call('/api/admin/backup','Bob')).status,403);
  assert.equal((await c.call('/api/admin/overview','Bob')).status,403);
- if(key!=='viewChats')assert.equal((await c.call('/api/admin/chats','Bob')).status,403);
+ if(!['viewChats','joinChats'].includes(key))assert.equal((await c.call('/api/admin/chats','Bob')).status,403);
  if(!['viewMessages','deleteMessages'].includes(key))assert.equal((await c.call('/api/admin/messages','Bob')).status,403);
  if(key!=='manageSettings')assert.equal((await c.call('/api/admin/settings','Bob',{signupBonus:999})).status,403);
  if(key!=='publishBonus')assert.equal((await c.call(ch,'Bob',{text:'forged bonus',task:true,bonusPoints:500})).status,403);

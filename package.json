@@ -5,9 +5,9 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs",
+    "test": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs tests/trade.test.cjs",
     "test:browser": "node --test tests/browser.test.cjs",
-    "test:all": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs tests/browser.test.cjs",
+    "test:all": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs tests/trade.test.cjs tests/browser.test.cjs",
     "bench": "node tests/performance.cjs"
   },
   "devDependencies": { "playwright": "1.64.1" }

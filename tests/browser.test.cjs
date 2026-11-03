@@ -6,6 +6,31 @@ let browser;
 before(async()=>{browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||(process.platform==='win32'?'msedge':undefined),headless:true})});
 after(async()=>{if(browser)await browser.close()});
 async function setPermissions(call,name,permissions){const d=(await call('/api/admin/roles','AevonEcho')).data,u=d.users.find(x=>x.username===name);const r=await call(`/api/admin/users/${name}/permissions`,'AevonEcho',{permissions,userId:u.userId,version:u.permissionsVersion});assert.equal(r.status,200)}
+
+test('order window separates active and history, filters roles and fits mobile',t=>fixture(async({base,call,task,act})=>{
+ const work=await task('Alice',{text:'Parcel pickup at north gate'});await act(work,'Bob','claim');await task('Bob',{text:'Lunch delivery'});const old=await task('Bob',{text:'Cancelled history'});await act(old,'Bob','cancel');const gone=await task('Bob',{text:'Deleted history'});await act(gone,'Bob','delete');
+ const page=await pageFor(t,base,'Bob');await page.locator('#ordersOpen').click();await page.locator('#orderRows .order-card').first().waitFor();assert.equal(await page.locator('#orderRows .order-card').count(),2);await page.locator('#orderRole').selectOption('posted');assert.equal(await page.locator('#orderRows .order-card').count(),1);await page.getByRole('tab',{name:'历史订单 · 2',exact:true}).click();assert.equal(await page.locator('#orderRows .order-card').count(),2);await page.locator('#orderQuery').fill('Cancelled');assert.equal(await page.locator('#orderRows .order-card').count(),1);
+ await page.locator('#orderRows summary').click();await Promise.all([page.waitForResponse(r=>r.url().includes('/api/my/tasks?includeHistory=1')),page.locator('#ordersRefresh').click()]);await page.waitForTimeout(50);assert.equal(await page.locator('#orderRows details').evaluate(e=>e.open),true);
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/orders-mobile.jpg'});await page.locator('#orderQuery').fill('');await page.locator('#orderRole').selectOption('all');await page.getByRole('tab',{name:'进行中 · 2',exact:true}).click();await page.setViewportSize({width:1280,height:900});await page.screenshot({path:'.review/orders-desktop.jpg'});
+ await page.getByRole('button',{name:'关闭订单窗口'}).click();await page.goto(base+'/me.html');await page.getByText('把每一单，安排明白').waitFor();await page.screenshot({path:'.review/order-workspace-desktop.jpg'});await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/order-workspace-mobile.jpg',fullPage:true});await page.locator('.order-intro button').click();await page.locator('#orderRows').waitFor();
+}));
+
+test('a late order response cannot display the previous account after the token changes',t=>fixture(async({base,task})=>{
+ await task('Bob',{text:'Bob private order'});const page=await pageFor(t,base,'Bob');let arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/my/tasks?includeHistory=1',async route=>{arrived();await gate;await route.continue()});await page.locator('#ordersOpen').click();await waiting;await page.evaluate(()=>{localStorage.setItem('token','Carol');localStorage.setItem('username','Carol')});release();await page.waitForFunction(()=>!document.querySelector('.orders-mask'));assert.equal(await page.getByText('Bob private order',{exact:true}).count(),0);
+}));
+
+test('administrator participates through the backend chat with a visible identity and receives new replies',t=>fixture(async({base,task,act,call})=>{
+ const m=await task();await act(m,'Bob','claim');await call('/api/tasks/'+m.id+'/chat','Alice',{text:'Original trade chat'});const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('[data-t=chats]').click();await page.locator('#cb [data-chat]').click();await page.locator('.admin-chat-form').waitFor({state:'visible'});await page.locator('.admin-chat-form input[name=message]').fill('Administrator helping here');await page.locator('.admin-chat-form button[type=submit]').click();await page.locator('.cm .ci').filter({hasText:'Administrator helping here'}).waitFor();assert.ok((await page.locator('.cm .cl').textContent()).includes('管理员'));
+ assert.ok((await call('/api/tasks/'+m.id+'/chat','Bob')).data.messages.some(x=>x.text==='Administrator helping here'&&x.moderator));await call('/api/tasks/'+m.id+'/chat','Bob',{text:'Participant reply'});await page.locator('.cm .ci').filter({hasText:'Participant reply'}).waitFor();await page.screenshot({path:'.review/admin-trade-chat.jpg'});
+}));
+
+test('read-only chat permission has no composer until explicit participation permission is granted',t=>fixture(async({base,task,act,call})=>{
+ const m=await task();await act(m,'Carol','claim');await setPermissions(call,'Bob',['viewChats']);const page=await pageFor(t,base,'Bob');await page.goto(base+'/admin.html');await page.locator('#cb [data-chat]').click();await page.locator('.cm .ro').filter({hasText:'只读'}).waitFor();assert.equal(await page.locator('.admin-chat-form').isVisible(),false);await page.locator('.cw h3 button').click();await setPermissions(call,'Bob',['joinChats']);await page.reload();await page.locator('#cb [data-chat]').click();await page.locator('.admin-chat-form').waitFor({state:'visible'});assert.equal(await page.locator('.tabs button').count(),1);
+}));
+
+test('deep-linked order opens its conversation even outside the channel cache',t=>fixture(async({base,task,act,call})=>{
+ const m=await task();await act(m,'Bob','claim');await call('/api/tasks/'+m.id+'/chat','Alice',{text:'Deep linked order message'});const page=await pageFor(t,base,'Bob');await page.route('**/messages?rev=*',r=>r.fulfill({status:200,headers:{'X-Rev':'10'},json:[]}));await page.goto(base+'/chat.html?task='+m.id+'#'+encodeURIComponent('校园跑'));await page.locator('#tcList').getByText('Deep linked order message',{exact:true}).waitFor();assert.equal(await page.locator('#tc').evaluate(e=>e.classList.contains('show')),true);
+}));
 async function pageFor(t,base,user='Bob',extraStorage=[],options={}){
  const context=await browser.newContext({...options,storageState:{cookies:[],origins:[{origin:base,localStorage:[{name:'token',value:user},{name:'username',value:user},{name:'admin',value:user==='AevonEcho'?'1':'0'},...extraStorage]}]}}),page=await context.newPage(),errors=[];
  t.after(async()=>{await context.close();assert.deepEqual(errors,[],'uncaught browser errors')});
@@ -32,7 +57,7 @@ test('banned login offers contact and administrator replies are visible without 
 
 test('super administrator grants selected permissions through checkboxes; delegate sees only granted controls',t=>fixture(async({base,call})=>{
  const root=await pageFor(t,base,'AevonEcho');await root.goto(base+'/admin.html');await root.locator('[data-t="roles"]').click();await root.locator('#roleQuery').fill('Bob');
- const list=root.locator('#roleList');assert.equal(await list.locator('input[type=checkbox]').count(),16);
+ const list=root.locator('#roleList');assert.equal(await list.locator('input[type=checkbox]').count(),17);
  await list.locator('input[name=viewUsers]').check();await list.getByRole('button',{name:'保存权限',exact:true}).click();await list.getByRole('status').filter({hasText:'已保存'}).waitFor();
  assert.deepEqual((await call('/api/me','Bob')).data.permissions,['viewUsers']);
  const delegate=await pageFor(t,base,'Bob');await delegate.goto(base+'/admin.html');await delegate.locator('#ub').waitFor();assert.equal(await delegate.locator('[data-t=roles]').count(),0);assert.equal(await delegate.locator('[data-t=msgs]').count(),0);assert.equal(await delegate.locator('#bkBtn').count(),0);assert.equal(await delegate.locator('#ub button').count(),0);

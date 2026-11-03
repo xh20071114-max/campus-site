@@ -54,7 +54,7 @@ nav a{white-space:nowrap}
 <a class="card" href="chat.html#代做作业"><div class="i">📝</div><h3>代做作业</h3><p>作业相关任务发布</p><div class="n" data-c="代做作业">进入频道</div></a>
 </div></section>
 <section id="tasks"><h2>🔥 最新任务 <small style="font-size:14px;color:#9ca3af;font-weight:normal">还没人接的任务</small></h2><div class="tasks" id="taskList"><p style="color:#9ca3af">加载中…</p></div></section>
-<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，频道里只发布任务，同学之间互相发任务、接任务；接单后发布人和接单人可以通过任务私聊沟通细节。本站由总管理员管理，获授权的管理员可查看相应内容（包括私聊和已删除原文）。请遵守校规校纪，文明发言。</p><p style="margin-top:10px;color:#6b7280;font-size:14px">任务私聊只有发布人和接单人能发言。</p></section>
+<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，频道里只发布任务，同学之间互相发任务、接任务；接单后发布人和接单人可以通过任务私聊沟通细节。本站由总管理员管理，获授权的管理员可查看相应内容（包括私聊和已删除原文）。请遵守校规校纪，文明发言。</p><p style="margin-top:10px;color:#6b7280;font-size:14px">任务私聊允许双方及获授权管理员发言，管理员发言会标注身份。</p></section>
 <section id="install"><h2>📱 添加到手机桌面</h2><div class="pwa">
 <p>把本站添加到手机桌面，下次像 App 一样一点就开。</p>
 <p><b>iPhone（Safari）：</b>点底部的「分享」按钮，选「添加到主屏幕」，再点「添加」。</p>
@@ -120,4 +120,4 @@ if(matchMedia('(display-mode: standalone)').matches||navigator.standalone)docume
 let pwaEvt=null;addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaEvt=e;document.getElementById('pwaBtn').hidden=false});
 document.getElementById('pwaBtn').onclick=async()=>{if(!pwaEvt)return;pwaEvt.prompt();try{await pwaEvt.userChoice}catch{}pwaEvt=null;document.getElementById('pwaBtn').hidden=true};
 addEventListener('appinstalled',()=>{document.getElementById('pwaBtn').hidden=true});
-</script><script src="feedback.js"></script></body></html>
+</script><script src="feedback.js"></script><script src="orders.js"></script></body></html>

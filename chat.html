@@ -194,7 +194,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 </form></div>
 <script src="session.js"></script>
 <script src="config.js"></script>
-<script src="feedback.js"></script>
+<script src="feedback.js"></script><script src="orders.js"></script>
 <script>
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
 function dec(h){try{return decodeURIComponent(h)}catch(e){return h}}
@@ -289,7 +289,7 @@ function renderSide(){
 }
 const isExp=m=>m.task&&!m.claimedBy&&!m.done&&!m.cancelled&&(m.expired||(m.deadline&&new Date(m.deadline)<new Date()));
 let isAdmin=false,isSuperAdmin=false,permissions=[],roleFingerprint=null,isBanned=false,points=null,cost={post:1,claim:1};
-const can=k=>isSuperAdmin||permissions.includes(k);const canInspect=()=>['viewMessages','deleteMessages','viewChats','manageDisputes'].some(can);
+const can=k=>isSuperAdmin||permissions.includes(k);const canInspect=()=>['viewMessages','deleteMessages','viewChats','joinChats','manageDisputes'].some(can);
 function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const requestedToken=token;
   api('/api/me').then(r=>localStorage.getItem('token')!==requestedToken?null:r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d||localStorage.getItem('token')!==requestedToken)return;const stamp=JSON.stringify([d.admin,d.superAdmin,d.permissions]);if(roleFingerprint!==null&&stamp!==roleFingerprint){location.reload();return}roleFingerprint=stamp;isAdmin=!!d.admin;isSuperAdmin=!!d.superAdmin;permissions=d.permissions||[];if(isBanned!==!!d.banned)setBanned(!!d.banned);localStorage.setItem('admin',isAdmin?'1':'0');
     if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;if(d.eventUnread!=null)setBell(+d.eventUnread);renderPts();renderMsgs()}).catch(()=>{})}
@@ -351,14 +351,16 @@ function renderMsgs(){
     if(r.status===401)return expired();if(!r.ok)await failed(r);else loadMe();refresh()});
   if(S){if(forceTop)msgs.scrollTop=0;forceTop=false;sInfo_(S,list.length)}else if(!keepScroll&&(atBottom||forceBottom))msgs.scrollTop=msgs.scrollHeight;forceBottom=false;keepScroll=false;
 }
-const canChat=m=>m.task&&me&&m.claimedBy&&!m.cancelled&&!m.claimerDeleted&&(m.user===me||m.claimedBy===me);
+const canChat=m=>m.task&&me&&m.claimedBy&&!m.deleted&&(m.user===me||m.claimedBy===me||can('viewChats')||can('joinChats'));
 let tc=null;
-function findTask(id){for(const source of [cache,sres])for(const ch in source){const m=(source[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}}
+const linkedTasks=new Map();
+function findTask(id){if(linkedTasks.has(String(id)))return linkedTasks.get(String(id));for(const source of [cache,sres])for(const ch in source){const m=(source[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}}
 function tcNote(t){tcNote_.textContent=t||'';tcNote_.style.display=t?'block':'none'}
 const tcNote_=document.getElementById('tcNote');
 function openChat(id){const m=findTask(id);if(!m)return;closeChat();
   tc={id:String(id),ch:m._ch,after:'',seen:new Set(),timer:null,task:m};renderProg();
   {const o=m.user===me?m.claimedBy:m.user,u=el('span','un',o);u.dataset.u=o;u.title='查看信用';tcSub.replaceChildren((m.user===me?'与接单人 ':'与发布人 '),u,' · '+String(m.text).slice(0,30))}
+  if(m.user!==me&&m.claimedBy!==me)tcSub.textContent='🛡 管理员参与 · '+m.user+' ↔ '+m.claimedBy+' · '+String(m.text).slice(0,30);
   document.getElementById('tcRep').style.display=canInspect()?'none':'';document.getElementById('tcRep').title=m.user===me?'举报接单人':'举报这单';
   tcList.replaceChildren();tcNote('');tcT.disabled=tcS.disabled=tcI.disabled=isBanned;tcT.value='';tcT.placeholder=touch?'和对方说点什么':'和对方说点什么，回车发送';
   m.chatUnread=0;renderMsgs();
@@ -375,7 +377,7 @@ async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))retur
       const row=document.createElement('div');
       if(x.type==='system'){row.className='cm sys';row.textContent=(x.text||'')+' · '+fmt(x.time);tcList.append(row)}
       else{row.className='cm'+(x.user===me?' mine':'');
-      const w=document.createElement('div');w.className='w';w.textContent=(x.user===me?'我':(x.userDeleted?'已删除用户':x.user))+' · '+fmt(x.time);row.append(w);
+      const w=document.createElement('div');w.className='w';w.textContent=(x.moderator?'🛡 管理员 · ':'')+(x.user===me?'我':(x.userDeleted?'已删除用户':x.user))+' · '+fmt(x.time);row.append(w);
       if(x.image){const im=document.createElement('img');im.className='img';im.alt='图片';loadImg(c,x.id,im);row.append(im);
 }
       if(x.imageRemoved&&!x.image){const g=document.createElement('div');g.className='b';g.style.color='#9ca3af';g.textContent='🖼️ 图片已清理';row.append(g)}
@@ -383,7 +385,8 @@ async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))retur
       if(x.image){const tp=document.createElement('div');tp.className='imgTip';tp.textContent='⚠️ 付款前请核对收款人昵称，确认任务完成再付款';row.append(tp)}
       tcList.append(row)}
       if(x.id!=null&&(!c.after||+x.id>+c.after))c.after=String(x.id)});
-    if(d.task){Object.assign(c.task,d.task.status?{status:d.task.status}:{},d.task.done?{done:true}:{},d.task.dispute?{dispute:d.task.dispute}:{},d.task.autoConfirmed?{autoConfirmed:true}:{});c.can=d.task.canWrite;renderProg()}
+    if(d.task){Object.assign(c.task,d.task);c.can=d.task.canWrite;renderProg()}
+    if(d.task&&d.task.canWrite&&!isBanned)tcT.disabled=tcS.disabled=tcI.disabled=false;
     if(d.task&&d.task.canWrite===false&&!isBanned){tcT.disabled=tcS.disabled=tcI.disabled=true;tcT.placeholder=d.task.claimedBy?'这单已经结束，不能再发消息':'现在没有接单人，不能发消息'}
     if(first&&!list.length&&!tcList.children.length){const e=document.createElement('div');e.style.cssText='color:#9ca3af;font-size:13px;text-align:center;margin-top:20px';e.textContent='还没有消息，打个招呼吧';e.className='empty';tcList.append(e)}
     if(list.length)tcList.querySelector('.empty')?.remove();
@@ -391,12 +394,12 @@ async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))retur
   }catch(e){if(c===tc)tcNote('网络异常，正在重试…')}}
 tcX.onclick=closeChat;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(pop.classList.contains('show'))closePop();else if(lb.classList.contains('show'))lb.classList.remove('show');else if(nAll.classList.contains('show'))nAll.classList.remove('show');else if(tc)closeChat()}});
-tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!t)return;tcS.disabled=true;
-  try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat',{method:'POST',body:JSON.stringify({text:t})});
+tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!t||c.sending)return;c.sending=true;tcS.disabled=true;
+  try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat',{method:'POST',body:JSON.stringify({text:t})});if(c!==tc)return;
     if(r.status===401)return expired();
     if(!r.ok){const d=await r.json().catch(()=>({}));if(r.status===403&&(d.banned||/封禁/.test(d.error||'')))setBanned(true);tcNote(r.status===429?(d.error||'发得太快了，歇一会儿再发'):(d.error||'发送失败'));return}
-    tcT.value='';tcNote('');await pullChat();tcList.scrollTop=tcList.scrollHeight}
-  finally{if(c===tc)tcS.disabled=isBanned||tcT.disabled}};
+    if(tcT.value.trim()===t)tcT.value='';tcNote('');await pullChat();tcList.scrollTop=tcList.scrollHeight}
+  finally{c.sending=false;if(c===tc)tcS.disabled=isBanned||tcT.disabled}};
 tcT.onkeydown=e=>enterSend(e,tcF);
 /* ---- 搜索排序 ---- */
 let sres={},forceTop=false,sT=null,sSeq=0;const qI=document.getElementById('q'),sortI=document.getElementById('sort');
@@ -597,6 +600,8 @@ isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placehol
 text.onkeydown=e=>enterSend(e,f);
 if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
 renderMe();
+async function openLinkedOrder(){const id=new URLSearchParams(location.search).get('task');if(!id||!/^\d+$/.test(id)||!token)return;try{const r=await api('/api/tasks/'+id),m=await r.json();if(!r.ok){alert(m.error||'订单无法打开');return}m._ch=m.channel;linkedTasks.set(String(m.id),m);if(m.claimedBy&&!m.deleted)openChat(m.id);else if(window.openOrders)window.openOrders({taskId:m.id,view:m.done||m.cancelled||m.deleted||m.expired?'history':'active'})}catch{alert('订单加载失败，请刷新重试')}}
+openLinkedOrder();
 loadCost();loadMe();renderPts();setInterval(()=>{if(!document.hidden)loadMe()},30000);
 (function(){const b=document.getElementById('fbBtn');if(b)fbSlot.appendChild(b)})();
 refresh();setInterval(()=>{if(!document.hidden)refresh()},8000);

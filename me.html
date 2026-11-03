@@ -36,6 +36,7 @@ nav a{white-space:nowrap}
 .ev ul,.cred ul{list-style:none;padding:0;margin:0;max-height:300px;overflow:auto}.ev li,.cred li{padding:8px 4px;border-top:1px solid #f3f4f6;font-size:14px}.ev li.u{background:#eff6ff;border-radius:6px}.ev li a{color:inherit;text-decoration:none;display:block}
 .ev li small,.cred li small{color:#9ca3af}.ev button{font-size:12px;border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:normal;color:#374151}
 .cs3{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}.cs3 div{flex:1;min-width:90px;background:#f9fafb;border-radius:10px;padding:10px;text-align:center}.cs3 b{display:block;font-size:20px;color:#1e3a8a}.cs3 span{font-size:12px;color:#6b7280}.stars{color:#f59e0b;letter-spacing:1px}
+.order-overview{margin:20px 0 28px}.order-intro{background:linear-gradient(120deg,#1e3a8a,#4338ca);border-radius:20px;padding:26px;color:white;display:flex;gap:18px;align-items:center;justify-content:space-between;margin-bottom:16px}.order-intro h2{font-size:24px;margin:5px 0}.order-intro p{opacity:.8;font-size:14px}.order-intro button{border:0;border-radius:12px;background:white;color:#1e3a8a;padding:12px 18px;font-weight:bold;cursor:pointer}.order-more{border:0;color:#1e3a8a;background:#eef2ff;padding:10px 12px;width:100%;border-radius:10px;cursor:pointer}.order-overview .col{border:1px solid #e2e8f0;box-shadow:none;border-radius:16px}.order-overview h2 small{color:#94a3b8;font-size:13px;font-weight:normal}.order-overview .t{border:1px solid #eef2f7;border-radius:12px;padding:14px;margin:10px 0;background:#fafbff}.hi h1{font-size:26px}@media(max-width:640px){.order-intro{padding:20px;display:block}.order-intro button{margin-top:14px}.order-intro h2{font-size:22px}.order-overview .cols{gap:12px}}
 </style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Aevon校园"><script src="pwa.js" defer></script><meta name="theme-color" content="#1e3a8a"></head><body>
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心<span class="dot" id="meDot" hidden></span></a></nav></div></header>
@@ -49,19 +50,19 @@ const M=document.getElementById('main');
 function status(m){if(m.deleted)return['gone','🗑 已删除'];if(m.status==='closed'||m.closed)return['gone','🔒 已关闭'];if(m.cancelled)return['gone','↩️ 已撤销'];if(m.status==='disputed')return['claimed','⚠️ 平台处理中'];if(m.done||m.doneAt||m.status==='done')return['done','🏁 已完成'];if(m.status==='finished')return['claimed','📦 已完成，待付款'];if(m.status==='paid')return['claimed','💸 已付款，待确认收款'];if(m.expired&&!m.claimedBy)return['gone','⌛ 已过期'];if(m.claimedBy)return['claimed','✅ 已接单'];return['open','⏳ 待接单']}
 function card(m,mine){const[c,l]=status(m);const ch=m.channel||m.ch||'';
   const who=mine?(m.claimedBy?`接单人：${esc(m.claimedBy)}${m.claimerDeleted?'（已注销）':''}`:'还没人接'):`发布人：${esc(m.user)}`;
-  return `<a class="t" href="chat.html#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${m.official?'<span class="tg" style="background:#fee2e2;color:#b91c1c">官方</span> ':''}${esc(m.deleted?'（已删除）':m.text)}${m.reward?` <small style="color:#b45309">💰${esc(m.reward)}</small>`:''}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
+  return `<a class="t" href="chat.html?task=${encodeURIComponent(m.id)}#${encodeURIComponent(ch)}"><div class="top"><div><span class="tg">#${esc(ch)}</span> ${m.official?'<span class="tg" style="background:#fee2e2;color:#b91c1c">官方</span> ':''}${esc(m.deleted?'（已删除）':m.text)}${m.reward?` <small style="color:#b45309">💰${esc(m.reward)}</small>`:''}</div><span class="st ${c}">${l}</span></div><small>${who} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`}
 async function load(silent){
   if(!token||!me){M.innerHTML='<div class="need"><h2>请先登录</h2><p style="color:#6b7280;margin-top:8px">登录后可以查看你发布和接下的任务</p><a href="login.html?next=me.html">去登录</a></div>';return}
   let posted=[],claimed=[];
   try{
-    const r=await fetch((window.API_BASE||'')+'/api/my/tasks',{headers:{Authorization:'Bearer '+token}});
+    const r=await fetch((window.API_BASE||'')+'/api/my/tasks?includeHistory=1',{headers:{Authorization:'Bearer '+token}});
     if(r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');location.href='login.html?next=me.html';return}
     if(!r.ok)throw 0;
     const d=await r.json();
     if(Array.isArray(d)){posted=d.filter(x=>x.user===me);claimed=d.filter(x=>x.claimedBy===me)}
     else{posted=d.posted||d.published||[];claimed=d.claimed||d.taken||[]}
   }catch{if(silent)return;M.innerHTML='<div class="need"><h2>⚠️ 网络连接失败</h2><p style="color:#6b7280;margin-top:8px">请检查网络后重试</p><a href="#" id="retry">重试</a></div>';document.getElementById('retry').onclick=e=>{e.preventDefault();M.innerHTML='<p class="empty" style="text-align:center;padding:40px">加载中…</p>';load()};return}
-  const n=(a,f)=>a.filter(f).length;
+  const n=(a,f)=>a.filter(f).length;const unique=[...new Map([...posted,...claimed].map(m=>[String(m.id),m])).values()].sort((a,b)=>b.id-a.id),active=unique.filter(m=>!['done','gone'].includes(status(m)[0])),history=unique.filter(m=>['done','gone'].includes(status(m)[0]));
   let pts=null,led=[];try{const r3=await fetch((window.API_BASE||'')+'/api/my/points',{headers:{Authorization:'Bearer '+token}});if(r3.ok){const d3=await r3.json();pts=d3.points??d3.balance;led=d3.log||d3.history||d3.logs||d3.ledger||d3.records||[]}}catch{}
   const dl=x=>Number(x.delta??x.change??x.amount??0);
   const ptsHtml=pts==null?'':`<div class="pts"><div><div style="opacity:.85;font-size:14px">我的积分</div><b>${esc(pts)}</b>分</div><a class="rc" href="recharge.html">💰 充值</a></div>
@@ -86,11 +87,10 @@ async function load(silent){
     credbox:credHtml,
     statbox:`<div class="stats"><div class="stat"><b>${posted.length}</b><span>我发布的</span></div><div class="stat"><b>${n(posted,x=>!x.claimedBy&&!x.cancelled&&!x.deleted&&!x.expired)}</b><span>待接单</span></div>
   <div class="stat"><b>${claimed.length}</b><span>我接的</span></div><div class="stat"><b>${n(claimed,x=>x.done||x.doneAt)}</b><span>已完成</span></div></div>`,
-    colbox:`<div class="cols"><div class="col"><h2>📝 我发布的</h2>${posted.map(m=>card(m,true)).join('')||'<p class="empty">还没发布过任务，去频道里发一个吧</p>'}</div>
-  <div class="col"><h2>🤝 我接的</h2>${claimed.map(m=>card(m,false)).join('')||'<p class="empty">还没接过任务，去首页看看最新任务</p>'}</div></div>`};
+    colbox:`<section class="order-overview"><div class="order-intro"><div><small>校园任务工作台</small><h2>把每一单，安排明白</h2><p>当前进度、待办与历史记录，一处查看。</p></div><button type="button" onclick="window.openOrders()">打开我的订单 ↗</button></div><div class="cols"><div class="col"><h2>进行中 <small>${active.length} 单</small></h2>${active.slice(0,3).map(m=>card(m,m.user===me)).join('')||'<p class="empty">暂时没有进行中的订单</p>'}<button type="button" class="order-more" onclick="window.openOrders({view:'active'})">查看全部进行中 →</button></div><div class="col"><h2>历史订单 <small>${history.length} 单</small></h2>${history.slice(0,3).map(m=>card(m,m.user===me)).join('')||'<p class="empty">完成或结束的订单会保存在这里</p>'}<button type="button" class="order-more" onclick="window.openOrders({view:'history'})">查看全部历史 →</button></div></div></section>`};
   // 定时刷新：只替换内容有变化的区块，不整页重绘，不影响改密码表单
   if(silent&&document.getElementById('colbox')){for(const k in parts){const el=document.getElementById(k);if(el&&el.dataset.h!==parts[k]){el.innerHTML=parts[k];el.dataset.h=parts[k]}}bindEv();return}
-  M.innerHTML=`<div id="banbox"></div><div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div><div id="ptsbox"></div><div id="evbox"></div><div id="credbox"></div><div id="statbox"></div><div id="colbox"></div>
+  M.innerHTML=`<div id="banbox"></div><div class="hi"><h1>👤 ${esc(me)}</h1><button id="out">退出登录</button></div><div id="statbox"></div><div id="colbox"></div><div id="ptsbox"></div><div id="evbox"></div><div id="credbox"></div>
   <div class="col" style="margin-top:20px;max-width:420px"><h2>🔒 修改密码</h2>
   <form id="pwf"><input id="op" type="password" placeholder="原密码" autocomplete="current-password" required>
   <input id="np" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password" required>
@@ -111,4 +111,4 @@ function bindPw(){const f=document.getElementById('pwf');f.onsubmit=async e=>{e.
     f.reset();msg.style.color='#166534';msg.textContent='✅ 密码已修改';
   }catch{bad('网络连接失败，请检查网络后重试')}}}
 load();setInterval(()=>{if(!document.hidden)load(true)},15000);
-</script><script src="feedback.js"></script></body></html>
+</script><script src="feedback.js"></script><script src="orders.js"></script></body></html>
