@@ -322,7 +322,7 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
   if(st==='closed'||m.closed)return [T('gray','🔒 已关闭'),''];
   if(st==='disputed')return [T('red','⚠️ 平台处理中'),party&&canChat(m)?go:''];
   if(m.done||m.doneAt||st==='done')return [T('gray',`🏁 已完成 · ${who}${m.claimerDeleted?'（已注销）':''}`),rateTag(m)];
-  if(m.claimedBy&&(st==='finished'||st==='paid'))return [T('blue',`${st==='finished'?'📦 已完成，待付款':'💸 已付款，待确认收款'} · ${who}`),party&&canChat(m)?go:''];
+  if(m.claimedBy&&(st==='finished'||st==='paid'))return [T('blue',`${st==='finished'?'📦 已完成，待付款':'💸 发布人标记已付款，待核对'} · ${who}`),party&&canChat(m)?go:''];
   if(m.claimedBy)return [m.overdue?T('red',`⏰ 已超时 · ${who}`):T('green',`✅ 已接单 · ${who}`),
     (poster?btn('complete','直接完成','#16a34a',m.id,'确定不经付款流程，直接完成这个任务吗？')+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?cancelB(`任务已超时，确定撤回吗？${ref?`撤回后退还 ${ref} 积分。`:''}`):''):'')+(taker?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'')];
   if(isExp(m))return [T('gray','⏰ 已过期'),''];
@@ -434,7 +434,7 @@ bell.onclick=async()=>{if(!token)return showLogin(true);const b=openPop('🔔 �
   try{const r=await api('/api/my/events');if(r.status===401)return closePop(),expired();const d=r.ok?await r.json():null;b.replaceChildren();
     const l=Array.isArray(d)?d:(d&&d.events)||[];if(!r.ok){b.append(el('div',null,'暂时无法加载动态'));return}
     if(!l.length)b.append(el('div',null,'还没有动态。你发布或接下的任务有进展时，会显示在这里。'));
-    l.forEach(x=>x.unread=x.unread??!x.read);l.slice().sort((x,y)=>(+y.id||0)-(+x.id||0)).forEach(x=>{const it=el('div','ev'+(x.unread?' u':''),x.text||'任务有新进展');it.append(el('small',null,(x.channel?'#'+x.channel+' · ':'')+(x.task?'「'+x.task+'」 · ':'')+fmt(x.time)));
+    l.forEach(x=>x.unread=x.unread??!x.read);l.slice().sort((x,y)=>(+y.id||0)-(+x.id||0)).forEach(x=>{const it=el('div','ev'+(x.unread?' u':''),x.type==='paid'?'发布人标记已付款，请核对到账后确认收款':x.text||'任务有新进展');it.append(el('small',null,(x.channel?'#'+x.channel+' · ':'')+(x.task?'「'+x.task+'」 · ':'')+fmt(x.time)));
       it.onclick=()=>{closePop();if(x.channel&&x.channel!==cur&&CHANNELS.some(c=>c.name===x.channel))go(x.channel);const id=x.taskId??x.task;if(id!=null)setTimeout(()=>{const m=findTask(id);if(m&&canChat(m))openChat(id)},x.channel&&x.channel!==cur?900:0)};b.append(it)});
     if(l.some(x=>x.unread))api('/api/my/events/read',{method:'POST'}).then(()=>setBell(0)).catch(()=>{});else setBell(0)}
   catch(e){b.replaceChildren(el('div',null,'网络异常，请稍后再试'))}};
@@ -545,7 +545,7 @@ lb.onclick=()=>lb.classList.remove('show');
 const tstat=m=>m.status&&m.status!=='open'?m.status:(m.done?'done':m.cancelled?'closed':m.claimedBy?'claimed':'open');
 function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,finished:1,paid:2,done:3}[s];
   if(idx==null){tcP.innerHTML='<div class="ac"><small>'+(s==='disputed'?'⚠️ 平台处理中：已申请平台介入，交易暂停，管理员会尽快处理':s==='closed'?'🔒 这单已被管理员关闭':s==='cancelled'?'🚫 这单已撤回':'这单当前不在交易流程中')+'</small></div>';tcP.style.display='block';return}
-  const st=['接单','完成','付款','收款'].map((t,i)=>`<span class="${i<=idx?'on':''}">${t}</span>`).join('');
+  const st=['接单','完成','标记付款','收款'].map((t,i)=>`<span class="${i<=idx?'on':''}">${t}</span>`).join('');
   const poster=m.user===me,taker=m.claimedBy===me,b=(a,l,col,cf)=>isBanned?'':`<button type="button" data-a="${a}" style="background:${col}"${cf?` data-c="${esc(cf)}"`:''}>${l}</button>`;let ac='';
   if(s==='done')ac='<small>🏁 交易完成'+(m.autoConfirmed?'（超时自动确认收款）':'')+'</small>'+(m.dispute||(m.claimerDeleted&&m.user===me)?'':(rated(m)?'<small>· 已评价</small>':b('rate','⭐ 评价对方','#f59e0b')));
   else if(taker){if(s==='claimed')ac=b('finish','我已完成','#16a34a','确认任务已经完成了吗？');

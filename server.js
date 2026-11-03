@@ -604,7 +604,7 @@ const handle=async(req,res)=>{
         else if(act==='release') ev(pc,'release',msg,'发布人取消了你的接单，接单积分已退还',n);
         else if(act==='cancel'&&pc) ev(pc,'cancel',msg,'任务超时，发布人撤回了任务'+(msg.claimRefunded&&msg.claimCost?'，接单积分 '+msg.claimCost+' 已退还':''),n);
         else if(act==='finish') ev(msg.user,'finish',msg,n+' 表示任务已完成，请付款',n);
-        else if(act==='paid') ev(msg.claimedBy,'paid',msg,'发布人已付款，请确认收款',n);
+        else if(act==='paid') ev(msg.claimedBy,'paid',msg,'发布人标记已付款，请核对到账后确认收款',n);
         else if(act==='received') ev(msg.user,'received',msg,n+' 已确认收款，任务完成',n);
         else if(act==='complete'||act==='done') ev(msg.claimedBy,'done',msg,'发布人确认任务完成',n);
         else if(act==='delete'&&can(n,'deleteMessages')){const dr=msg.deleteRefund||{}; ev(msg.user,'deleted',msg,'任务被管理员删除'+(dr.post?'，退还你 '+dr.post+' 发布积分':msg.cost&&!msg.refunded?'，发布积分不退':''),n); ev(pc,'deleted',msg,'任务被管理员删除'+(dr.claim?'，退还你 '+dr.claim+' 接单积分':msg.claimCost&&!msg.claimRefunded?'，接单积分不退':''),n)}}

@@ -23,6 +23,10 @@ test('site pages fit mobile and order controls have separate space',t=>fixture(a
  await page.setViewportSize({width:1280,height:900});await page.goto(base+'/chat.html');await page.locator('#ordersOpen').waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/ui-chat-desktop.png'});
 }));
 
+test('payment status is presented as the publisher claim, not verified receipt',t=>fixture(async({base,task,act})=>{
+ const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('发布人标记已付款，待核对',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人标记已付款，请核对到账后确认收款',{exact:false}).first().waitFor();await page.getByText('💸 发布人标记已付款，待核对',{exact:true}).first().waitFor();
+}));
+
 test('slow admin chat polling remains single-flight and eventually shows replies',t=>fixture(async({base,task,act,call})=>{
  const m=await task();await act(m,'Bob','claim');const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('[data-t=chats]').click();await page.locator('#cb [data-chat]').click();await page.locator('.admin-chat-form').waitFor({state:'visible'});
  let arrivals=0,arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/tasks/'+m.id+'/chat?after=*',async route=>{arrivals++;arrived();await gate;await route.continue()});await call('/api/tasks/'+m.id+'/chat','Bob',{text:'slow network reply'});try{await waiting;await page.waitForTimeout(4300);assert.equal(arrivals,1)}finally{release()}await page.locator('.cm .ci').filter({hasText:'slow network reply'}).waitFor({timeout:8000});

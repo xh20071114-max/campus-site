@@ -148,7 +148,7 @@ function mState(m){const t=[];if(m.official)t.push('<span class="tg r">官方</s
   else if(m.status==='disputed')t.push('<span class="tg r">⚠️ 纠纷中</span>');
   else if(m.done||m.doneAt||m.status==='done')t.push('<span class="tg g">已完成</span>');
   else if(m.status==='finished')t.push(`<span class="tg y">${esc(m.claimedBy||'')} 已完成·待付款</span>`);
-  else if(m.status==='paid')t.push('<span class="tg y">已付款·待确认收款</span>');else if(m.claimedBy)t.push(`<span class="tg y">${esc(m.claimedBy)} 已接单</span>`);
+  else if(m.status==='paid')t.push('<span class="tg y">发布人标记已付款·待核对</span>');else if(m.claimedBy)t.push(`<span class="tg y">${esc(m.claimedBy)} 已接单</span>`);
   else if(m.task&&m.expired)t.push('<span class="tg x">已过期</span>');else if(m.task)t.push('<span class="tg y">待接单</span>');return t.join('')}
 async function drawMsgs(version=renderVersion){
   const P=document.getElementById('pane');
@@ -325,7 +325,7 @@ async function openChat(id,title){
   let d;try{d=await call(`/api/tasks/${encodeURIComponent(id)}/chat${after?'?after='+after:''}`,{signal:controller.signal})}catch(e){if(!closed&&request===pullVersion){if(!loaded)L.textContent='加载失败：'+e.message;note.textContent='读取失败：'+e.message;if(e.status===401||e.status===403){L.replaceChildren();form.style.display='none'}}return}if(closed||request!==pullVersion)return;
   const list=Array.isArray(d)?d:(d.messages||[]);const poster=d.poster||(d.task&&d.task.user);
   if(!loaded){L.innerHTML='';loaded=true}const near=L.scrollHeight-L.scrollTop-L.clientHeight<80;if(list.length)L.querySelector('.empty')?.remove();
-  const ST={claimed:'已接单',finished:'接单人已完成，等待付款',paid:'发布人已付款，等待确认收款',done:'已完成',closed:'已关闭'};const tk=d.task||{};
+  const ST={claimed:'已接单',finished:'接单人已完成，等待付款',paid:'发布人标记已付款，等待核对',done:'已完成',closed:'已关闭'};const tk=d.task||{};
   note.textContent=(tk.canWrite?'可参与聊天 · ':'只读 · ')+(ST[tk.status]||tk.status||'')+' · 管理员发言会明确标记身份';form.style.display=tk.canWrite?'flex':'none';
   list.forEach(m=>{if(seen.has(String(m.id)))return;seen.add(String(m.id));after=Math.max(after,Number(m.id)||0);if(m.type==='system'){const sy=document.createElement('p');sy.className='cs';sy.textContent=(m.text||'')+'  '+fmt(m.time);L.appendChild(sy);return}
     const u=m.user||'';const isP=poster&&u===poster&&!m.userDeleted;const it=document.createElement('div');it.className='ci'+(isP?' p':'');
