@@ -240,3 +240,13 @@ test('task selection preserves state, ordering, channel and personalized fields'
  data.taskChats={[id+3]:[{id:id+100,user:'Alice',text:'unread',claimer:'Bob',time}]};data.offers={[id+2]:[{id:id+200,user:'Bob',userId:'account-Bob',status:'pending',price:4,turn:'poster',rounds:[{by:'claimer',price:4,note:'',time}],time,updated:time}]};
  await fixture(async({call})=>{const open=(await call('/api/tasks?limit=8','Bob')).data;assert.deepEqual(open.map(x=>x.id),[id+7,id+2]);assert.equal(open[0].channel,'代取快递');const search=(await call('/api/tasks?q='+encodeURIComponent('北门'),'Bob')).data;assert.equal(search[0].myOffer.price,4);assert.equal((await call('/api/tasks?status=claimed','Bob')).data[0].chatUnread,1);assert.equal((await call('/api/tasks?status=claimed','')).data[0].chatUnread,undefined);assert.deepEqual((await call('/api/tasks?status=all&sort=reward&limit=2','Bob')).data.map(x=>x.id),[id+4,id+3])},data);
 });
+test('banned login and /api/me return ban reason and admin contact configured in settings',()=>fixture(async({call})=>{
+ assert.equal((await call('/api/admin/settings','AevonEcho',{contactInfo:'邮箱 admin@example.com / QQ 123456'})).status,200);
+ const pub=await call('/api/settings','');assert.equal(pub.data.contactInfo,'邮箱 admin@example.com / QQ 123456');
+ assert.equal((await call('/api/admin/users/Carol/ban','AevonEcho',{reason:'广告刷屏'})).status,200);
+ const login=await call('/api/login','',{username:'Carol',password});assert.equal(login.status,403);assert.equal(login.data.banned,true);assert.equal(login.data.banReason,'广告刷屏');assert.equal(login.data.contact,'邮箱 admin@example.com / QQ 123456');
+ const me=await call('/api/me','Carol');assert.equal(me.data.banned,true);assert.equal(me.data.banReason,'广告刷屏');assert.equal(me.data.contact,'邮箱 admin@example.com / QQ 123456');
+ assert.equal((await call('/api/password','Carol',{oldPassword:password,newPassword:'newpass123'})).status,403);
+ assert.equal((await call('/api/tasks?status=bogus','')).status,400);
+ assert.equal((await call('/api/tasks?status=open','')).status,200);
+}));

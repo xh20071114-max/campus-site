@@ -66,7 +66,7 @@ async function load(silent){
   const dl=x=>Number(x.delta??x.change??x.amount??0);
   const ptsHtml=pts==null?'':`<div class="pts"><div><div style="opacity:.85;font-size:14px">我的积分</div><b>${esc(pts)}</b>分</div><a class="rc" href="recharge.html">💰 充值</a></div>
   <div class="led"><h2>📒 积分明细</h2><ul>${led.slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0)).map(x=>`<li><span>${esc(x.reason||({signup:'注册赠送',post:'发布任务',claim:'接单',refund:'撤销退还',bonus:'积分任务奖励',recharge:'充值',admin:'管理员调整'})[x.type]||'积分变动')}<br><small>${x.time?new Date(x.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):''}${x.balance!=null?' · 余额 '+esc(x.balance):''}</small></span><span class="${dl(x)>=0?'pl':'mi'}">${dl(x)>=0?'+':''}${dl(x)}</span></li>`).join('')||'<li class="empty">还没有积分变动</li>'}</ul></div>`;
-  let ban=false,evU=0,chU=0;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok){const d2=await r2.json();ban=!!d2.banned;evU=d2.eventUnread|0;chU=d2.chatUnread|0}}catch{}
+  let ban=false,banReason='',contact='',evU=0,chU=0;try{const r2=await fetch((window.API_BASE||'')+'/api/me',{headers:{Authorization:'Bearer '+token}});if(r2.ok){const d2=await r2.json();ban=!!d2.banned;banReason=d2.banReason||'';contact=d2.contact||'';evU=d2.eventUnread|0;chU=d2.chatUnread|0}}catch{}
   const dt=document.getElementById('meDot');if(dt){const nd=evU+chU;dt.hidden=!nd;dt.textContent=nd>99?'99+':nd}
   let evs=null;try{const r4=await fetch((window.API_BASE||'')+'/api/my/events',{headers:{Authorization:'Bearer '+token}});if(r4.ok){const d4=await r4.json();evs=Array.isArray(d4)?d4:(d4.events||d4.list||[])}}catch{}
   let prof=null;try{const r5=await fetch((window.API_BASE||'')+'/api/users/'+encodeURIComponent(me)+'/profile',{headers:{Authorization:'Bearer '+token}});if(r5.ok)prof=await r5.json()}catch{}
@@ -80,7 +80,7 @@ async function load(silent){
   const credHtml=prof?`<div class="cred"><h2>⭐ 我的信用</h2><div class="cs3"><div><b>${rc?pct(good):'—'}</b><span>好评率</span></div><div><b>${rc&&avg!=null?esc(Number(avg).toFixed(1)):'—'}</b><span>平均分</span></div><div><b>${esc(prof.completed??prof.doneCount??0)}</b><span>接单完成</span></div><div><b>${esc(prof.posted??0)}</b><span>发布完成</span></div><div><b>${esc(rc)}</b><span>收到评价</span></div></div>
   <ul>${rv.slice(0,10).map(x=>`<li><span class="stars">${star(x.score)}</span> ${esc(x.comment||'')}<br><small>${x.from?esc(x.from):'（已注销用户）'}${x.role==='claimer'?' · 作为接单人':x.role==='poster'?' · 作为发布人':''} · ${tfmt(x.time)}</small></li>`).join('')||'<li class="empty">还没有收到评价。任务完成后，对方可以给你打分</li>'}</ul></div>`:'';
   const parts={
-    banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。如有疑问请联系管理员。</div>':'',
+    banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px;line-height:1.6">⛔ 你的账号已被管理员封禁'+(banReason?'，原因：'+esc(banReason):'')+'，暂时不能发消息和接单。'+(contact?'如有疑问请联系管理员：'+esc(contact):'如有疑问请联系站点管理员。')+'</div>':'',
     ptsbox:ptsHtml,
     evbox:evHtml,
     credbox:credHtml,

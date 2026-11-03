@@ -32,13 +32,13 @@
 | POST | /api/channels/<频道>/messages | `{text,task}` 发消息或任务 |
 | POST | /api/channels/<频道>/messages/<id>/claim | 接单（不能接自己的） |
 | POST | /api/channels/<频道>/messages/<id>/complete | 发布者确认完成（需已接单） |
-| GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 跨频道任务 |
+| GET | /api/tasks?status=open|claimed|done|all&limit= | 跨频道任务 |
 | GET | /api/my/tasks | `{posted,claimed}` |
 
 需要登录的接口请求头带 `Authorization: Bearer <token>`。token 7 天过期，每账号最多保留 10 个登录。登录、注册和修改密码共用每 IP 每分钟 60 次限额；登录另有同账号同 IP 15 分钟 10 次失败、跨 IP 合计 50 次失败限制（历史成功 IP 豁免后者）。频道发布每人每分钟 10 条，超出返回 429。
 
 ## 总管理员与权限授权
-环境变量 `ADMIN=用户名` 指定唯一总管理员，默认精确匹配 `AevonEcho`，区分大小写。已有账号自动保留总管理员身份。总管理员在管理后台「管理员授权」中搜索用户、勾选权限并保存；取消全部权限即撤销管理员身份。普通管理员不能授权、撤权或变更总管理员身份，完整备份也仅限总管理员。
+环境变量 `ADMIN=用户名` 指定唯一总管理员，默认精确匹配 `AevonEcho`，区分大小写。已有账号自动保留总管理员身份。总管理员在管理后台「管理员授权」中搜索或从下拉选择用户名快速定位到人，勾选权限并保存；取消全部权限即撤销管理员身份。普通管理员不能授权、撤权或变更总管理员身份，完整备份也仅限总管理员。
 
 可分别授予 16 项权限：查看用户、封禁/解封、删除用户、调整积分、查看消息/议价、删除消息/任务、查看私聊/图片、管理公告、审核充值、修改积分规则、发布积分奖励任务、处理建议、处理举报、处理纠纷、发布频道通知、免任务手续费。封禁/删除/调整积分含查看用户，删除消息含查看消息；其他权限独立。普通管理员不能封禁、删除管理员或直接调整管理员积分；总管理员可以管理普通管理员，总管理员账号始终受保护。
 
@@ -61,7 +61,7 @@
 | POST /api/admin/users/<用户名>/delete | 删除账号：token 失效，消息标记已删除（原文留给管理员），未完成的任务撤销，接了的单放回待接单，用户名可重新注册 |
 | POST /api/announcements、/api/announcements/<id>/delete | 发布、删除公告 |
 
-被封的账号在登录、发消息、接单时返回 403 `{error:"账号已被封禁", banned:true}`，`/api/me` 里也带 `banned`。
+被封的账号在登录、发消息、接单时返回 403 `{error:"账号已被封禁", banned:true, banReason, contact}`（`banReason` 是封禁原因，`contact` 是平台联系方式），`/api/me` 里也带 `banned`、`banReason` 和 `contact`。登录页、项目频道和个人中心会展示封禁原因与联系渠道，方便被封用户联系管理员。
 
 ## 一键部署（页面和后端放在同一台服务器）
 `server.js` 会直接提供所有页面，所以 `config.js` 里的 `API_BASE` 留空就行。
@@ -96,11 +96,11 @@ nohup ./run.sh &
 
 | 接口 | 说明 |
 |---|---|
-| GET /api/settings | 公开，返回 {postCost, claimCost, signupBonus} |
+| GET /api/settings | 公开，返回 {postCost, claimCost, signupBonus, contactInfo} |
 | GET /api/my/points | 本人的余额和流水 {points, log:[{time,delta,balance,type,reason}]} |
-| POST /api/recharge {amount, method:alipay\|wechat, note} | 提交充值，等待审核（每人最多 5 笔在审核中） |
+| POST /api/recharge {amount, method:alipay|wechat, note} | 提交充值，等待审核（每人最多 5 笔在审核中） |
 | GET /api/my/recharges | 本人的充值记录 |
-| GET/POST /api/admin/settings | 查看或修改三个积分配置 |
+| GET/POST /api/admin/settings | 查看或修改三个积分配置与平台联系方式（contactInfo，最多 200 字） |
 | GET /api/admin/recharges?status=pending | 充值审核列表 |
 | POST /api/admin/recharges/<id>/approve {points} 或 /reject {reason} | 通过或拒绝充值 |
 | POST /api/admin/users/<用户名>/points {delta, reason} | 手动加减积分，不能扣到负数 |
@@ -194,7 +194,7 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 
 - 成功的 JSON API 响应返回前，待写数据会写入临时文件、执行 fsync 并替换 data.json。写盘失败返回 503，进程停止接受操作并以非零状态退出，由托管平台重启；排查日志与存储空间后恢复。此策略优先保证余额和交易记录的保存，整库同步写入的耗时需随数据增长监测。
 - 新记录使用持久化递增 ID，启动时扫描旧记录的最高 ID；保留旧 ID 和图片路径。账号带不可复用的 id，议价记录绑定该身份；旧记录按账号创建时间迁移，身份不明或已注销的记录仅供发布人和管理员审计。同名新账号不会继承旧议价。
-- 放弃接单、发布人取消接单人或接单人在待完成阶段删号后，任务恢复议价前报价；原议价历史保留。管理员参与的任务也能读取所有历史私聊及仍保留的图片。
+- 放弃接单、发布人取消接单人或在待完成阶段删号后，任务恢复议价前报价；原议价历史保留。管理员参与的任务也能读取所有历史私聊及仍保留的图片。
 - 普通 JSON POST 请求先读完请求体再检查权限和状态，最大 100000 字节；非法 JSON 返回 400，超限返回 413。图片使用独立的大小限制，读完上传内容后复核会话、封禁状态和双方身份。
 - 静态服务只允许 PUBLIC_FILES 中的明确资源。添加新的公开资源时需要更新白名单；测试、源代码、备份及运维文件不自动公开。.dockerignore 排除运行数据和测试，.gitignore 排除本地数据与审查产物。
 - 本地运行回归测试：`node --test tests/regression.test.cjs`。测试启动独立临时数据目录和随机端口，验证账号隔离、慢请求竞态、议价、管理员历史聊天和图片、积分幂等、数据落盘、写盘故障、重启、静态访问与前端逻辑；不访问正式站。前端逻辑测试不替代真实浏览器验收。
