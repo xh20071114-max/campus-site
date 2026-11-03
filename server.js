@@ -1,16 +1,29 @@
 // Aevon校园交流网 后端：静态文件 + 登录 + 频道消息 + 公告（数据存 data.json，每日备份到 backups/）
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib');
-const PORT=process.env.PORT||3000, ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
+const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
 const CHANNELS=['校园跑','食堂配送','代取快递','代课','代做作业'];
 // 读数据：data.json 坏了绝不用空库覆盖。先把坏文件改名，再从最近一份能解析的备份恢复；都不行就拒绝启动
-const parseDB=t=>{const d=JSON.parse(t);if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('数据不是对象');return d};
+const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Array.isArray(x),check=(ok,field)=>{if(!ok)throw new Error('数据结构无效：'+field)};
+  check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
+  for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily'])if(Object.hasOwn(d,k))check(object(d[k]),k);
+  for(const k of ['ledger','recharges','feedback','reports','announcements'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
+  for(const k of ['messages','taskChats','events','offers'])for(const l of Object.values(d[k]||{}))check(Array.isArray(l)&&l.every(x=>object(x)&&/^[0-9]+$/.test(String(x.id))&&Number.isSafeInteger(Number(x.id))&&Number(x.id)>0),k);
+  for(const k of ['taskChats','chatRead','offers'])for(const id of Object.keys(d[k]||{}))check(/^[0-9]+$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0,k+' 任务 ID');
+  for(const l of Object.values(d.taskChats||{}))for(const x of l)if(x.image)check(['jpg','png'].includes(x.imageExt),'taskChats 图片类型');
+  for(const u of Object.values(d.users))check(object(u)&&typeof u.pw==='string'&&u.pw.length>0&&(typeof u.created==='number'||typeof u.created==='string')&&Number.isFinite(new Date(u.created).getTime())&&(!Object.hasOwn(u,'points')||(Number.isSafeInteger(u.points)&&u.points>=0)),'users 记录');
+  for(const x of Object.values(d.sessions||{}))check((typeof x==='string'&&x.length>0)||(object(x)&&typeof x.user==='string'&&Number.isFinite(x.exp)),'sessions 记录');
+  for(const x of Object.values(d.chatRead||{}))check(object(x),'chatRead 记录');
+  for(const k of ['postCost','claimCost','signupBonus'])if(d.settings&&Object.hasOwn(d.settings,k))check(Number.isSafeInteger(d.settings[k])&&d.settings[k]>=0&&d.settings[k]<=1000000,'settings.'+k);
+  return d};
 function loadDB(){
   const fromBackup=why=>{let files=[];try{files=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).sort().reverse()}catch{}
     for(const f of files){try{const d=parseDB(fs.readFileSync(path.join(BAK,f),'utf8'));console.error(why+'，已从备份恢复：'+f);return d}catch(e){console.error('备份也坏了，跳过：'+f,e.message)}}
     return null};
   if(!fs.existsSync(DB)){const d=fromBackup('data.json 不存在');if(d)return d; // 之前坏过（有 data.corrupt-*）又没有备份：不能当成全新站点用空库启动
-    if(fs.readdirSync(DATA_DIR).some(f=>/^data\.corrupt-.*\.json$/.test(f))){console.error('data.json 之前损坏过，又没有能用的备份，拒绝用空库启动，请人工处理');process.exit(1)}
+    const old=fs.readdirSync(DATA_DIR).some(f=>/^data\.corrupt-.*\.json$/.test(f)||f==='data.json.tmp');
+    const hasFiles=dir=>fs.existsSync(dir)&&fs.readdirSync(dir).length>0;
+    if(old||hasFiles(BAK)||hasFiles(path.join(DATA_DIR,'uploads'))){console.error('发现历史数据，但主库缺失且没有能用的备份，拒绝用空库启动，请人工处理');process.exit(1)}
     return {users:{},sessions:{},messages:{}}}
   try{return parseDB(fs.readFileSync(DB,'utf8'))}catch(e){
     const bad=path.join(DATA_DIR,'data.corrupt-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
@@ -23,11 +36,26 @@ db.users=db.users||{};db.sessions=db.sessions||{};db.messages=db.messages||{};db
 // 用无原型对象，防止 __proto__、constructor 这类用户名或频道名命中内置属性
 for(const k of ['users','sessions','messages','deletedTexts']) if(db[k]&&typeof db[k]==='object') db[k]=Object.assign(Object.create(null),db[k]);
 CHANNELS.forEach(c=>db.messages[c]=db.messages[c]||[]);
-// 先写临时文件再改名，避免写一半崩溃把 data.json 弄坏
-// 200ms 内的多次写合并成一次；进程退出前会立即写盘
-let persistTimer=null;
-const persistNow=()=>{if(persistTimer){clearTimeout(persistTimer);persistTimer=null}fs.writeFileSync(DB+".tmp",JSON.stringify(db));fs.renameSync(DB+".tmp",DB)};
-const persist=(ms=200)=>{if(!persistTimer)persistTimer=setTimeout(()=>{persistTimer=null;try{persistNow()}catch(e){console.error('写盘失败，5 秒后重试',e.message);persist(5000)}},ms)};
+// 保留旧记录 ID；新 ID 在同一毫秒和时钟回退时也严格递增，重启后不会复用。
+let lastId=Number.isSafeInteger(db.lastId)?db.lastId:0;
+const rememberId=x=>{const id=Number(x.id);if(Number.isSafeInteger(id)&&id>lastId)lastId=id};
+for(const k of ['messages','taskChats','events','offers']) for(const l of Object.values(db[k]||{})) if(Array.isArray(l)) l.forEach(rememberId);
+for(const k of ['ledger','recharges','feedback','reports','announcements']) if(Array.isArray(db[k])) db[k].forEach(rememberId);
+db.lastId=lastId;
+const newId=()=>{lastId=Math.max(Date.now()*1000,lastId+1);if(!Number.isSafeInteger(lastId))throw new Error('ID 超出安全整数范围');return db.lastId=lastId};
+for(const u of Object.values(db.users)) if(!u.id)u.id=crypto.randomUUID();
+// 临时文件写入并 fsync 后再替换主库。接口成功响应前会刷新待写数据。
+// 写盘失败时停止接受操作并退出，避免在未保存的余额上继续交易。
+let persistTimer=null,storageError=null;
+const failStorage=e=>{if(storageError)return;storageError=e;console.error('数据保存失败，停止服务以保护已保存数据',e.message);setTimeout(()=>process.exit(1),100).unref()};
+const atomicWrite=(file,source)=>{let fd;try{fd=fs.openSync(file+'.tmp','w');if(typeof source==='function')source(fd);else fs.writeFileSync(fd,source);fs.fsyncSync(fd)}finally{if(fd!==undefined)fs.closeSync(fd)}fs.renameSync(file+'.tmp',file)};
+// 按集合中的记录分块序列化，避免整库字符串和 UTF-8 Buffer 同时驻留。
+function* jsonChunks(value,depth=0){if(Array.isArray(value)){yield '[';for(let i=0;i<value.length;i++){if(i)yield ',';yield JSON.stringify(value[i])??'null'}yield ']'}
+  else if(value&&typeof value==='object'&&depth<2&&typeof value.toJSON!=='function'){yield '{';let separator='';for(const [k,v] of Object.entries(value)){if(['undefined','function','symbol'].includes(typeof v))continue;yield separator+JSON.stringify(k)+':';separator=',';yield*jsonChunks(v,depth+1)}yield '}'}
+  else yield JSON.stringify(value)}
+const writeJSON=(fd,value)=>{let parts=[],size=0;const flush=()=>{if(!size)return;const b=Buffer.from(parts.join(''));for(let offset=0;offset<b.length;){const n=fs.writeSync(fd,b,offset,b.length-offset);if(!n)throw new Error('数据写入没有进展');offset+=n}parts=[];size=0};for(const chunk of jsonChunks(value)){parts.push(chunk);size+=chunk.length;if(size>=65536)flush()}flush()};
+const persistNow=()=>{if(storageError)throw storageError;if(persistTimer){clearTimeout(persistTimer);persistTimer=null}atomicWrite(DB,fd=>writeJSON(fd,db))};
+const persist=(ms=200)=>{if(!persistTimer&&!storageError)persistTimer=setTimeout(()=>{persistTimer=null;try{persistNow()}catch(e){failStorage(e)}},ms)};
 process.on('exit',()=>{if(persistTimer)try{persistNow()}catch{}});
 for(const sig of ['SIGTERM','SIGINT']) process.on(sig,()=>{try{persistNow()}catch{}process.exit(0)});
 // 唯一管理员：环境变量 ADMIN（兼容旧的 ADMINS，只取第一个），全站只认这一个账号
@@ -38,14 +66,21 @@ const BANNED={error:'账号已被封禁',banned:true};
 const isAdmin=n=>!!n&&ADMINS.includes(n);
 const legacy=p=>crypto.createHash("sha256").update("campus:"+p).digest("hex");
 const hash=(p,salt=crypto.randomBytes(16).toString("hex"))=>"s1$"+salt+"$"+crypto.scryptSync(p,salt,32).toString("hex");
-const scryptA=(p,salt)=>new Promise((ok,no)=>crypto.scrypt(p,salt,32,(e,k)=>e?no(e):ok(k)));
+// 每次 scrypt 约占 16MB 原生内存，限制并发并为等待队列设上限。
+let hashActive=0;const hashQueue=[],HASH_CONCURRENCY=2,HASH_WAIT_MAX=8;
+const runHash=job=>{hashActive++;const done=(e,k)=>{hashActive--;if(hashQueue.length)runHash(hashQueue.shift());e?job.no(e):job.ok(k)};try{crypto.scrypt(job.p,job.salt,32,done)}catch(e){done(e)}};
+const scryptA=(p,salt)=>new Promise((ok,no)=>{const job={p,salt,ok,no};if(hashActive<HASH_CONCURRENCY)runHash(job);else if(hashQueue.length<HASH_WAIT_MAX)hashQueue.push(job);else no(Object.assign(new Error('登录服务繁忙，请稍后重试'),{statusCode:503}))});
 const hashA=async(p,salt=crypto.randomBytes(16).toString("hex"))=>"s1$"+salt+"$"+(await scryptA(p,salt)).toString("hex");
 const verifyA=async(p,h)=>{if(!h)return false;if(!h.startsWith("s1$"))return h===legacy(p);const salt=h.split("$")[1];const x=Buffer.from(await hashA(p,salt)),y=Buffer.from(h);return x.length===y.length&&crypto.timingSafeEqual(x,y)};
 const verify=(p,h)=>{if(!h)return false;if(!h.startsWith("s1$"))return h===legacy(p);const salt=h.split("$")[1];return crypto.timingSafeEqual(Buffer.from(hash(p,salt)),Buffer.from(h))};
-const SESSION_MS=7*24*3600e3, hits={};
+const SESSION_MS=7*24*3600e3,hits=new Map(),RATE_KEYS_MAX=10000,FAIL_KEYS_MAX=20000;
+let invalidSessions=0;for(const [t,s] of Object.entries(db.sessions)){const u=typeof s==='object'&&db.users[s.user];if(!u||Date.now()>=s.exp||(s.userId&&s.userId!==u.id)){delete db.sessions[t];invalidSessions++}else s.userId=u.id}
+if(invalidSessions)console.log('已使旧版或无效登录失效：'+invalidSessions);
 // 按账号限制登录失败：同一用户名 15 分钟内错 10 次就先锁住，不管请求从哪个 IP 来
-const fails=new Map(),FAIL_MS=15*60e3,failCount=n=>{const k=String(n).toLowerCase(),a=(fails.get(k)||[]).filter(t=>Date.now()-t<FAIL_MS);fails.set(k,a);return a.length},addFail=n=>{const k=String(n).toLowerCase();fails.set(k,[...(fails.get(k)||[]),Date.now()])};
-const limited=(key,max=20)=>{const now=Date.now(),a=(hits[key]||[]).filter(t=>now-t<60e3);a.push(now);hits[key]=a;return a.length>max};
+const fails=new Map(),loginPending=new Map(),FAIL_MS=15*60e3,failKey=n=>String(n).toLowerCase();
+const failCount=n=>{const k=failKey(n),a=(fails.get(k)||[]).filter(t=>Date.now()-t<FAIL_MS);if(fails.has(k))fails.set(k,a);return a.length};
+const addFail=n=>{const k=failKey(n);fails.set(k,[...(fails.get(k)||[]),Date.now()].slice(-50))};
+const limited=(key,max=20)=>{if(!hits.has(key)&&hits.size>=RATE_KEYS_MAX)return true;const now=Date.now(),a=(hits.get(key)||[]).filter(t=>now-t<60e3);a.push(now);hits.set(key,a.slice(-(max+1)));return a.length>max};
 const nextRev=()=>db.rev=(db.rev||0)+1;
 // ===== 积分 =====
 db.settings=Object.assign({postCost:1,claimCost:1,signupBonus:10},db.settings||{}); db.ledger=db.ledger||[]; db.recharges=db.recharges||[]; db.feedback=db.feedback||[];
@@ -54,7 +89,7 @@ db.taskChats=Object.assign(Object.create(null),db.taskChats||{}); db.chatRead=Ob
 const S=()=>db.settings, pts=n=>(db.users[n]&&db.users[n].points)||0;
 const intIn=(v,min,max)=>{const x=typeof v==='string'&&v.trim()!==''?Number(v):v;return Number.isInteger(x)&&x>=min&&x<=max?x:null};
 // 改积分必须走这里：同步完成「改余额+记流水」，中间没有 await，并发请求不会扣成负数
-const addPoints=(n,delta,type,reason,ref)=>{const u=db.users[n];if(!u||!delta)return;u.points=(u.points||0)+delta;db.ledger.push({id:Date.now()*1000+Math.floor(Math.random()*1000),user:n,time:new Date().toISOString(),delta,balance:u.points,type,reason:reason||'',...(ref!=null?{ref:String(ref)}:{})})};
+const addPoints=(n,delta,type,reason,ref)=>{const u=db.users[n];if(!u||!delta)return;u.points=(u.points||0)+delta;db.ledger.push({id:newId(),user:n,time:new Date().toISOString(),delta,balance:u.points,type,reason:reason||'',...(ref!=null?{ref:String(ref)}:{})})};
 const noPoints=(n,need)=>({error:'积分不足：需要 '+need+' 积分，当前 '+pts(n)+' 积分，请先充值',points:pts(n),need});
 for(const [k,u] of Object.entries(db.users)) if(u.points==null){u.points=0;if(!isAdmin(k))addPoints(k,S().signupBonus,'signup','老账号补发注册积分')}
 // 任务私聊辅助：找任务、判断能不能读、算未读
@@ -80,15 +115,21 @@ const finishTask=(m,now)=>{m.done=true;m.doneAt=now;delete m.stage;if(m.bonusPoi
 db.events=Object.assign(Object.create(null),db.events||{}); db.reports=db.reports||[];
 // 讨价：offers[任务id]=[{id,user,status:pending|accepted|rejected|withdrawn|expired,price,turn:poster|claimer,rounds:[{by,price,note,time}],time,updated,reason?}]
 db.offers=Object.assign(Object.create(null),db.offers||{});
+// 旧库议价按账号创建时间迁移；已注销账号的记录只保留给发布人和管理员。
+for(const l of Object.values(db.offers)) for(const o of l){const u=db.users[o.user];
+  if(!u||o.userDeleted||(o.userId?o.userId!==u.id:!(Date.parse(o.time)>=Number(u.created)))){o.userDeleted=true;if(o.status==='pending'){o.status='expired';o.reason='原账号已注销或身份无法确认';o.updated=new Date().toISOString()}}
+  else o.userId=u.id}
+const ownsOffer=(o,n)=>!o.userDeleted&&o.user===n&&!!db.users[n]&&o.userId===db.users[n].id;
+const resetNegotiation=m=>{if(!m.negotiated)return;if(m.originalReward)m.reward=m.originalReward;else delete m.reward;delete m.originalReward;delete m.negotiated;delete m.offerId};
 const OFFER_MAX_PENDING=10, OFFER_MAX_ROUNDS=6; // 来回 3 轮 = 最多 6 次出价（讨价 1 次 + 还价最多 5 次）
 const pendingOffers=m=>(db.offers[m.id]||[]).filter(o=>o.status==='pending');
-const offerPrice=v=>{const x=typeof v==='string'&&v.trim()!==''?Number(v.trim()):v; return typeof x==='number'&&isFinite(x)&&x>0&&x<=100000?Math.round(x*100)/100:null};
+const offerPrice=v=>{const x=typeof v==='string'&&v.trim()!==''?Number(v.trim()):v; return typeof x==='number'&&isFinite(x)&&x>=0.01&&x<=100000?Math.round(x*100)/100:null};
 // 让任务上所有进行中的讨价失效，并给讨价人发动态（actor 是触发的人，不给他自己发）
 // 给前端的 offer：额外带 note（最新留言）、round（第几轮，1-3）、counter（发布人最新还价）、history、canCounter；有还价且没结束时 status 显示 countered，原状态在 rawStatus
 const offerView=(o,m,v)=>{const last=o.rounds[o.rounds.length-1], pc=[...o.rounds].reverse().find(x=>x.by==='poster'), myTurn=!!v&&(v===m.user?o.turn==='poster':v===o.user?o.turn==='claimer':false);
   return {...o,task:m.id,rawStatus:o.status,status:o.status==='pending'&&o.rounds.length>1?'countered':o.status,note:last?last.note:'',round:Math.ceil(o.rounds.length/2),maxRound:3,counter:pc?pc.price:null,myTurn,canCounter:o.status==='pending'&&myTurn&&o.rounds.length<OFFER_MAX_ROUNDS,
     history:o.rounds.map((x,i)=>({by:x.by,action:i===0?'offer':'counter',price:x.price,note:x.note,time:x.time})).concat(o.status!=='pending'?[{by:o.status==='rejected'?'poster':o.status==='withdrawn'?'claimer':o.status==='accepted'?(o.turn==='poster'?'poster':'claimer'):'system',action:o.status==='accepted'?'accept':o.status==='rejected'?'reject':o.status==='withdrawn'?'withdraw':'expire',price:o.price,note:o.reason||'',time:o.updated}]:[])}};
-const expireOffers=(m,why,actor)=>{let k=0; for(const o of pendingOffers(m)){o.status='expired';o.reason=why;o.updated=new Date().toISOString();k++; ev(o.user,'offer_expire',m,'你的讨价已失效：'+why,actor)} return k};
+const expireOffers=(m,why,actor)=>{let k=0; for(const o of pendingOffers(m)){o.status='expired';o.reason=why;o.updated=new Date().toISOString();k++; if(ownsOffer(o,o.user))ev(o.user,'offer_expire',m,'你的讨价已失效：'+why,actor)} return k};
 const ev=(u,type,m,text,actor)=>{if(!u||u===actor||!db.users[u])return; if(u===m.user&&m.userDeleted)return; if(u===m.claimedBy&&m.claimerDeleted&&u!==m.user)return;
   const l=db.events[u]=db.events[u]||[]; l.push({id:newId(),type,taskId:m.id,channel:chOf(m),task:String(m.text||db.deletedTexts[m.id]||'').slice(0,40),text,time:new Date().toISOString(),read:false}); if(l.length>200) l.splice(0,l.length-200)};
 const chOf=m=>{const t=IDX.get(String(m.id));return t?t.ch:null};
@@ -96,17 +137,22 @@ const totalChatUnread=n=>{let t=0;const a=UR.get(n);if(a)for(const v of a.values
 rebuildUR();
 // 排序：new 最新在前；reward 按悬赏里的数字从高到低（加上奖励积分）；deadline 截止时间最近的在前，没写截止时间的排最后
 const rewardNum=x=>{const v=parseFloat(String(x.reward||'').replace(/[^\d.]/g,''));return (isNaN(v)?0:v)+(x.bonusPoints||0)};
-const sortTasks=(l,so)=>l.slice().sort(so==='reward'?(a,b)=>rewardNum(b)-rewardNum(a)||b.id-a.id:so==='deadline'?(a,b)=>(a.deadline?Date.parse(a.deadline):Infinity)-(b.deadline?Date.parse(b.deadline):Infinity)||b.id-a.id:(a,b)=>b.id-a.id);
-const newId=()=>Date.now()*1000+Math.floor(Math.random()*1000);
-const send=(res,code,obj)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});res.end(JSON.stringify(obj))};
-const body=req=>new Promise(r=>{let d='';req.on('data',c=>{d+=c;if(d.length>1e5){d='';r({});req.destroy()}});req.on('end',()=>{try{const v=JSON.parse(d||'{}');r(v&&typeof v==='object'&&!Array.isArray(v)?v:{})}catch{r({})}})});
-const IMG_MAX=300*1024, IMG_DAILY=20, UPLOAD_MAX=500*1024*1024, UPLOADS=path.join(DATA_DIR,'uploads');
+const taskComparator=so=>so==='reward'?(a,b)=>rewardNum(b)-rewardNum(a)||b.id-a.id:so==='deadline'?(a,b)=>(a.deadline?Date.parse(a.deadline):Infinity)-(b.deadline?Date.parse(b.deadline):Infinity)||b.id-a.id:(a,b)=>b.id-a.id;
+const sortTasks=(l,so)=>l.slice().sort(taskComparator(so));
+const send=(res,code,obj)=>{if(code>=200&&code<300){try{if(storageError)throw storageError;if(persistTimer)persistNow()}catch(e){failStorage(e);code=503;obj={error:'数据保存失败，服务暂时不可用，请稍后重试'}}}res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-store'});res.end(JSON.stringify(obj))};
+// 请求体只读一次，用字节限额并在拼接后解码，避免中文跨网络分片损坏。
+const body=req=>req.jsonBody||(req.jsonBody=new Promise((resolve,reject)=>{const chunks=[];let size=0,ended=false;
+  const fail=(statusCode,message)=>{if(ended)return;ended=true;chunks.length=0;reject(Object.assign(new Error(message),{statusCode}))};
+  req.on('data',c=>{if(ended)return;size+=c.length;if(size>100000){fail(413,'请求内容过大');return}chunks.push(c)});
+  req.on('end',()=>{if(ended)return;try{const d=Buffer.concat(chunks).toString('utf8'),v=JSON.parse(d||'{}');if(!v||typeof v!=='object'||Array.isArray(v))throw new Error();ended=true;resolve(v)}catch{fail(400,'请求内容必须是 JSON 对象')}});
+  req.on('aborted',()=>fail(400,'请求已中断'));req.on('error',()=>fail(400,'请求读取失败'))}));
+const IMG_MAX=300*1024, IMG_DAILY=20,TASK_CHAT_MAX=2000, UPLOAD_MAX=500*1024*1024, UPLOADS=path.join(DATA_DIR,'uploads');
 db.imgDaily=Object.assign(Object.create(null),db.imgDaily||{});
 let uploadBytes=0; const duSize=d=>{let t=0;try{for(const e of fs.readdirSync(d,{withFileTypes:true}))t+=e.isDirectory()?duSize(path.join(d,e.name)):fs.statSync(path.join(d,e.name)).size}catch{}return t}; uploadBytes=duSize(UPLOADS);
 // 读原始请求体，超过 max 字节返回 null
 const rawBody=(req,max)=>new Promise(r=>{const a=[];let n=0,over=false;req.on('data',c=>{if(over)return;n+=c.length;if(n>max){over=true;a.length=0;r(null);return}a.push(c)});req.on('end',()=>{if(!over)r(Buffer.concat(a))});req.on('error',()=>r(null))});
 const tokenOf=req=>(req.headers.authorization||"").replace("Bearer ","");
-const userOf=req=>{const t=tokenOf(req),x=db.sessions[t];if(!x)return null;if(typeof x==="string")return x;if(Date.now()>x.exp){delete db.sessions[t];return null}return x.user};
+const userOf=req=>{const t=tokenOf(req),x=db.sessions[t];if(!x)return null;const u=db.users[x.user];if(typeof x!=='object'||!u||x.userId!==u.id||Date.now()>=x.exp){delete db.sessions[t];persist();return null}return x.user};
 const expired=x=>!!(x.deadline&&!x.claimedBy&&Date.parse(x.deadline)<Date.now());
 // 返回给前端时附上计算字段 expired（截止时间已过且没人接）
 // 已接单、没完成、超过截止时间 24 小时 = 超时，发布人可以撤销
@@ -115,12 +161,14 @@ const overdue=x=>!!(x.task&&x.deadline&&x.claimedBy&&!x.done&&!x.cancelled&&!x.s
 const status=x=>!x.task?undefined:x.closed?'closed':x.cancelled?'cancelled':x.done?'done':x.stage?x.stage:x.claimedBy?'claimed':'open';
 const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOverlap,...v}=rs[k];o[k]=v}return o};
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
-const out=(x,c,v)=>{const full=v===true||(!!v&&(isAdmin(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&isAdmin(v)&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>y.user===v):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
+const out=(x,c,v)=>{const full=v===true||(!!v&&(isAdmin(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||isAdmin(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.webmanifest':'application/manifest+json','.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
+// 只提供明确公开的资源；新增测试、备份或运维文件不会自动暴露到公网。
+const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
 // 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
 const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
@@ -129,14 +177,15 @@ const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
 const USER_IMG_MAX=20*1024*1024, IMG_KEEP_MS=30*864e5, UB=new Map();
 for(const l of Object.values(db.taskChats)) for(const x of l) if(x.image&&!x.userDeleted) UB.set(x.user,(UB.get(x.user)||0)+(x.imageSize||0));
 const rmImgs=(tid,pred=()=>true)=>{const l=db.taskChats[tid]; if(!l) return 0; let k=0; const dir=path.join(UPLOADS,String(tid));
-  for(const x of l) if(x.image&&pred(x)){const f=path.join(dir,x.id+'.'+x.imageExt); let sz=0; try{sz=fs.statSync(f).size;fs.unlinkSync(f)}catch{}
+  for(const x of l) if(x.image&&pred(x)){const f=path.join(dir,x.id+'.'+x.imageExt); let sz=0; try{sz=fs.statSync(f).size;fs.unlinkSync(f)}catch(e){if(e.code!=='ENOENT'){x.imageCleanupPending=true;console.error('图片清理失败，将重试：'+f,e.message);continue}}
     uploadBytes=Math.max(0,uploadBytes-sz); if(!x.userDeleted){const v=(UB.get(x.user)||0)-(x.imageSize||0); v>0?UB.set(x.user,v):UB.delete(x.user)}
-    delete x.image; x.imageRemoved=true; k++}
+    delete x.image;delete x.imageCleanupPending; x.imageRemoved=true; k++}
   if(!l.some(x=>x.image)&&fs.existsSync(dir)){const rest=duSize(dir); try{fs.rmSync(dir,{recursive:true,force:true});uploadBytes=Math.max(0,uploadBytes-rest)}catch{}}
   return k};
 // 任务结束（完成、撤回、关闭、删除）30 天后清理图片
 function cleanImgs(){const now=Date.now();let k=0;
   for(const tid of Object.keys(db.taskChats)){const l=db.taskChats[tid]; if(!l.some(x=>x.image)) continue; const t=IDX.get(tid), m=t&&t.msg;
+    k+=rmImgs(tid,x=>!!x.imageCleanupPending);
     if(m&&!m.deleted&&!m.done&&!m.cancelled) continue;
     const end=!m?0:Date.parse((m.deleted?m.deletedAt:m.done?m.doneAt:m.cancelledAt)||0)||0;
     if(now-end>IMG_KEEP_MS) k+=rmImgs(tid)}
@@ -154,25 +203,23 @@ function autoConfirm(){expireDue();const now=Date.now();let ch=false;
 // 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份
 function backup(){try{
   if(!fs.existsSync(DB))return;
-  try{parseDB(fs.readFileSync(DB,'utf8'))}catch(e){console.error('data.json 解析失败，跳过这次备份',e.message);return}
   fs.mkdirSync(BAK,{recursive:true});
   const files=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).sort();
-  const last=files.length?fs.statSync(path.join(BAK,files[files.length-1])).mtimeMs:0;
-  if(Date.now()-last<24*3600e3)return;
-  fs.copyFileSync(DB,path.join(BAK,'data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json'));
-  const all=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).sort();
-  all.slice(0,Math.max(0,all.length-7)).forEach(f=>fs.unlinkSync(path.join(BAK,f)));
+  const valid=[];let last=0;for(const f of files.slice().reverse()){try{parseDB(fs.readFileSync(path.join(BAK,f),'utf8'));valid.push(f);last=Math.max(last,fs.statSync(path.join(BAK,f)).mtimeMs);if(files.length<=7&&Date.now()-last<24*3600e3)return}catch(e){console.error('忽略无效备份，保留原文件：'+f,e.message)}}
+  const text=fs.readFileSync(DB,'utf8');try{parseDB(text)}catch(e){console.error('data.json 解析失败，跳过这次备份',e.message);return}
+  if(Date.now()-last>=24*3600e3){const name='data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';atomicWrite(path.join(BAK,name),text);valid.push(name);valid.sort()}
+  valid.sort().slice(0,Math.max(0,valid.length-7)).forEach(f=>fs.unlinkSync(path.join(BAK,f)));
 }catch(e){console.error('备份失败',e.message)}}
 // 设置了 ADMIN_PASSWORD 时，启动时直接建好管理员账号，避免部署后被别人抢先注册（已存在就不动）
-if(ADMIN&&process.env.ADMIN_PASSWORD&&!db.users[ADMIN]){db.users[ADMIN]={pw:hash(String(process.env.ADMIN_PASSWORD)),created:Date.now()};console.log('已创建管理员账号',ADMIN)}
+if(ADMIN&&process.env.ADMIN_PASSWORD&&!db.users[ADMIN]){db.users[ADMIN]={id:crypto.randomUUID(),pw:hash(String(process.env.ADMIN_PASSWORD)),created:Date.now()};console.log('已创建管理员账号',ADMIN)}
 persist();
 backup();setInterval(backup,3600e3).unref();
 function cleanup(){const now=Date.now();let ch=false;
-  for(const [k,v] of Object.entries(db.sessions)) if(v&&typeof v==='object'&&now>v.exp){delete db.sessions[k];ch=true}
-  for(const k of Object.keys(hits)) if(!hits[k].some(t=>now-t<60e3)) delete hits[k];
-  for(const [k,a] of fails) if(!a.some(t=>now-t<FAIL_MS)) fails.delete(k);
+  for(const [k,v] of Object.entries(db.sessions)) if(v&&typeof v==='object'&&now>=v.exp){delete db.sessions[k];ch=true}
+  for(const [k,a] of hits) if(!a.some(t=>now-t<60e3)) hits.delete(k);
+  for(const [k,a] of fails) if(!loginPending.has(k)&&!a.some(t=>now-t<FAIL_MS)) fails.delete(k);
   if(ch) persist()}
-cleanup();setInterval(cleanup,3600e3).unref();
+cleanup();setInterval(cleanup,60e3).unref();
 cleanImgs();setInterval(cleanImgs,3600e3).unref(); autoConfirm();setInterval(autoConfirm,600e3).unref();
 const diskInfo=()=>{let free=null,size=null;try{const st=fs.statfsSync(DATA_DIR);free=st.bavail*st.bsize;size=st.blocks*st.bsize}catch{}
   let data=0;try{data=fs.statSync(DB).size}catch{} return {uploads:uploadBytes,uploadsMax:UPLOAD_MAX,data,backups:duSize(BAK),free,size,uploadBytes,uploadLimit:UPLOAD_MAX,dataBytes:data}};
@@ -187,7 +234,11 @@ const handle=async(req,res)=>{
   if(allow.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");res.setHeader("Access-Control-Allow-Methods","GET, POST, OPTIONS");res.setHeader("Access-Control-Expose-Headers","X-Rev")}
   if(req.method==="OPTIONS"){res.writeHead(204);return res.end()}
   if(p.startsWith('/api/')){
+    if(storageError)return send(res,503,{error:'数据保存失败，服务暂时不可用，请稍后重试'});
     const POST=req.method==='POST', GET=req.method==='GET';
+    // 先完整读取 JSON，再做身份和状态检查；慢速请求不能沿用换人/封禁/退出之前的授权。
+    // 图片走自己的二进制限额，上传结束后单独复核会话与账号。
+    if(POST&&!/^\/api\/tasks\/\d+\/chat\/image$/.test(p)) await body(req);
     // POST /api/register、/api/login {username,password} -> {token,username,admin}
     if(POST&&(p==='/api/register'||p==='/api/login')){
       const {username,password,password2}=await body(req);
@@ -199,15 +250,24 @@ const handle=async(req,res)=>{
       if(p==='/api/register'){
         if((ADMIN&&username!==ADMIN&&String(username).toLowerCase()===ADMIN.toLowerCase())||db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
         const pw=await hashA(String(password)); if(db.users[username]||Object.keys(db.users).some(k=>k.toLowerCase()===String(username).toLowerCase())) return send(res,409,{error:'用户名已存在'});
-        db.users[username]={pw,created:Date.now(),points:0}; if(!isAdmin(username)) addPoints(username,S().signupBonus,'signup','注册赠送');
+        db.users[username]={id:crypto.randomUUID(),pw,created:Date.now(),points:0}; if(!isAdmin(username)) addPoints(username,S().signupBonus,'signup','注册赠送');
       } else { // 两层锁定：同账号同 IP 15 分钟错 10 次只锁这个 IP；同账号所有 IP 合计错 50 次锁整个账号（以前在这个 IP 成功登录过的本人除外）
         const ip=clientIp(req),known=!!(db.users[username]&&(db.users[username].ips||[]).includes(ip));
-        if(failCount(username+'@'+ip)>=10||(failCount(username)>=50&&!known)) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
-        if(!db.users[username]||!(await verifyA(String(password),db.users[username].pw))||!db.users[username]){addFail(username);addFail(username+'@'+ip);return send(res,401,{error:'用户名或密码错误'})} }
+        const keys=[failKey(username),failKey(username+'@'+ip)],missing=keys.filter(k=>!fails.has(k));
+        if(fails.size+missing.length>FAIL_KEYS_MAX)return send(res,429,{error:'登录请求过多，请稍后重试'});
+        for(const k of missing)fails.set(k,[]);
+        const attempts=k=>failCount(k)+(loginPending.get(k)||0);
+        if(attempts(keys[1])>=10||(attempts(keys[0])>=50&&!known)) return send(res,429,{error:'密码错误次数太多，请 15 分钟后再试'});
+        for(const k of keys)loginPending.set(k,(loginPending.get(k)||0)+1);
+        try{
+        const account=db.users[username], originalPw=account&&account.pw;
+        if(!account||!(await verifyA(String(password),originalPw))||db.users[username]!==account||account.pw!==originalPw){addFail(username);addFail(username+'@'+ip);return send(res,401,{error:'用户名或密码错误'})}
+        if(!originalPw.startsWith('s1$')){const h=await hashA(String(password));if(db.users[username]!==account||account.pw!==originalPw)return send(res,401,{error:'账号状态已变化，请重新登录'});account.pw=h}
+        }finally{for(const k of keys){const n=(loginPending.get(k)||0)-1;if(n>0)loginPending.set(k,n);else loginPending.delete(k)}}
+      }
       if(p==="/api/login"&&banned(username)) return send(res,403,BANNED);
-      if(p==="/api/login"&&!db.users[username].pw.startsWith("s1$")){const h=await hashA(String(password)); if(db.users[username]) db.users[username].pw=h}
       {const uu=db.users[username],ip=clientIp(req); if(uu&&ip){uu.ips=[ip,...(uu.ips||[]).filter(x=>x!==ip)].slice(0,5)}}
-      const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,exp:Date.now()+SESSION_MS};
+      const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,userId:db.users[username].id,exp:Date.now()+SESSION_MS};
       {const mine=Object.entries(db.sessions).filter(([,v])=>v===username||(v&&v.user===username)); if(mine.length>10){mine.sort((a,b)=>(a[1].exp||0)-(b[1].exp||0)); for(const [k] of mine.slice(0,mine.length-10)) delete db.sessions[k]}} // 每人最多保留 10 个登录，挤掉最旧的
       persist();
       return send(res,200,{token,username,admin:isAdmin(username)});
@@ -220,9 +280,10 @@ const handle=async(req,res)=>{
       if(limited("auth:"+clientIp(req),60)) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
       const {oldPassword,newPassword,newPassword2}=await body(req);
       if(newPassword2!==undefined&&String(newPassword2)!==String(newPassword||'')) return send(res,400,{error:'两次输入的密码不一致'});
-      if(!(await verifyA(String(oldPassword||''),db.users[n].pw))||!db.users[n]) return send(res,401,{error:'原密码错误'});
+      const account=db.users[n],originalPw=account.pw;
+      if(!(await verifyA(String(oldPassword||''),originalPw))||db.users[n]!==account||account.pw!==originalPw||userOf(req)!==n) return send(res,401,{error:'原密码错误或登录状态已变化'});
       if(String(newPassword||'').length<6) return send(res,400,{error:'新密码至少 6 位'});
-      {const h=await hashA(String(newPassword)); if(!db.users[n]) return send(res,401,{error:'请先登录'}); db.users[n].pw=h}
+      {const h=await hashA(String(newPassword)); if(db.users[n]!==account||account.pw!==originalPw||userOf(req)!==n) return send(res,401,{error:'登录状态已变化，请重新登录'}); account.pw=h}
       const t=tokenOf(req); for(const [k,v] of Object.entries(db.sessions)) if(k!==t&&(v===n||v.user===n)) delete db.sessions[k];
       persist(); return send(res,200,{ok:true});
     }
@@ -240,19 +301,31 @@ const handle=async(req,res)=>{
     // 管理员总览：GET /api/admin/overview（仅管理员）-> 全部用户、全部频道消息（含已删除消息的原文 deletedText）、公告
     if(p==='/api/admin/overview'&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
-      const online={}; for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
+      const summary={unreadFeedback:db.feedback.filter(x=>!x.read).length,unreadReports:db.reports.filter(x=>!x.resolved).length,disputes:CHANNELS.reduce((a,c)=>a+db.messages[c].filter(x=>x.task&&x.stage==='disputed'&&!x.done&&!x.cancelled&&!x.deleted).length,0),disk:diskInfo()};
+      if(u.searchParams.get('summary')==='1')return send(res,200,summary);
+      const online=Object.create(null); for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
       const users=Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0}));
       const channels=Object.fromEntries(CHANNELS.map(c=>[c,db.messages[c].map(x=>({...out(x,null,true),...(x.deleted?{deletedText:db.deletedTexts[x.id]||'',originalText:db.deletedTexts[x.id]||''}:{})}))]));
-      return send(res,200,{users,channels,announcements:db.announcements,unreadFeedback:db.feedback.filter(x=>!x.read).length,unreadReports:db.reports.filter(x=>!x.resolved).length,disputes:CHANNELS.reduce((a,c)=>a+db.messages[c].filter(x=>x.task&&x.stage==='disputed'&&!x.done&&!x.cancelled&&!x.deleted).length,0),disk:diskInfo()});
+      return send(res,200,{users,channels,announcements:db.announcements,...summary});
     }
     // GET /api/admin/users -> [{username,created,admin,banned,bannedAt,banReason,activeSessions,messages}]（messages=发过的消息数）
     // GET /api/admin/messages -> 全部消息（含已删除、已撤销），每条带 channel，已删除的带 originalText，按时间倒序
     if((p==='/api/admin/users'||p==='/api/admin/messages')&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
-      const all=CHANNELS.flatMap(c=>db.messages[c].map(x=>({...out(x,c,true),...(x.deleted?{originalText:db.deletedTexts[x.id]||'',deletedText:db.deletedTexts[x.id]||''}:{}),...(x.task?{chatCount:(db.taskChats[x.id]||[]).length,ipOverlap:!!(x.ratings&&Object.values(x.ratings).some(v=>v.ipOverlap))}:{})})));
-      if(p==='/api/admin/messages') return send(res,200,all.sort((a,b)=>b.id-a.id));
-      const cnt={}; all.forEach(x=>cnt[x.user]=(cnt[x.user]||0)+1);
-      const online={}; for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
+      if(p==='/api/admin/messages'){
+        const view=(x,c)=>({...out(x,c,true),...(x.deleted?{originalText:db.deletedTexts[x.id]||'',deletedText:db.deletedTexts[x.id]||''}:{}),...(x.task?{chatCount:(db.taskChats[x.id]||[]).length,ipOverlap:!!(x.ratings&&Object.values(x.ratings).some(v=>v.ipOverlap))}:{})});
+        if(!u.searchParams.has('page')&&!u.searchParams.has('limit'))return send(res,200,CHANNELS.flatMap(c=>db.messages[c].map(x=>view(x,c))).sort((a,b)=>b.id-a.id));
+        const page=intIn(u.searchParams.get('page')||'1',1,1000000),limit=intIn(u.searchParams.get('limit')||'50',1,100),channel=u.searchParams.get('channel')||'',filter=u.searchParams.get('filter')||'',q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,100);
+        if(page==null||limit==null||(channel&&!CHANNELS.includes(channel))||!['','task','note','live','gone'].includes(filter)||['page','limit','channel','filter','q'].some(k=>u.searchParams.getAll(k).length>1))return send(res,400,{error:'分页或筛选参数无效'});
+        const rows=[];for(const c of CHANNELS)if(!channel||channel===c)for(const x of db.messages[c]){
+          if(filter==='task'&&!x.task||filter==='note'&&x.task||filter==='live'&&(x.deleted||x.cancelled)||filter==='gone'&&!x.deleted&&!x.cancelled)continue;
+          if(q&&![x.deleted?db.deletedTexts[x.id]:x.text,x.user].some(v=>String(v||'').toLowerCase().includes(q)))continue;
+          rows.push({msg:x,ch:c})}
+        rows.sort((a,b)=>b.msg.id-a.msg.id);const total=rows.length,pages=Math.max(1,Math.ceil(total/limit)),current=Math.min(page,pages);
+        return send(res,200,{messages:rows.slice((current-1)*limit,current*limit).map(x=>view(x.msg,x.ch)),total,page:current,pageSize:limit,pages});
+      }
+      const cnt=Object.create(null);for(const c of CHANNELS)for(const x of db.messages[c])cnt[x.user]=(cnt[x.user]||0)+1;
+      const online=Object.create(null); for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
       return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
     }
     // 封禁/解封：POST /api/admin/users/<用户名>/ban {reason}、/unban（仅管理员，不能封管理员）
@@ -277,7 +350,7 @@ const handle=async(req,res)=>{
         } else if(m.task&&m.claimedBy===du&&!m.done&&m.stage&&!m.cancelled){if(!m.claimerDeleted){m.claimerDeleted=true; // 接单人在 finished/paid 删号：转成纠纷交给管理员
             if(m.stage!=='disputed'){m.dispute={by:null,role:'system',reason:'接单人已注销',time:now,from:m.stage};m.stage='disputed';disputed++;ev(m.user,'dispute',m,'接单人已注销，任务转交管理员处理',du)}
             sysChat(m,'接单人已注销，任务转交管理员处理');ch=true}}
-        else if(m.task&&m.claimedBy===du&&!m.done){rmImgs(m.id,x=>x.claimer===du);delete m.claimedBy;delete m.claimedAt;delete m.claimCost;m.unclaimedAt=now;released++;ch=true;
+        else if(m.task&&m.claimedBy===du&&!m.done){rmImgs(m.id,x=>x.claimer===du);delete m.claimedBy;delete m.claimedAt;delete m.claimCost;resetNegotiation(m);m.unclaimedAt=now;released++;ch=true;
           if(!m.cancelled&&!m.deleted) ev(m.user,'unclaim',m,'接单人已注销，任务回到待接单',du)}
         else if(m.task&&m.claimedBy===du&&m.done&&!m.claimerDeleted){m.claimerDeleted=true;ch=true} // 已完成的保留，但标记接单人已删号，同名新账号不会认领
         if(ch) m.rev=nextRev();
@@ -287,9 +360,9 @@ const handle=async(req,res)=>{
       for(const v of Object.values(db.chatRead)) delete v[du]; delete db.events[du]; UB.delete(du); rebuildUR();
       let rej=0; for(const x of db.ledger) if(x.user===du&&!x.userDeleted) x.userDeleted=true;
       for(const x of db.recharges) if(x.user===du&&!x.userDeleted){x.userDeleted=true; if(x.status==='pending'){x.status='rejected';x.reason='账号已删除';x.handledBy=n;x.handledAt=now;rej++}}
-      for(const [tid,l] of Object.entries(db.offers)){const t=IDX.get(tid); for(const o of l) if(o.status==='pending'){
+      for(const [tid,l] of Object.entries(db.offers)){const t=IDX.get(tid); for(const o of l){if(o.user===du)o.userDeleted=true;if(o.status==='pending'){
         if(o.user===du){o.status='withdrawn';o.reason='讨价人已注销';o.updated=now}
-        else if(t&&t.msg.user===du){o.status='expired';o.reason='发布人已注销';o.updated=now;ev(o.user,'offer_expire',t.msg,'你的讨价已失效：发布人已注销',du)}}}
+        else if(t&&t.msg.user===du){o.status='expired';o.reason='发布人已注销';o.updated=now;if(ownsOffer(o,o.user))ev(o.user,'offer_expire',t.msg,'你的讨价已失效：发布人已注销',du)}}}}
       delete db.users[du]; persist();
       return send(res,200,{username:du,deleted:true,messages:msgs,cancelledTasks:cancelled,releasedTasks:released,disputedTasks:disputed,rejectedRecharges:rej});
     }
@@ -366,6 +439,7 @@ const handle=async(req,res)=>{
     const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|cancel|delete|dispute)$/);
     if(am2&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(banned(n)) return send(res,403,BANNED);
+      if(limited('task:'+n,60))return send(res,429,{error:'任务操作太频繁，请一分钟后再试'});
       const list=db.messages[am2[1]]; if(!list) return send(res,404,{error:'频道不存在'});
       const ix=IDX.get(am2[2]), msg=ix&&ix.ch===am2[1]?ix.msg:null; if(!msg||msg.deleted) return send(res,404,{error:'消息不存在'});
       const prevClaimer=msg.claimedBy, act=am2[3]==='kick'?'release':am2[3],now=new Date().toISOString();
@@ -397,6 +471,7 @@ const handle=async(req,res)=>{
           if(msg.user===n) return send(res,400,{error:'不能接自己发布的任务'});
           if(msg.claimedBy) return send(res,409,{error:'已被 '+msg.claimedBy+' 接单'});
           if(expired(msg)) return send(res,409,{error:'任务已过期'});
+          if((db.taskChats[msg.id]||[]).length>=TASK_CHAT_MAX)return send(res,409,{error:'任务历史记录已满，请发布人撤回后重新发布'});
           delete msg.claimCost; delete msg.claimRefunded;
           if(!isAdmin(n)){const c=S().claimCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'claim','接单',msg.id); msg.claimCost=c}}
           msg.claimedBy=n;msg.claimedAt=now; sysChat(msg,n+' 接单了');
@@ -405,7 +480,7 @@ const handle=async(req,res)=>{
           if(msg.done) return send(res,409,{error:'任务已完成，不能放弃'});
           if(msg.stage) return send(res,409,{error:'你已经点了「我已完成」，不能再放弃'});
           sysChat(msg,msg.claimedBy+' 放弃了接单');
-          delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;msg.unclaimedAt=now;
+          delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='release'){ // 发布人取消接单人：任务回到待接单，退还接单人的接单分
           if(msg.user!==n) return send(res,403,{error:'只有发布者能取消接单人'});
           if(!msg.claimedBy) return send(res,400,{error:'任务还没人接单'});
@@ -413,7 +488,7 @@ const handle=async(req,res)=>{
           if(msg.stage) return send(res,409,{error:'接单人已完成任务，不能再取消接单人'});
           sysChat(msg,'发布人取消了接单人 '+msg.claimedBy);
           if(msg.claimCost&&!msg.claimerDeleted&&db.users[msg.claimedBy]) addPoints(msg.claimedBy,msg.claimCost,'refund','发布人取消接单，退还接单积分',msg.id);
-          msg.releasedBy=msg.claimedBy;delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;msg.unclaimedAt=now;
+          msg.releasedBy=msg.claimedBy;delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='cancel'){ // 发布者撤销没人接的任务，或已超时的任务
           if(msg.user!==n) return send(res,403,{error:'只有发布者能撤销'});
           if(msg.done) return send(res,409,{error:'任务已完成'});
@@ -466,12 +541,12 @@ const handle=async(req,res)=>{
       const list=db.offers[m.id]||[], poster=isPoster(m,n), adm=isAdmin(n);
       const view=o=>offerView(o,m,n);
       if(GET){ if(adm||poster) return send(res,200,{count:pendingOffers(m).length,offers:list.slice().reverse().map(view)});
-        return send(res,200,{count:pendingOffers(m).length,offers:list.filter(o=>o.user===n).reverse().map(view)}) }
+        return send(res,200,{count:pendingOffers(m).length,offers:list.filter(o=>ownsOffer(o,n)).reverse().map(view)}) }
       if(banned(n)) return send(res,403,BANNED);
       if(adm&&!poster) return send(res,403,{error:'管理员不能参与讨价'});
       const b=await body(req), now=new Date().toISOString();
       // 以下全是同步代码，读完请求体后再检查状态，不会有并发竞态
-      const openErr=()=>m.deleted||m.cancelled?'任务已撤回':m.claimedBy?'任务已被接走':expired(m)?'任务已过截止时间':m.stage==='disputed'?'任务在纠纷处理中':null;
+      const openErr=()=>m.deleted||m.cancelled?'任务已撤回':m.claimedBy?'任务已被接走':expired(m)?'任务已过截止时间':m.stage==='disputed'?'任务在纠纷处理中':(db.taskChats[m.id]||[]).length>=TASK_CHAT_MAX?'任务历史记录已满，请发布人撤回后重新发布':null;
       const done=(o,code=200)=>{m.rev=nextRev();persist();return send(res,code,{offer:view(o),task:out(m,of[1],n)})};
       if(!of[4]){ // 发起讨价
         if(poster||m.user===n) return send(res,400,{error:'不能和自己的任务讨价'});
@@ -481,12 +556,12 @@ const handle=async(req,res)=>{
         if(list.some(o=>o.user===n&&o.status==='pending')) return send(res,409,{error:'你已经有一个进行中的讨价了'});
         if(pendingOffers(m).length>=OFFER_MAX_PENDING) return send(res,409,{error:'这个任务的讨价人数已满（最多 '+OFFER_MAX_PENDING+' 个），请稍后再试'});
         if(limited('offer:'+n,10)) return send(res,429,{error:'操作太频繁，请稍后再试'});
-        const o={id:newId(),user:n,status:'pending',price,turn:'poster',rounds:[{by:'claimer',price,note:str(b.note,50),time:now}],time:now,updated:now};
+        const o={id:newId(),user:n,userId:db.users[n].id,status:'pending',price,turn:'poster',rounds:[{by:'claimer',price,note:str(b.note,50),time:now}],time:now,updated:now};
         (db.offers[m.id]=db.offers[m.id]||[]).push(o); ev(m.user,'offer',m,n+' 想以 '+price+' 元接你的任务'+(o.rounds[0].note?'：'+o.rounds[0].note:''),n);
         return done(o);
       }
       const o=list.find(x=>String(x.id)===of[4]); if(!o) return send(res,404,{error:'讨价不存在'});
-      const mine=o.user===n; if(!poster&&!mine) return send(res,403,{error:'只有发布人和讨价人能操作'});
+      const mine=ownsOffer(o,n); if(!poster&&!mine) return send(res,403,{error:'只有发布人和讨价人能操作'});
       if(o.status!=='pending') return send(res,409,{error:'这个讨价已经结束了',status:o.status});
       const act=of[5];
       if(act==='withdraw'){ if(!mine) return send(res,403,{error:'只有讨价人能放弃'}); o.status='withdrawn';o.updated=now; ev(m.user,'offer_withdraw',m,n+' 放弃了讨价',n); return done(o)}
@@ -501,7 +576,7 @@ const handle=async(req,res)=>{
         ev(poster?o.user:m.user,'offer_counter',m,(poster?'发布人':n)+' 还价 '+price+' 元',n); return done(o);
       }
       // accept：同意当前价格，讨价人当场接单
-      const cu=o.user; if(!db.users[cu]) return send(res,409,{error:'讨价人已不存在'}); if(banned(cu)) return send(res,409,{error:'讨价人已被封禁'});
+      const cu=o.user; if(!ownsOffer(o,cu)) return send(res,409,{error:'讨价人已不存在'}); if(banned(cu)) return send(res,409,{error:'讨价人已被封禁'});
       const c=isAdmin(cu)?0:S().claimCost;
       if(pts(cu)<c) return send(res,402,poster?{error:'对方积分不足（接单需要 '+c+' 积分，对方只有 '+pts(cu)+' 积分），暂时不能同意',need:c}:noPoints(cu,c));
       delete m.claimCost; delete m.claimRefunded; if(c>0){addPoints(cu,-c,'claim','议价接单',m.id); m.claimCost=c}
@@ -552,7 +627,7 @@ const handle=async(req,res)=>{
     }
     if(p==='/api/admin/reports'||p.startsWith('/api/admin/reports/')||p==='/api/admin/backup'||p==='/api/admin/disputes'){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
-      if(p==='/api/admin/backup'&&GET){const {sessions,users,...rest}=db; const us={}; for(const [k,v] of Object.entries(users)){const {ips,...o}=v; us[k]=o} const d=JSON.stringify({users:us,...rest}); res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); return res.end(d)}
+      if(p==='/api/admin/backup'&&GET){const {sessions,users,...rest}=db; const us=Object.create(null); for(const [k,v] of Object.entries(users)){const {ips,...o}=v; us[k]=o} const d=JSON.stringify({users:us,...rest}); res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); return res.end(d)}
       if(p==='/api/admin/disputes'&&GET){const o=[]; for(const c of CHANNELS) for(const x of db.messages[c]) if(x.task&&x.dispute&&!x.deleted) o.push({...out(x,c,true),chatCount:(db.taskChats[x.id]||[]).length,ipOverlap:!!((x.ratings&&Object.values(x.ratings).some(v=>v.ipOverlap))||((db.users[x.user]||{}).ips||[]).some(i=>((db.users[x.claimedBy]||{}).ips||[]).includes(i))),resolved:x.stage!=='disputed'}); return send(res,200,o.sort((a,b)=>(a.resolved-b.resolved)||b.dispute.time.localeCompare(a.dispute.time)))}
       if(p==='/api/admin/reports'&&GET) return send(res,200,db.reports.slice().reverse().map(x=>{const t=x.target==='task'?findTask(x.targetId):null; return {...x,targetText:t?(t.msg.deleted?db.deletedTexts[t.msg.id]:t.msg.text):null,targetChannel:t?t.ch:null,targetExists:x.target==='user'?!!db.users[x.targetId]:!!t}}));
       const rm2=p.match(/^\/api\/admin\/reports\/([^/]+)\/(resolve|delete)$/);
@@ -588,9 +663,9 @@ const handle=async(req,res)=>{
     if(ti&&((POST&&!ti[2])||(GET&&ti[2]))){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
       const t=findTask(ti[1]); if(!t||(t.msg.deleted&&!isAdmin(n))) return send(res,404,{error:'任务不存在'});
-      const m=t.msg, adm=isAdmin(n), mine=isPoster(m,n)||isClaimer(m,n);
+      const m=t.msg, adm=isAdmin(n), mine=isPoster(m,n)||isClaimer(m,n),account=db.users[n];
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
-      if(GET){ const x=chatOf(m,adm&&!mine).find(y=>String(y.id)===ti[2]&&y.image); if(!x) return send(res,404,{error:'图片不存在'});
+      if(GET){ const x=chatOf(m,adm).find(y=>String(y.id)===ti[2]&&y.image); if(!x) return send(res,404,{error:'图片不存在'});
         fs.readFile(path.join(UPLOADS,String(m.id),x.id+'.'+x.imageExt),(e,d)=>{if(e) return send(res,404,{error:'图片不存在'}); res.writeHead(200,{'Content-Type':x.imageExt==='png'?'image/png':'image/jpeg','Cache-Control':'private, max-age=86400','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'}); res.end(d)}); return; }
       if(adm&&!mine) return send(res,403,{error:'管理员只能查看私聊，不能发消息'});
       if(banned(n)) return send(res,403,BANNED);
@@ -598,6 +673,8 @@ const handle=async(req,res)=>{
       if(m.cancelled||m.deleted) return send(res,409,{error:'任务已撤销'});
       const clen=+req.headers['content-length']||0; if(clen>IMG_MAX*1.4+1000){res.setHeader('Connection','close');send(res,413,{error:'图片不能超过 300KB'});req.resume();setTimeout(()=>req.destroy(),5000).unref();return}
       let buf=await rawBody(req,IMG_MAX*1.4+1000), kind='', cap=''; if(!buf){res.setHeader('Connection','close');return send(res,413,{error:'图片不能超过 300KB'})}
+      if(userOf(req)!==n||db.users[n]!==account)return send(res,401,{error:'登录状态已变化，请重新登录'});
+      if(banned(n))return send(res,403,BANNED);
       if(/json/.test(req.headers['content-type']||'')){try{const j=JSON.parse(buf.toString());buf=Buffer.from(String(j.data||'').replace(/^data:[^,]*,/,''),'base64'); if(j.kind==='payqr') kind='payqr'; if(typeof j.text==='string') cap=j.text.trim().slice(0,100)}catch{return send(res,400,{error:'图片格式不对'})}}
       if(!(isPoster(m,n)||isClaimer(m,n))||!m.claimedBy||m.cancelled||m.deleted) return send(res,409,{error:'任务状态已经变了，请刷新'});
       if(!buf.length) return send(res,400,{error:'图片不能为空'}); if(buf.length>IMG_MAX) return send(res,413,{error:'图片不能超过 300KB'});
@@ -607,7 +684,7 @@ const handle=async(req,res)=>{
       if(dc>=IMG_DAILY) return send(res,429,{error:'每人每天最多发 '+IMG_DAILY+' 张图片'});
       if(uploadBytes+buf.length>UPLOAD_MAX) return send(res,507,{error:'服务器图片空间已满，请联系管理员'});
       if((UB.get(n)||0)+buf.length>USER_IMG_MAX) return send(res,409,{error:'你的图片空间已满（每人最多 20MB），旧任务结束 30 天后会自动清理'});
-      const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=2000) return send(res,409,{error:'这个任务的私聊消息太多了'});
+      const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
       const x={id:newId(),user:n,text:cap,time:new Date().toISOString(),claimer:m.claimedBy,imageExt:ext,imageSize:buf.length,...(kind?{kind}:{})};
       x.image='/api/tasks/'+m.id+'/chat/image/'+x.id;
       try{fs.mkdirSync(path.join(UPLOADS,String(m.id)),{recursive:true});fs.writeFileSync(path.join(UPLOADS,String(m.id),x.id+'.'+ext),buf)}catch(e){console.error('存图失败',e.message);return send(res,500,{error:'图片保存失败'})}
@@ -622,7 +699,7 @@ const handle=async(req,res)=>{
       const m=t.msg, adm=isAdmin(n), mine=isPoster(m,n)||isClaimer(m,n);
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
       if(GET){
-        const a=u.searchParams.get('after'); let list=chatOf(m,adm&&!mine);
+        const a=u.searchParams.get('after'); let list=chatOf(m,adm);
         if(a){const v=Number(a); if(!isNaN(v)&&v>1e14) list=list.filter(x=>x.id>v); else {const ms=isNaN(v)?Date.parse(a):v; if(!isNaN(ms)) list=list.filter(x=>Date.parse(x.time)>ms)}}
         if(mine){const all=chatOf(m); if(all.length){const r=(db.chatRead[m.id]=db.chatRead[m.id]||Object.create(null)), last=all[all.length-1].id; if(r[n]!==last){r[n]=last; recalc(m); persist()}}}
         return send(res,200,{poster:m.user,task:{id:m.id,channel:t.ch,user:m.user,status:status(m),claimerDeleted:!!m.claimerDeleted,claimedBy:m.claimedBy||null,done:!!m.done,cancelled:!!m.cancelled,canWrite:mine&&!!m.claimedBy&&!m.cancelled&&!m.deleted,...(m.dispute?{dispute:out(m,null,adm||n).dispute}:{}),...(m.autoConfirmed?{autoConfirmed:true}:{})},messages:list});
@@ -634,7 +711,7 @@ const handle=async(req,res)=>{
       const b=await body(req); if(!(isPoster(m,n)||isClaimer(m,n))||!m.claimedBy||m.cancelled||m.deleted) return send(res,409,{error:'任务状态已经变了，请刷新'});
       if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'消息不能为空'});
       if(limited('tchat:'+n,20)) return send(res,429,{error:'发得太快了，请稍后再试'});
-      const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=2000) return send(res,409,{error:'这个任务的私聊消息太多了'});
+      const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
       const x={id:newId(),user:n,text:b.text.trim().slice(0,500),time:new Date().toISOString(),claimer:m.claimedBy};
       list.push(x); (db.chatRead[m.id]=db.chatRead[m.id]||Object.create(null))[n]=x.id; recalc(m); m.rev=nextRev(); persist(); return send(res,200,x);
     }
@@ -657,10 +734,11 @@ const handle=async(req,res)=>{
     // GET /api/tasks?status=open|claimed|done|all&limit=10  跨频道任务；open=没人接、没撤销、没过期
     if(p==="/api/tasks"&&GET){
       const st=u.searchParams.get("status")||"open", lim=Math.min(Math.max(parseInt(u.searchParams.get("limit"))||10,1),100);
-      const me=userOf(req); let all=CHANNELS.flatMap(c=>db.messages[c].filter(x=>x.task&&alive(x)).map(x=>out(x,c,me)));
-      if(st==="open") all=all.filter(x=>!x.claimedBy&&!x.expired); else if(st==="claimed") all=all.filter(x=>x.claimedBy&&!x.done); else if(st==="done") all=all.filter(x=>x.done);
-      const q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50); if(q) all=all.filter(x=>[x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)));
-      return send(res,200,sortTasks(all,u.searchParams.get('sort')).slice(0,lim).map(x=>withUnread(x,me)));
+      const me=userOf(req),q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50),all=[];
+      for(const c of CHANNELS)for(const x of db.messages[c]){if(!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x))||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
+        if(q&&![x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)))continue;all.push({msg:x,ch:c})}
+      const compare=taskComparator(u.searchParams.get('sort'));all.sort((a,b)=>compare(a.msg,b.msg));
+      return send(res,200,all.slice(0,lim).map(x=>withUnread(out(x.msg,x.ch,me),me)));
     }
     // GET /api/channels/:name/notices?limit=50  置顶公告：全站公告 + 管理员在这个频道发的普通消息，按时间倒序
     const nm=p.match(/^\/api\/channels\/([^/]+)\/notices$/);
@@ -704,8 +782,10 @@ const handle=async(req,res)=>{
     }
     return send(res,404,{error:'接口不存在'});
   }
-  let f=path.join(ROOT,p==='/'?'index.html':p);
-  if(!(f===ROOT||f.startsWith(ROOT+path.sep))||f===DB||(DATA_DIR!==ROOT&&f.startsWith(DATA_DIR+path.sep))||/(server\.(js|log)|run\.sh|Dockerfile|README\.md|data\.json(\.tmp)?|data\.corrupt-[^/]*\.json|\.env)$/.test(f)||/\/\./.test(p)||f.startsWith(path.join(ROOT,'old'))||f.startsWith(UPLOADS)||f.startsWith(path.join(ROOT,'uploads'))||f.startsWith(BAK)){res.writeHead(403);return res.end()}
+  const publicName=p==='/'?'index.html':p.slice(1);
+  if(!PUBLIC_FILES.has(publicName)){res.writeHead(403);return res.end()}
+  if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405,{'Allow':'GET, HEAD'});return res.end()}
+  const f=path.join(ROOT,publicName);
   fs.stat(f,(e,st)=>{if(e||!st.isFile()){res.writeHead(404);return res.end('Not found')}
     const ext=path.extname(f).toLowerCase(), img=/^\.(png|jpe?g|webp|svg|ico|gif)$/.test(ext), etag='"'+st.size.toString(36)+'-'+Math.floor(st.mtimeMs).toString(36)+'"';
     const h={'Content-Type':MIME[ext]||'application/octet-stream','ETag':etag,'Cache-Control':img?'public, max-age=604800':'no-cache',...(/\/sw\.js$/.test(f)?{'Service-Worker-Allowed':'/'}:{}),'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN'};
@@ -716,4 +796,5 @@ const handle=async(req,res)=>{
       res.writeHead(200,h);res.end(req.method==='HEAD'?undefined:d)})});
 };
 // 任何请求出错都返回 500，不会让请求一直挂着
-http.createServer((req,res)=>handle(req,res).catch(e=>{console.error('请求出错',req.method,req.url,e&&e.stack||e);try{if(!res.headersSent)res.writeHead(500,{'Content-Type':'application/json; charset=utf-8'});res.end('{"error":"服务器出错了"}')}catch{}})).listen(PORT,()=>console.log('Aevon校园交流网运行在 http://localhost:'+PORT+(ADMINS.length?'，管理员：'+ADMINS.join(','):'')));
+const server=http.createServer((req,res)=>handle(req,res).catch(e=>{if(!e.statusCode)console.error('请求出错',req.method,req.url,e&&e.stack||e);try{if(!res.headersSent)return send(res,e.statusCode||500,{error:e.statusCode?e.message:'服务器出错了'});res.end()}catch{}}));
+server.listen(PORT,BIND_HOST,()=>console.log('Aevon校园交流网运行在 http://localhost:'+server.address().port+(ADMINS.length?'，管理员：'+ADMINS.join(','):'')));

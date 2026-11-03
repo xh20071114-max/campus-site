@@ -3,7 +3,7 @@
 校园互助网站：门户首页、注册登录、五个项目频道（校园跑、食堂配送、代取快递、代课、代做作业），频道内可发任务、接单、完成，个人中心查看我发布的和我接的任务。
 
 ## 本地运行
-需要 Node.js 18 以上，无第三方依赖。
+需要 Node.js 20 以上，运行服务无第三方依赖；浏览器回归测试使用开发依赖 Playwright。
 
     ./run.sh          # 守护运行，崩溃后自动重启
     # 或者 node server.js
@@ -35,7 +35,7 @@
 | GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 跨频道任务 |
 | GET | /api/my/tasks | `{posted,claimed}` |
 
-需要登录的接口请求头带 `Authorization: Bearer <token>`。token 7 天过期；登录和注册每 IP 每分钟 20 次，发消息每人每分钟 10 条，超出返回 429。
+需要登录的接口请求头带 `Authorization: Bearer <token>`。token 7 天过期，每账号最多保留 10 个登录。登录、注册和修改密码共用每 IP 每分钟 60 次限额；登录另有同账号同 IP 15 分钟 10 次失败、跨 IP 合计 50 次失败限制（历史成功 IP 豁免后者）。频道发布每人每分钟 10 条，超出返回 429。
 
 ## 管理员（只有一个）
 环境变量 `ADMIN=用户名`（写在 `.env` 或托管平台的环境变量里）。普通账号调用以下接口一律返回 403。
@@ -116,15 +116,15 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 ## 任务状态补充
 - `POST /api/channels/<ch>/messages/<id>/release`（也可以写 `kick`）：发布人取消接单人，任务回到待接单，退还接单人的接单积分（返回的任务带 `releasedBy`）。
 - 已接单、没完成、超过截止时间 24 小时的任务带 `overdue:true`，发布人可以 `cancel`，会退还发布积分。
-- 管理员删除已接单、没完成的任务时，发布积分和接单积分都退回。
+- 管理员删除或关闭任务时，只有勾选 `refundPost` / `refundClaim` 才退还对应积分；已经退款或已注销的账号不会再退款。
 - 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `{name,count,lastId}`。
 - 频道里普通用户只能发任务，发普通消息返回 403；管理员可以发普通消息，当公告用。
 - `GET /api/channels/<ch>/notices?limit=50`：全站公告（type=global，带 title）和管理员在这个频道发的普通消息（type=channel）合并后按时间倒序返回，字段是 {id,type,title,text,user,time}。
 
 ## 交易流程和私聊图片
 - 任务带 `status`：open → claimed → finished → paid → done，另外还有 cancelled（已撤回）和 closed（管理员关闭）。
-- `POST /api/channels/<ch>/messages/<id>/finish`：接单人点「我已完成」。`/paid`：发布人点「我已付款」。`/received`：接单人点「确认收款」，任务变成 done，这时发奖励积分。`/complete`：发布人「无需付款，直接完成」，接单后任何阶段都能用。进入 finished 之后不能 kick、撤回或放弃接单。每一步都会在私聊里写一条系统消息（`type:'system'`）。
-- `POST /api/admin/tasks/<id>/force {action:'done'|'close', reason}`：管理员强制完成（发奖励）或关闭任务（关闭时退还双方的发布分和接单分）。接单人在 finished 或 paid 状态下删号，任务保持原状态，标记 `claimerDeleted`，之后由发布人 complete，或者管理员 force 处理。
+- `POST /api/channels/<ch>/messages/<id>/finish`：接单人点「我已完成」。`/paid`：发布人点「我已付款」。`/received`：接单人点「确认收款」，任务变成 done，这时发奖励积分。`/complete`：发布人「无需付款，直接完成」，只允许在 claimed 状态使用。进入 finished 之后不能 kick、撤回或放弃接单。每一步都会在私聊里写一条系统消息（`type:'system'`）。
+- `POST /api/admin/tasks/<id>/force {action:'done'|'close', reason, refundPost?, refundClaim?}`：管理员强制完成（发奖励）或关闭任务（按勾选退还积分）。接单人在 finished 或 paid 状态下删号时，标记 `claimerDeleted` 并转入 disputed，由管理员 force 处理。
 - `POST /api/tasks/<id>/chat/image`：请求体是 JPEG/PNG 二进制（Content-Type 填 image/*），或者 JSON `{data: base64 或 dataURL}`。不超过 300KB，后端检查文件头，每人每天最多 20 张，上传目录总量超过 500MB 返回 507。返回的私聊消息带 `image`（读图地址）。
 - `GET /api/tasks/<id>/chat/image/<消息id>`：权限和读私聊一样。可以用 Authorization 头请求，前端用 fetch 带头请求，再转成 blob 显示（不支持在地址里带 token）。上传时 JSON 里可以带 `kind:"payqr"` 和 `text`（最多 100 字）。图片存在 `DATA_DIR/uploads/<任务id>/`，静态目录访问不到。
 
@@ -146,7 +146,7 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - 发布人删号时，处在 finished 或 paid 的任务不会撤销，而是转成 disputed，`dispute.role` 为 `system`，原因是「发布人已注销」。删号接口返回值里多一个 `disputedTasks`。
 - 评价规则：
   - 有过纠纷的任务不能评价。
-  - 计入信用的评价，同一个评价人只算最新的 1 次；评价双方的 IP 有重叠的不算。
+  - 计入信用的评价，同一个评价人只算最新的 1 次；评价双方的 IP 有重叠仍计入，只向管理员提示。
   - profile 里的 `ratingCount`、`avgScore`、`goodRate` 只按计入的评价算，`ratingTotal` 是全部评价数，`recent` 每条带 `counted`。
 - 启动安全：
   - data.json 解析失败时，先改名为 `data.corrupt-<时间>.json`，再从 backups 里最新一份能解析的备份恢复。
@@ -178,3 +178,24 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - 讨价兼容字段：offer 上还带 `note`（最新留言）、`round`（1-3 轮）、`maxRound`、`counter`（发布人最新还价）、`myTurn`、`canCounter`、`history:[{by,action:offer|counter|accept|reject|withdraw|expire,price,note,time}]`。已有还价、还没结束的 offer，`status` 是 `countered`，原始状态在 `rawStatus`。任务上带 `myOffer:{id,price,counter,status,round,myTurn,canCounter}`，只给讨价人自己看。
 - 注册接口可以带 `password2`，修改密码接口可以带 `newPassword2`。传了就会校验，两次不一致时返回 400「两次输入的密码不一致」；不传就不校验，兼容旧页面。
 - 管理员看到的任务数据带 `offerTotal`，是讨价总条数，包含已失效和被拒的。`offerCount` 仍然只算进行中的讨价。
+
+## 数据保存、安全边界与回归验证
+
+- 成功的 JSON API 响应返回前，待写数据会写入临时文件、执行 fsync 并替换 data.json。写盘失败返回 503，进程停止接受操作并以非零状态退出，由托管平台重启；排查日志与存储空间后恢复。此策略优先保证余额和交易记录的保存，整库同步写入的耗时需随数据增长监测。
+- 新记录使用持久化递增 ID，启动时扫描旧记录的最高 ID；保留旧 ID 和图片路径。账号带不可复用的 id，议价记录绑定该身份；旧记录按账号创建时间迁移，身份不明或已注销的记录仅供发布人和管理员审计。同名新账号不会继承旧议价。
+- 放弃接单、发布人取消接单人或接单人在待完成阶段删号后，任务恢复议价前报价；原议价历史保留。管理员参与的任务也能读取所有历史私聊及仍保留的图片。
+- 普通 JSON POST 请求先读完请求体再检查权限和状态，最大 100000 字节；非法 JSON 返回 400，超限返回 413。图片使用独立的大小限制，读完上传内容后复核会话、封禁状态和双方身份。
+- 静态服务只允许 PUBLIC_FILES 中的明确资源。添加新的公开资源时需要更新白名单；测试、源代码、备份及运维文件不自动公开。.dockerignore 排除运行数据和测试，.gitignore 排除本地数据与审查产物。
+- 本地运行回归测试：`node --test tests/regression.test.cjs`。测试启动独立临时数据目录和随机端口，验证账号隔离、慢请求竞态、议价、管理员历史聊天和图片、积分幂等、数据落盘、写盘故障、重启、静态访问与前端逻辑；不访问正式站。前端逻辑测试不替代真实浏览器验收。
+- 真实浏览器回归：开发机执行 `npm ci` 后运行 `npm run test:all`。Windows 默认使用已安装的 Edge；其他平台先执行 `npx playwright install chromium`。可通过 BROWSER_CHANNEL 选择其他已安装浏览器。Playwright 仅用于测试，正式站仍直接执行 `node server.js`，不需要安装开发依赖。
+- 登录、退出及账号跨标签页变更后会重载当前页面，释放旧账号的私聊、议价和评价缓存；保留当前频道地址。session.js 也会在页面从历史记录恢复或重新可见时检查会话变化。频道已读标记按账号分别保存，损坏的本地标记不会阻止页面启动。
+- 频道刷新和后台栏目加载忽略迟到的旧请求，防止新状态被旧响应覆盖。发任务和登录表单提交期间禁用重复提交；合法的两位小数报价不使用浮点精确相等判断。
+- `GET /api/admin/overview?summary=1` 只返回未处理数量及存储信息，保留原 overview 全量接口兼容性。后台按当前栏目加载 users、messages、announcements 等列表；查看设置、充值、建议等栏目不再下载全部消息。用户列表的发帖计数直接扫描原消息，避免创建全量消息副本。
+- 后台消息按每页 50 条加载，支持首页、上一页、下一页、末页和搜索筛选；没有原先只能显示前 500 条的限制。`GET /api/admin/messages?page=1&limit=50&q=&channel=&filter=` 返回 `{messages,total,page,pageSize,pages}`，limit 为 1–100，filter 可为空或 task、note、live、gone。搜索已删除内容时仍匹配管理员保存的原文；省略 page 和 limit 仍返回旧版全量数组。
+- 数据库读取不仅检查 JSON 语法，还检查用户、消息、积分配置和集合结构。主库损坏时保留原文件并跳过无效备份；主库缺失但存在备份、临时数据或上传文件时，不会当作新站点创建空库。真正全新的数据目录仍可正常注册。
+- 自动备份先写临时文件、fsync 后再改名。只按有效快照计算每日间隔及 7 份保留数，无效备份保留原件并记录日志；新备份写入失败时不删旧快照。下载备份可以恢复账号、任务、私聊文字和积分，不恢复原登录令牌，也不包含上传图片文件；恢复时需要另外保留 uploads 目录。
+- 图片删除失败时保留元数据、记录待重试状态并继续计入存储占用，启动和每小时清理时重试。前端私聊关闭后释放图片 object URL，迟到的图片不会再创建无主地址；后台同时取消尚未完成的图片读取。
+- 密码计算同时最多 2 个、等待最多 8 个；过载返回 503，可稍后重试。登录失败额度计入正在校验的请求，避免并发绕过同账号同 IP 的 10 次限制。频率计数的时间戳和键数有上限，每分钟清理过期项；达到容量时拒绝新请求，不遗忘已有锁定。
+- 任务状态操作每人每分钟最多 60 次。私聊历史达到 2000 条后不再允许新接单或议价成交；当前订单仍可完成、申请介入、撤回或由管理员处理。没有到期时间的旧版登录在升级时失效，需要重新登录；有正常到期时间的会话迁移绑定账号 id，账号身份不匹配或达到到期时间时立即拒绝。
+- 数据落盘按集合中的记录分块编码，仍保留临时文件、fsync、改名和成功响应前落盘规则；已覆盖短写、写到一半失败、中文/表情与嵌套 JSON 的恢复测试。任务列表先筛选、排序、取所需条数，再添加个人状态；至多 7 份备份且存在当日有效快照时，备份检查不重复解析其他快照。
+- 开发机基准：`npm run bench`，可用 `npm run bench -- --backup-due` 测量需要生成当日备份的场景。基准使用临时数据和本机回环地址，不访问正式站；本机 RSS、延迟不代表 Sealos 128MB / 0.1 核容器的容量保证。数据继续增长时仍需评估资源或存储方案。`BIND_HOST` 可设绑定地址，默认 0.0.0.0；测试与基准固定绑定 127.0.0.1。

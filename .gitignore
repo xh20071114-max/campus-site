@@ -1,0 +1,9 @@
+data.json
+data.json.tmp
+data.corrupt-*.json
+backups/
+uploads/
+server.log
+.env
+.review/
+node_modules/

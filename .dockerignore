@@ -1,0 +1,11 @@
+.git
+.env
+.review
+tests
+data.json
+data.json.tmp
+data.corrupt-*.json
+backups
+uploads
+server.log
+node_modules

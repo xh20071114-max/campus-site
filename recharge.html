@@ -38,6 +38,7 @@ td,th{white-space:nowrap}td:nth-child(3){white-space:normal;min-width:120px}.tw{
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
 <main id="main"></main>
 <div class="mask" id="mask"><div class="qr"><h3 id="qt"></h3><div class="warn">⚠️ 重要：付款时请在备注里填写你的用户名：<b id="qu"></b><button id="qcp" type="button">复制</button></div><div class="rate" style="margin-bottom:12px">💱 1 积分 = 1 元，到账积分按付款金额向下取整</div><img id="qi" alt="收款码"><div class="ph" id="qph">收款码还没上传<br>请稍后再来</div><p>付完回到本页，填写金额并提交审核</p><button id="qc">关闭</button></div></div>
+<script src="session.js"></script>
 <script src="config.js"></script>
 <script>
 const API=window.API_BASE||'',token=localStorage.getItem('token'),me=localStorage.getItem('username');

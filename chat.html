@@ -192,13 +192,15 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <button class="go" id="bGo">登录</button>
   <button type="button" id="bGuest">先逛逛，稍后再登录 →</button>
 </form></div>
+<script src="session.js"></script>
 <script src="config.js"></script>
 <script src="feedback.js"></script>
 <script>
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
 function dec(h){try{return decodeURIComponent(h)}catch(e){return h}}
 let cur=dec(location.hash.slice(1))||null;
-const seen=JSON.parse(localStorage.getItem('lastRead')||'{}');localStorage.removeItem('seen');
+const seenKey='lastRead:'+(me||'guest'),seen=Object.create(null);
+try{const v=JSON.parse(localStorage.getItem(seenKey)||'{}');if(v&&typeof v==='object'&&!Array.isArray(v))for(const[k,n]of Object.entries(v))if(Number.isSafeInteger(n)&&n>=0)seen[k]=n}catch{}
 const hasMore={};let loadingOld=false,keepScroll=false,browsing=false;
 const touch=matchMedia('(pointer:coarse)').matches;
 function enterSend(e,form){if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229||touch)return;e.preventDefault();form.requestSubmit()}
@@ -208,40 +210,44 @@ const api=(p,o={})=>fetch(API_BASE+p,{...o,headers:{'Content-Type':'application/
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
 const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
-function expired(){token=me=null;isAdmin=false;if(isBanned)setBanned(false);localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();lerr.textContent='登录已过期，请重新登录';showLogin(true)}
+function expired(){localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');location.reload()}
 function renderMe(){setBell(me?undefined:0);if(!me){points=null;if(window.bal)renderPts()}
   meEl.innerHTML=me?`👤 ${esc(me)}<a id="out">退出</a>`:'<a id="in">登录 / 注册</a>';
   const o=document.getElementById('out'),i=document.getElementById('in');
-  if(o)o.onclick=()=>{api('/api/logout',{method:'POST'}).catch(()=>{});token=me=null;isAdmin=false;localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');renderMe();showLogin(true)};
+  if(o)o.onclick=()=>{api('/api/logout',{method:'POST',keepalive:true}).catch(()=>{});localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');location.reload()};
   if(i)i.onclick=()=>showLogin(true)}
 async function auth(kind){lerr.textContent='';
   if(kind==='register'&&lp.value!==lp2.value){lerr.textContent='两次输入的密码不一致';lp2.focus();return}
+  if(bGo.disabled)return;bGo.disabled=bLogin.disabled=bReg.disabled=true;
+  try{
   const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify(Object.assign({username:lu.value.trim(),password:lp.value},kind==='register'?{password2:lp2.value}:{}))});
   const d=await r.json();if(!r.ok){lerr.textContent=d.error;return}
-  token=d.token;me=d.username;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');localStorage.setItem('token',token);localStorage.setItem('username',me);showLogin(false);renderMe();loadMe()}
+  localStorage.setItem('admin',d.admin?'1':'0');localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);location.reload()
+  }catch{lerr.textContent='网络连接失败，请稍后重试'}finally{bGo.disabled=bLogin.disabled=bReg.disabled=false}}
 let lmode='login';function setLMode(k){lmode=k;bLogin.classList.toggle('on',k==='login');bReg.classList.toggle('on',k==='register');bGo.textContent=k==='login'?'登录':'注册';lhint.style.display=k==='login'?'none':'block';lp.autocomplete=k==='login'?'current-password':'new-password';lp2.style.display=k==='login'?'none':'';lp2.required=k!=='login';lp2.value='';lerr.textContent=''}
 bLogin.onclick=()=>setLMode('login');bReg.onclick=()=>setLMode('register');
 bGo.onclick=()=>lf.reportValidity()&&auth(lmode);
-const revs={};let online=null;
+const revs={};let online=null,refreshSeq=0;
 function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
-  [...f.elements].forEach(x=>x.disabled=!v||isBanned);applyMode();
+  [...f.elements].forEach(x=>x.disabled=!v||isBanned||posting);applyMode();
   if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token&&!browsing)showLogin(true)}
 retry.onclick=()=>refresh();
 bGuest.onclick=()=>{browsing=true;showLogin(false)};
 async function refresh(){
+  const seq=++refreshSeq;
   try{
-    CHANNELS=await (await api('/api/channels')).json();
+    const channels=await (await api('/api/channels')).json();if(seq!==refreshSeq)return;CHANNELS=channels;
     if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
-    const more=await r.json();revs[ch]=+(r.headers.get('X-Rev')||revs[ch]||0);if(first)hasMore[ch]=more.length>=50;if(first||noticeCh!==ch||more.some(m=>m.official&&!m.task))loadNotices();
+    const more=await r.json();if(seq!==refreshSeq)return;if(!r.ok||!Array.isArray(more))throw new Error('消息加载失败');revs[ch]=Math.max(revs[ch]||0,+(r.headers.get('X-Rev')||0));if(first)hasMore[ch]=more.length>=50;if(first||noticeCh!==ch||more.some(m=>m.official&&!m.task))loadNotices();
     const list=cache[ch]||[];
     more.forEach(m=>{const i=list.findIndex(x=>x.id===m.id);if(i>=0)list[i]=m;else list.push(m)});
     list.sort((a,b)=>a.id-b.id);cache[ch]=list;
-    if(list.length){seen[ch]=Math.max(seen[ch]||0,list[list.length-1].id);localStorage.setItem('lastRead',JSON.stringify(seen))}
+    if(list.length){seen[ch]=Math.max(seen[ch]||0,list[list.length-1].id);localStorage.setItem(seenKey,JSON.stringify(seen))}
     renderSide();if(searching())runSearch(true);else if(ch===cur&&(more.length||first))renderMsgs();
     setOnline(true);
-  }catch(e){setOnline(false)}
+  }catch(e){if(seq===refreshSeq)setOnline(false)}
 }
 async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]||!l||!l.length)return;loadingOld=true;more_(true);
   try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?before='+l[0].id);if(!r.ok)return;const old=await r.json();
@@ -283,14 +289,14 @@ function renderSide(){
 }
 const isExp=m=>m.task&&!m.claimedBy&&!m.done&&!m.cancelled&&(m.expired||(m.deadline&&new Date(m.deadline)<new Date()));
 let isAdmin=localStorage.getItem('admin')==='1',isBanned=false,points=null,cost={post:1,claim:1};
-function loadMe(){if(!token){points=null;renderPts();setBell(0);return}
-  api('/api/me').then(r=>r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d)return;isAdmin=!!d.admin;if(d.banned)setBanned(true);localStorage.setItem('admin',isAdmin?'1':'0');
+function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const requestedToken=token;
+  api('/api/me').then(r=>localStorage.getItem('token')!==requestedToken?null:r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d||localStorage.getItem('token')!==requestedToken)return;isAdmin=!!d.admin;if(isBanned!==!!d.banned)setBanned(!!d.banned);localStorage.setItem('admin',isAdmin?'1':'0');
     if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;if(d.eventUnread!=null)setBell(+d.eventUnread);renderPts();renderMsgs()}).catch(()=>{})}
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
 function renderPts(){bal.innerHTML=me&&points!=null?(isAdmin?'💎 管理员':`💎 余额 <b>${points}</b> 分`):'';
   bonusF.style.display=isAdmin?'flex':'none';
   send.textContent=isTask.checked?(isAdmin||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送';applyMode()}
-let composing=false;
+let composing=false,posting=false;
 function applyMode(){const admin=!!(me&&isAdmin);
   isTaskL.style.display=admin?'':'none';fCancel.style.display=!admin&&composing?'':'none';
   if(!admin&&!composing&&isTask.checked){isTask.checked=false;extra.classList.remove('show')}
@@ -300,7 +306,7 @@ function applyMode(){const admin=!!(me&&isAdmin);
 postBtn.onclick=()=>{if(!token)return showLogin(true);composing=true;isTask.checked=true;isTask.onchange();forceBottom=true;text.focus()};
 fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
-function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false);applyMode();renderMsgs()}
+function setBanned(v){isBanned=!!v;banned.style.display=isBanned?'block':'none';[...f.elements].forEach(x=>x.disabled=isBanned||online===false||posting);applyMode();renderMsgs()}
 async function failed(r){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);loadMe();return}if(r.status===403&&(d.banned||/封禁/.test(d.error||''))){setBanned(true);return}alert(d.error||'操作失败')}
 let flt='all',forceBottom=true;
 const FL={all:m=>1,open:m=>m.task&&!m.claimedBy&&!m.cancelled&&!isExp(m),claimed:m=>m.task&&m.claimedBy&&!m.done&&!m.cancelled&&!m.closed&&m.status!=='closed',done:m=>m.task&&m.done&&!m.cancelled,mine:m=>m.task&&m.user===me,took:m=>m.task&&m.claimedBy===me&&!m.claimerDeleted};
@@ -346,7 +352,7 @@ function renderMsgs(){
 }
 const canChat=m=>m.task&&me&&m.claimedBy&&!m.cancelled&&!m.claimerDeleted&&(m.user===me||m.claimedBy===me);
 let tc=null;
-function findTask(id){for(const ch in cache){const m=(cache[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}}
+function findTask(id){for(const source of [cache,sres])for(const ch in source){const m=(source[ch]||[]).find(x=>String(x.id)===String(id));if(m){m._ch=ch;return m}}}
 function tcNote(t){tcNote_.textContent=t||'';tcNote_.style.display=t?'block':'none'}
 const tcNote_=document.getElementById('tcNote');
 function openChat(id){const m=findTask(id);if(!m)return;closeChat();
@@ -362,7 +368,7 @@ async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))retur
     if(c!==tc)return;
     if(r.status===401)return expired();
     if(!r.ok){const d=await r.json().catch(()=>({}));tcNote(d.error||'暂时无法查看这段私聊');if(r.status===403||r.status===404){clearInterval(c.timer);tcT.disabled=tcS.disabled=tcI.disabled=true}return}
-    const d=await r.json();const list=Array.isArray(d)?d:(d.messages||[]);
+    const d=await r.json();if(c!==tc)return;const list=Array.isArray(d)?d:(d.messages||[]);
     const near=tcList.scrollHeight-tcList.scrollTop-tcList.clientHeight<60;
     list.forEach(x=>{const k=String(x.id??(x.time+x.user));if(c.seen.has(k))return;c.seen.add(k);
       const row=document.createElement('div');
@@ -405,7 +411,7 @@ function sInfo_(S,n){const e=document.getElementById('sInfo');if(e&&S)e.textCont
 async function runSearch(quiet){const ch=cur,seq=++sSeq;if(!ch)return;if(!searching()){sres={};forceBottom=true;renderMsgs();return}
   if(!quiet)forceTop=true;
   try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?limit=100&sort='+encodeURIComponent(sortI.value)+(kw()?'&q='+encodeURIComponent(qI.value.trim()):''));
-    if(!r.ok||seq!==sSeq||ch!==cur)return;const d=await r.json();const l=(Array.isArray(d)?d:(d.messages||[])).filter(m=>m.task);
+    if(!r.ok)return;const d=await r.json();if(seq!==sSeq||ch!==cur)return;const l=(Array.isArray(d)?d:(d.messages||[])).filter(m=>m.task);
     const c=cache[ch]||[];l.forEach(m=>{const i=c.findIndex(x=>x.id===m.id);if(i>=0)c[i]=m});
     sres[ch]=l;renderMsgs()}catch(e){}}
 qI.oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>runSearch(),300)};sortI.onchange=()=>runSearch();
@@ -437,7 +443,7 @@ function ofBtn(m){if(!m.task||isBanned)return '';const n=ofN(m);
   if(o)return `<button class="ofB${o.myTurn?' hot':''}" type="button" data-of="${m.id}">${o.myTurn?'💬 对方还价 '+esc(o.counter??o.price)+' 元，轮到你':'💬 我的讨价 '+esc(o.price)+' 元 · 待回复'}</button>`+(ofN(m)>1?`<small class="ofCnt">共 ${ofN(m)} 人在讨价</small>`:'');
   return `<button class="ofB" type="button" data-of="${m.id}">💬 讨价</button>`+(n?`<small class="ofCnt">有 ${n} 人在讨价</small>`:'')}
 const ofUrl=(m,x)=>'/api/channels/'+encodeURIComponent(m._ch||cur)+'/messages/'+encodeURIComponent(m.id)+'/'+x;
-const priceOk=v=>{v=+v;return v>0&&v<=100000&&Math.round(v*100)===v*100};
+const priceOk=v=>{const s=String(v).trim(),n=Number(s);return /^(?:\d+|\d*\.\d{1,2})$/.test(s)&&n>=0.01&&n<=100000};
 const MAXR=6;
 async function ofErr(r){if(r.status===401){expired();return '登录已过期'}const d=await r.json().catch(()=>({}));return d.error||(r.status===409?'这条讨价已经失效或状态变了，请刷新':r.status===402?'积分不足':'操作失败')}
 function offerNew(m){const b=openPop('💬 讨价');
@@ -463,17 +469,17 @@ async function offerList(id){const m=findTask(id);if(!m)return;const poster=m.us
     const act=o=>live(o)?(o.myTurn?0:1):2;
     l.slice().sort((x,y)=>act(x)-act(y)||String(y.updated||y.time).localeCompare(String(x.updated||x.time))).forEach(o=>{
       const v=el('div','of'+(live(o)?'':' off')),top=el('div'),who=o.user||'';const rs=o.rounds||(o.history||[]).filter(x=>x.action==='offer'||x.action==='counter');const cp=rs.length?rs[rs.length-1].price:(o.counter??o.price);const turn=o.turn||(o.myTurn!=null?((o.myTurn)===mgr?'poster':'claimer'):'poster');
-      const st=live(o)?(turn==='poster'?['amber',mgr?'轮到你回复':'等发布人回复']:['blue',mgr?'等对方回复':'对方还价，轮到你']):(OFS[o.status]||['gray',o.status||'']);
+      const st=live(o)?(turn==='poster'?['amber',poster?'轮到你回复':'等发布人回复']:['blue',!mgr&&who===me?'对方还价，轮到你':'等讨价人回复']):(OFS[o.status]||['gray',o.status||'']);
       if(mgr){const u=el('b','un',who||'已删除用户');u.dataset.u=who;if(who)u.onclick=()=>showProfile(who);top.append(u,' ')}
       top.append(el('span','ofP','当前 '+cp+' 元'),' ',el('span','tag '+st[0],st[1]));v.append(top);
-      const h=el('div','ofH');rs.forEach(x=>{const line=el('div',null,(x.by===m.user?'发布人':(mgr?(x.by||'讨价人'):'我'))+(x.by===m.user?(mgr?'（我）':''):'')+' 出价 '+x.price+' 元'+(x.note?'：“'+x.note+'”':'')+' · '+fmt(x.time));h.append(line)});v.append(h);
+      const h=el('div','ofH');rs.forEach(x=>{const fromPoster=x.by==='poster'||x.by===m.user,label=fromPoster?'发布人':(who||'讨价人'),mine=fromPoster?poster:who===me;const line=el('div',null,label+(mine?'（我）':'')+' 出价 '+x.price+' 元'+(x.note?'：“'+x.note+'”':'')+' · '+fmt(x.time));h.append(line)});v.append(h);
       if(o.reason&&!live(o))v.append(el('small',null,'原因：'+o.reason));
       v.append(el('small',null,' 已出价 '+rs.length+'/'+MAXR+' 次'));
       const ops=el('div','ofOps'),B=(t,col,fn)=>{const x=el('button',null,t);x.type='button';x.style.background=col;x.onclick=fn;ops.append(x)};
       const run=async(a,body,cf)=>{if(cf&&!confirm(cf))return;const r=await api(ofUrl(m,'offers/'+encodeURIComponent(o.id)+'/'+a),{method:'POST',body:JSON.stringify(body||{})});
         if(!r.ok){alert(await ofErr(r))}else{loadMe();refresh();if(a==='accept'){closePop();return}}offerList(id)};
       const canCt=o.canCounter!=null?!!o.canCounter:rs.length<MAXR;
-      if(live(o)&&!isBanned&&!isAdmin){
+      if(live(o)&&!isBanned&&(!isAdmin||poster)){
         if(poster&&turn==='poster'){B('同意 '+cp+' 元','#16a34a',()=>run('accept',null,`同意以 ${cp} 元交给 ${who}？同意后任务立即算对方接单。`));if(canCt)B('还价','#2563eb',()=>counterBox(v,o,run));B('拒绝','#6b7280',()=>run('reject',null,'确定拒绝这个讨价吗？'))}
         if(!poster&&turn==='claimer'){B(`接受 ${cp} 元并接单`,'#16a34a',()=>run('accept',null,`接受 ${cp} 元？接受即接单${cost.claim?'，扣 '+cost.claim+' 积分':''}。`));if(canCt)B('再还价','#2563eb',()=>counterBox(v,o,run));B('放弃','#6b7280',()=>run('withdraw',null,'确定放弃这次讨价吗？'))}
         if(!poster&&turn==='poster')B('撤回讨价','#6b7280',()=>run('withdraw',null,'确定撤回这次讨价吗？'))}
@@ -555,7 +561,7 @@ async function step(a,cf,el){const c=tc;if(!c||(cf&&!confirm(cf)))return;el.disa
     if(c===tc){renderProg();await pullChat()}loadMe();refresh()}
   catch(e){tcNote('网络异常，请稍后再试')}finally{el.disabled=false}}
 async function loadImg(c,mid,im){try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat/image/'+encodeURIComponent(mid));
-  if(!r.ok){im.alt='图片加载失败';im.style.minWidth='120px';return}const u=URL.createObjectURL(await r.blob());(c.urls=c.urls||[]).push(u);
+  if(c!==tc)return;if(!r.ok){im.alt='图片加载失败';im.style.minWidth='120px';return}const blob=await r.blob();if(c!==tc)return;const u=URL.createObjectURL(blob);(c.urls=c.urls||[]).push(u);
   im.onload=()=>{if(c===tc&&tcList.scrollHeight-tcList.scrollTop-tcList.clientHeight<260)tcList.scrollTop=tcList.scrollHeight};im.src=u;
   im.onclick=()=>{lb.querySelector('img').src=u;lb.classList.add('show')}}catch(e){im.alt='图片加载失败'}}
 const tcFile=document.getElementById('tcFile');let qrMode=false;
@@ -576,12 +582,16 @@ tcFile.onchange=async()=>{const c=tc,f=tcFile.files[0];if(!c||!f)return;
   catch(e){if(c===tc)tcNote(e.message||'图片发送失败')}finally{ib.disabled=isBanned||tcT.disabled}};
 window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
+  if(posting)return;
   if(isTask.checked&&!isAdmin&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
   const bonus=isAdmin&&isTask.checked&&xBonus.value?Math.floor(+xBonus.value):0;
+  posting=true;[...f.elements].forEach(x=>x.disabled=true);
+  try{
   const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined},bonus>0?{bonusPoints:bonus}:{}):{}))});
   if(r.status===401){expired();return}
   if(!r.ok){await failed(r);return}
-  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()};
+  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
+  }catch{alert('网络连接失败，请稍后重试')}finally{posting=false;[...f.elements].forEach(x=>x.disabled=isBanned||online===false)}};
 isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placeholder=isTask.checked?'任务内容：要做什么、有什么要求（必填）':(touch?'发消息':'发消息，回车发送');renderPts()};
 text.onkeydown=e=>enterSend(e,f);
 if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
