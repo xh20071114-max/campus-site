@@ -31,6 +31,7 @@ footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size
 @media(max-width:640px){.bar{flex-wrap:wrap;gap:6px 0;padding:10px 14px}.logo{font-size:17px}nav{display:flex;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch}nav a{margin:0 14px 0 0;font-size:14px}}
 nav a{white-space:nowrap}
 .news li{flex-wrap:wrap}.news .body{width:100%;color:#6b7280;font-size:14px;margin-top:6px;white-space:pre-wrap}.news .del{margin-left:10px;color:#dc2626;cursor:pointer;font-size:13px}
+#annMore[hidden]{display:none!important}
 #offline{display:none;background:#fef3c7;color:#92400e;text-align:center;padding:10px;font-size:14px}
 .dot[hidden]{display:none!important}.dot{display:inline-block;min-width:16px;height:16px;line-height:16px;padding:0 4px;margin-left:4px;border-radius:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:bold;text-align:center;vertical-align:top}.pwa{background:#fff;border-radius:12px;padding:16px 18px;margin-top:14px;font-size:14px;color:#374151;line-height:1.8}.pwa b{color:#1e3a8a}.pwa button{background:#1e3a8a;color:#fff;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;margin-top:6px}@media(max-width:640px){.task{flex-direction:column;align-items:stretch;gap:6px;padding:12px 14px}.task small{white-space:normal}.hero h1{font-size:26px}}</style><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Aevon校园"><script src="pwa.js" defer></script><meta name="theme-color" content="#1e3a8a"><meta name="description" content="Aevon校园交流网：校园跑、校园配送、代取快递、代课、代做作业，同学之间发任务、接任务。"><meta property="og:type" content="website"><meta property="og:title" content="Aevon校园交流网"><meta property="og:description" content="校园跑、校园配送、代取快递、代课、代做作业，同学帮同学。"><meta property="og:url" content="https://plgslzlexpmy.sealoshzh.site/"><meta property="og:image" content="https://plgslzlexpmy.sealoshzh.site/og.png"><meta name="twitter:card" content="summary_large_image"><link rel="stylesheet" href="ui.css"></head><body class="ui-site ui-home">
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
@@ -45,7 +46,7 @@ nav a{white-space:nowrap}
 <button style="align-self:flex-end;background:#1e3a8a;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer">发布</button></form>
 <ul class="news" id="annList">
 <li class="empty" style="color:#9ca3af">加载中…</li>
-</ul></section>
+</ul><button type="button" id="annMore" hidden aria-expanded="false" aria-controls="annList" style="display:block;margin:16px auto 0;padding:10px 20px;border:1px solid #cbd5e1;border-radius:9px;background:white;color:#1e3a8a;font:inherit;cursor:pointer">查看更多公告</button></section>
 <section id="channels"><h2>项目频道</h2><div class="grid">
 <a class="card" href="chat.html#校园跑"><div class="i">🏃</div><h3>校园跑</h3><p>代跑，陪跑。</p><div class="n" data-c="校园跑">进入频道</div></a>
 <a class="card" href="chat.html#校园配送"><div class="i">🍱</div><h3>校园配送</h3><p>校内所有门店以及校外门店</p><div class="n" data-c="校园配送">进入频道</div></a>
@@ -96,18 +97,27 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCount
 
 // 公告：读后端，管理员可发布和删除
 const API=window.API_BASE||'';let isAdmin=false,canAnn=false,annLoading=false,adminCheckInFlight=null;
+let annExpanded=false,annItems=[];
+const annMore=document.getElementById('annMore');
+annMore.onclick=()=>{annExpanded=!annExpanded;renderAnn()};
 const fmtD=t=>new Date(t).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});
 async function loadAnn(){
   if(annLoading)return;
   annLoading=true;
   try{const r=await fetch(API+'/api/announcements');if(!r.ok)throw 0;const list=await r.json();
     document.getElementById('offline').style.display='none';
+    annItems=list;renderAnn();
+  }catch{document.getElementById('offline').style.display='block';const al=document.getElementById('annList');if(/加载中/.test(al.textContent))al.innerHTML='<li style="color:#9ca3af">公告加载失败</li>'}finally{annLoading=false}
+}
+function renderAnn(){
+    const list=annItems;
+    if(list.length<=2)annExpanded=false;
+    annMore.hidden=list.length<=2;annMore.setAttribute('aria-expanded',String(annExpanded));annMore.textContent=annExpanded?'收起公告':'查看更多公告（还有 '+Math.max(0,list.length-2)+' 条）';
     if(!list.length){document.getElementById('annList').innerHTML='<li style="color:#9ca3af;justify-content:center">暂无公告</li>';return}
-    document.getElementById('annList').innerHTML=list.map(a=>`<li><b>${esc(a.title)}</b><span>${fmtD(a.time)}${canAnn?`<a class="del" data-id="${a.id}">删除</a>`:''}</span>${a.text?`<div class="body">${esc(a.text)}</div>`:''}</li>`).join('');
+    document.getElementById('annList').innerHTML=(annExpanded?list:list.slice(0,2)).map(a=>`<li><b>${esc(a.title)}</b><span>${fmtD(a.time)}${canAnn?`<a class="del" data-id="${a.id}">删除</a>`:''}</span>${a.text?`<div class="body">${esc(a.text)}</div>`:''}</li>`).join('');
     document.querySelectorAll('#annList .del').forEach(el=>el.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
       const r=await fetch(API+'/api/announcements/'+el.dataset.id+'/delete',{method:'POST',headers:{Authorization:'Bearer '+token}});
       if(!r.ok){alert((await r.json()).error||'删除失败');return}loadAnn()});
-  }catch{document.getElementById('offline').style.display='block';const al=document.getElementById('annList');if(/加载中/.test(al.textContent))al.innerHTML='<li style="color:#9ca3af">公告加载失败</li>'}finally{annLoading=false}
 }
 async function checkAdmin(){
   if(!token)return;if(adminCheckInFlight)return adminCheckInFlight;

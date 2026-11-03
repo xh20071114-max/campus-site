@@ -254,3 +254,14 @@ test('campus delivery purpose copy and legacy channel bookmark use the new name'
  assert.equal(await page.locator('#channels .card p').count(),5);
  await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='校园配送'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 校园配送');
 }));
+
+test('home announcements show two by default and keep explicit expansion across refresh',async t=>{
+ const data=seed();data.announcements=Array.from({length:4},(_,i)=>({id:1234567890600000+i,user:'AevonEcho',title:'Notice '+i,text:'Body '+i,time:new Date(Date.now()+i*1000).toISOString()}));
+ await fixture(async({base,call})=>{
+  const page=await pageFor(t,base,'Bob');await page.goto(base+'/index.html');await page.getByRole('button',{name:'查看更多公告（还有 2 条）',exact:true}).waitFor();assert.equal(await page.locator('#annList li').count(),2);
+  await page.locator('#annMore').click();assert.equal(await page.locator('#annList li').count(),4);assert.equal(await page.locator('#annMore').getAttribute('aria-expanded'),'true');
+  await page.evaluate(()=>loadAnn());assert.equal(await page.locator('#annList li').count(),4);await page.getByRole('button',{name:'收起公告',exact:true}).click();assert.equal(await page.locator('#annList li').count(),2);
+  for(const a of data.announcements.slice(0,2))await call('/api/announcements/'+a.id+'/delete','AevonEcho',{});
+  await page.evaluate(()=>loadAnn());assert.equal(await page.locator('#annList li').count(),2);assert.equal(await page.locator('#annMore').isVisible(),false);
+ },data);
+});
