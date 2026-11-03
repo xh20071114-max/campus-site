@@ -553,7 +553,7 @@ function report(target,id){if(!token)return showLogin(true);
     setTimeout(()=>{tcNote('');},0);alert('举报已提交，管理员会尽快处理。')}))}
 document.getElementById('tcRep').onclick=()=>{if(!tc)return;const m=tc.task;if(m.user===me)report('user',m.claimedBy);else report('task',tc.id)};
 const tcP=document.getElementById('tcP'),lb=document.getElementById('lb');
-lb.onclick=()=>lb.classList.remove('show');
+lb.onclick=e=>{if(e.target===lb)lb.classList.remove('show')};
 const tstat=m=>m.status&&m.status!=='open'?m.status:(m.done?'done':m.cancelled?'closed':m.claimedBy?'claimed':'open');
 function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={claimed:0,free_pending:0,finished:1,paid:2,done:3}[s];
   if(idx==null){tcP.innerHTML='<div class="ac"><small>'+(s==='disputed'?'⚠️ 平台处理中：已申请平台介入，交易暂停，管理员会尽快处理':s==='closed'?'🔒 这单已被管理员关闭':s==='cancelled'?'🚫 这单已撤回':'这单当前不在交易流程中')+'</small></div>';tcP.style.display='block';return}
