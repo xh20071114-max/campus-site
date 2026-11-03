@@ -209,7 +209,7 @@ const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||is
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.webmanifest':'application/manifest+json','.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
 // 只提供明确公开的资源；新增测试、备份或运维文件不会自动暴露到公网。
-const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
+const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','ui.css','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
 // 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
 const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);

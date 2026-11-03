@@ -1,0 +1,21 @@
+/* Shared visual language and mobile spacing. */
+:root{--ui-ink:#172554;--ui-red:#b91c1c;--ui-red-bg:#fff1f2;--ui-line:#e2e8f0}
+button,input,select,textarea{font-family:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #60a5fa;outline-offset:2px}
+button,a{-webkit-tap-highlight-color:transparent}
+.ui-site header .bar{gap:12px}.ui-site header nav{display:flex;align-items:center;gap:4px}.ui-site header nav a{display:inline-flex;align-items:center;min-height:36px;border-radius:8px}
+.ui-home .news li{border:1px solid #fecaca;border-left:4px solid #dc2626;background:#fff7f7}.ui-home .news li>b{color:#991b1b}
+.ui-chat .top{min-width:0;flex-wrap:wrap}.ui-chat #title{min-width:0;overflow-wrap:anywhere}.ui-chat .topR{min-width:0;flex-wrap:wrap;justify-content:flex-end}.ui-chat .topR .orders-button{margin:0}
+.ui-chat #notice{background:#fff1f2;border-color:#fecaca;color:#991b1b}.ui-chat #notice .nm,.ui-chat #notice #nMini{color:#b91c1c!important}.ui-chat #notice .na button{color:#b91c1c;border-color:#fecaca;background:#fff}
+.ui-chat .ev.u,.ui-me .ev li.u{background:#fff1f2;color:#991b1b;border-radius:9px}.ui-chat .ev.u{padding:10px}.ui-me .ev li.u{padding:10px}.ui-chat .ev.u small,.ui-me .ev li.u small{color:#9f4b4b}
+.ui-me .order-overview .t,.ui-me .stat,.ui-recharge .card{border:1px solid var(--ui-line)}
+.ui-login .box{max-width:calc(100vw - 32px);border-radius:20px}.ui-admin .tabs button.on{font-weight:700}
+@media(max-width:640px){
+ .ui-site header .bar{padding:12px 14px;gap:8px}.ui-site header nav{width:100%;gap:6px;overflow-x:auto;scrollbar-width:none}.ui-site header nav a{flex:none;margin:0;padding:4px 9px;background:#ffffff12}
+ .ui-chat .top{display:grid!important;grid-template-columns:minmax(0,1fr);gap:10px!important;padding:12px 14px}.ui-chat .topR{width:100%;justify-content:flex-start;gap:8px}.ui-chat .topR .orders-button{padding:8px 12px}.ui-chat #fbSlot #fbBtn{padding:8px 12px}.ui-chat #bell{min-width:38px;min-height:36px}
+ .ui-chat #notice{flex-wrap:wrap}.ui-chat #notice .nb{flex-basis:100%}.ui-chat #notice .na{margin-left:auto}
+ .ui-admin .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-admin .tabs button{min-height:40px;white-space:normal;overflow:visible;text-overflow:clip}
+ .ui-home .hero{padding:56px 18px}.ui-home section{padding:38px 16px}.ui-home .news li{gap:6px}
+ .ui-me main,.ui-recharge main{padding-left:14px;padding-right:14px}
+}
+.orders-summary .needs-action{background:#fff1f2;border-color:#fecaca;color:#991b1b}.orders-summary .needs-action b{color:#b91c1c}
