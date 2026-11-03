@@ -101,20 +101,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 #fCancel{background:#e5e7eb;color:#374151}
 .m.ann .txt{background:#eef2ff;border-left:4px solid #4f46e5;font-weight:500}
 .annTag{background:#4f46e5;color:#fff;border-radius:4px;font-size:11px;padding:1px 6px;margin-left:6px}
-#notice{display:none;background:linear-gradient(90deg,#eef2ff,#f5f3ff);border-bottom:1px solid #e0e7ff;padding:10px 20px;font-size:14px;color:#312e81;align-items:flex-start;gap:10px}
-#notice.show{display:flex}#notice .nb{flex:1;min-width:0}
-#notice .nt{font-weight:600;margin-right:6px}#notice .nx{white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-#notice .nm{font-size:12px;color:#6366f1;margin-top:3px}
-#notice .na{display:flex;gap:6px;flex-shrink:0}#notice .na button{background:#fff;color:#4f46e5;border:1px solid #c7d2fe;padding:3px 10px;font-size:12px;border-radius:6px}
-#notice.mini{padding:6px 20px;cursor:pointer;align-items:center}#notice.mini .nx,#notice.mini .nm{display:none}
-#nAll{position:fixed;inset:0;background:rgba(17,24,39,.55);display:none;align-items:center;justify-content:center;z-index:45}
-#nAll.show{display:flex}#nAll .box{background:#fff;border-radius:14px;width:min(520px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
-#nAll .h{padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;font-weight:600}
-#nAll .h button{background:transparent;color:#6b7280;font-size:20px;padding:0 4px}
-#nList{overflow:auto;padding:12px 18px}#nList .it{padding:10px 0;border-bottom:1px solid #f3f4f6}
-#nList .it b{display:block;margin-bottom:3px}#nList .it .x{white-space:pre-wrap;word-break:break-word;font-size:14px;color:#374151}
-#nList .it small{color:#9ca3af;font-size:12px}.scope{background:#e0e7ff;color:#4338ca;border-radius:4px;font-size:11px;padding:0 5px;margin-right:6px}
-@media(max-width:640px){#notice{padding:8px 12px}}
+
 #fbSlot #fbBtn{position:static;padding:5px 12px;font-size:13px;box-shadow:none;font-weight:400}
 #f button:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed}
 #f textarea:disabled,#f input:disabled{background:#f3f4f6;cursor:not-allowed}
@@ -158,7 +145,6 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span id="title"></span><span class="topR"><button type="button" id="bell" title="任务动态">🔔<i id="bellDot"></i></button><span id="fbSlot"></span></span></div>
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>
   <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
-  <div id="notice"><div class="nb"><div><span class="nt" id="nTitle"></span><span id="nMini" style="display:none;color:#6366f1;font-size:12px"></span></div><div class="nx" id="nText"></div><div class="nm" id="nMeta"></div></div><div class="na"><button type="button" id="nAllB">全部公告</button><button type="button" id="nToggle">收起</button></div></div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我的任务</span><span data-f="saved">⭐ 我的收藏</span></div>
   <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务标题或内容"><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
   <div id="msgs"></div>
@@ -170,7 +156,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
     <label class="fld bonus" id="bonusF" title="奖励积分（仅管理员）" style="display:none"><span>🎁</span><input id="xBonus" type="number" min="0" step="1" placeholder="奖励积分"></label>
   </div></div>
   <div id="postBar"><button type="button" id="postBtn">＋ 发布任务</button><small id="postHint"></small></div>
-  <form id="f">
+  <p id="officialHint" hidden style="padding:8px 14px;background:#fffbeb;color:#92400e;font-size:13px">管理员可发布频道文字；取消勾选“发任务”即可发布。</p><form id="f">
     <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
     <label id="isTaskL"><input type="checkbox" id="isTask">发任务</label>
     <span id="bal"></span>
@@ -183,7 +169,6 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <form id="tcF"><button type="button" id="tcI" title="发图片">📷</button><input type="file" id="tcFile" accept="image/*" hidden><textarea id="tcT" rows="1" maxlength="500" placeholder="和对方说点什么，回车发送"></textarea><button id="tcS">发送</button></form></div>
 <div id="pop"><div class="box"><div class="h"><span id="popT"></span><button type="button" id="popX">×</button></div><div class="bd" id="popB"></div></div></div>
 <div id="lb"><img alt="大图"></div>
-<div id="nAll"><div class="box"><div class="h">📢 全部公告<button type="button" id="nAllX">×</button></div><div id="nList"></div></div></div>
 <div id="login"><form class="box" id="lf" onsubmit="return false">
   <h3>🎓 Aevon校园交流网</h3>
   <div class="tabs"><button type="button" id="bLogin" class="on">登录</button><button type="button" id="bReg">注册</button></div>
@@ -244,7 +229,7 @@ async function refresh(){
     if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
-    const more=await r.json();if(seq!==refreshSeq)return;if(!r.ok||!Array.isArray(more))throw new Error('消息加载失败');revs[ch]=Math.max(revs[ch]||0,+(r.headers.get('X-Rev')||0));if(first)hasMore[ch]=more.length>=50;if(first||noticeCh!==ch||more.some(m=>m.official&&!m.task))loadNotices();
+    const more=await r.json();if(seq!==refreshSeq)return;if(!r.ok||!Array.isArray(more))throw new Error('消息加载失败');revs[ch]=Math.max(revs[ch]||0,+(r.headers.get('X-Rev')||0));if(first)hasMore[ch]=more.length>=50;
     const list=cache[ch]||[];
     more.forEach(m=>{const i=list.findIndex(x=>x.id===m.id);if(i>=0)list[i]=m;else list.push(m)});
     list.sort((a,b)=>a.id-b.id);cache[ch]=list;
@@ -263,29 +248,7 @@ async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]|
   catch(e){}finally{loadingOld=false;more_(false)}}
 function more_(on){const d=document.getElementById('more');if(d)d.textContent=on?'加载中…':(hasMore[cur]?'上滑加载更早的消息':'没有更早的消息了')}
 msgs.addEventListener('scroll',()=>{if(msgs.scrollTop<80)loadOlder()});
-let notices=[],noticeCh=null;
-const nKey=()=>'noticeHidden:'+cur;
-async function loadNotices(){const ch=cur;if(!ch)return;
-  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/notices');if(!r.ok)return;const d=await r.json();if(ch!==cur)return;notices=Array.isArray(d)?d:[];noticeCh=ch;renderNotice()}catch(e){}}
-function renderNotice(){const n=notices[0];if(!n||noticeCh!==cur){notice.classList.remove('show');return}
-  const hidden=localStorage.getItem(nKey())===String(n.id);
-  notice.classList.add('show');notice.classList.toggle('mini',hidden);
-  nTitle.textContent='📢 '+(n.title||(n.type==='global'?'全站公告':'频道公告'));
-  nText.textContent=n.text||'';nMeta.textContent=(n.type==='global'?'全站':'本频道')+' · '+fmt(n.time)+(notices.length>1?` · 共 ${notices.length} 条`:'');
-  nMini.textContent=hidden?'（已收起，点击展开）':'';nMini.style.display=hidden?'':'none';
-  nToggle.textContent=hidden?'展开':'收起'}
-nToggle.onclick=e=>{e.stopPropagation();const n=notices[0];if(!n)return;
-  if(localStorage.getItem(nKey())===String(n.id))localStorage.removeItem(nKey());else localStorage.setItem(nKey(),String(n.id));renderNotice()};
-notice.onclick=e=>{if(notice.classList.contains('mini')&&!e.target.closest('button'))nToggle.onclick(e)};
-nAllB.onclick=e=>{e.stopPropagation();nList.replaceChildren();
-  if(!notices.length){const p=document.createElement('p');p.style.color='#9ca3af';p.textContent='还没有公告';nList.append(p)}
-  notices.forEach(n=>{const it=document.createElement('div');it.className='it';const b=document.createElement('b');
-    const sc=document.createElement('span');sc.className='scope';sc.textContent=n.type==='global'?'全站':'本频道';b.append(sc,document.createTextNode(n.title||'公告'));
-    const x=document.createElement('div');x.className='x';x.textContent=n.text||'';const sm=document.createElement('small');sm.textContent=(n.user?n.user+' · ':'')+fmt(n.time);
-    it.append(b,x,sm);nList.append(it)});
-  nAll.classList.add('show')};
-nAllX.onclick=()=>nAll.classList.remove('show');nAll.onclick=e=>{if(e.target===nAll)nAll.classList.remove('show')};
-function go(c){cur=c;forceTop=true;notices=[];renderNotice();loadNotices();forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
+function go(c){cur=c;forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
 function renderSide(){
   chs.innerHTML=CHANNELS.map(c=>{const last=c.lastId||0,r=seen[c.name]||0;let n='';
     if(c.name!==cur&&last>r){const l=cache[c.name];n=r?(l?l.filter(m=>m.id>r&&!m.deleted).length||'新':'新'):'新';if(n>99)n='99+'}
@@ -303,14 +266,15 @@ function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const req
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
 function renderPts(){bal.innerHTML=me&&points!=null?`${isSuperAdmin?'👑 总管理员 · ':isAdmin?'🛡 管理员 · ':''}💎 余额 <b>${points}</b> 分${can('freeTasks')?' · 任务免扣分':''}`:'';
   bonusF.style.display=can('publishBonus')?'flex':'none';
-  send.textContent=isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送';applyMode()}
+  send.textContent=isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):can('postOfficial')?'发布频道文字':'发送';applyMode()}
 let composing=false,posting=false;
 function applyMode(){const admin=!!(me&&can('postOfficial'));
   isTaskL.style.display=admin?'':'none';fCancel.style.display=!admin&&composing?'':'none';
+  officialHint.hidden=!admin;
   if(!admin&&!composing&&isTask.checked){isTask.checked=false;extra.classList.remove('show')}
   f.style.display=admin||composing?'':'none';postBar.classList.toggle('show',!admin&&!composing);
   postBtn.disabled=isBanned||online===false;
-  postHint.textContent=me&&!admin&&points!=null?`${can('freeTasks')?'发布任务免扣分':'每次发布扣 '+cost.post+' 积分'} · 余额 ${points}`:(me?'':'登录后即可发布任务')}
+  postHint.textContent=admin?'发布频道文字或任务':me&&points!=null?`${can('freeTasks')?'发布任务免扣分':'每次发布扣 '+cost.post+' 积分'} · 余额 ${points}`:(me?'':'登录后即可发布任务')}
 postBtn.onclick=()=>{if(!token)return showLogin(true);composing=true;isTask.checked=true;isTask.onchange();forceBottom=true;text.focus()};
 fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
@@ -341,7 +305,7 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted&&!(m.official&&!m.task)).filter(FL[flt]).filter(m=>!S||match(m));
+  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!S||match(m));
   sInfo_(S,list.length);
   const top=S?'<div id="sInfo"></div>':flt==='saved'?'':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
   msgs.innerHTML=top+list.map(m=>{
@@ -405,7 +369,7 @@ async function pullChat(first){const c=tc;if(!c||(!first&&document.hidden))retur
     if(first||near)tcList.scrollTop=tcList.scrollHeight;
   }catch(e){if(c===tc)tcNote('网络异常，正在重试…')}}
 tcX.onclick=closeChat;
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(pop.classList.contains('show'))closePop();else if(lb.classList.contains('show'))lb.classList.remove('show');else if(nAll.classList.contains('show'))nAll.classList.remove('show');else if(tc)closeChat()}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(pop.classList.contains('show'))closePop();else if(lb.classList.contains('show'))lb.classList.remove('show');else if(tc)closeChat()}});
 tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!t||c.sending)return;c.sending=true;tcS.disabled=true;
   try{const r=await api('/api/tasks/'+encodeURIComponent(c.id)+'/chat',{method:'POST',body:JSON.stringify({text:t})});if(c!==tc)return;
     if(r.status===401)return expired();
@@ -619,7 +583,6 @@ openLinkedOrder();
 loadCost();loadMe();loadSaved();renderPts();setInterval(()=>{if(!document.hidden)loadMe()},30000);
 (function(){const b=document.getElementById('fbBtn');if(b)fbSlot.appendChild(b)})();
 refresh();setInterval(()=>{if(!document.hidden)refresh()},8000);
-setInterval(()=>{if(!document.hidden)loadNotices()},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();if(tc)pullChat();if(flt==='saved')loadSaved().then(renderMsgs)}});setInterval(()=>{if(flt==='saved')loadSaved().then(renderMsgs);else renderMsgs()},30000);
 </script>
 </body></html>

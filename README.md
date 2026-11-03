@@ -161,7 +161,7 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - 管理员删除或关闭任务时，只有勾选 `refundPost` / `refundClaim` 才退还对应积分；已经退款或已注销的账号不会再退款。
 - 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `{name,count,lastId}`。
 - 频道里普通用户只能发任务，发普通消息返回 403；管理员可以发普通消息，当公告用。
-- `GET /api/channels/<ch>/notices?limit=50`：全站公告（type=global，带 title）和管理员在这个频道发的普通消息（type=channel）合并后按时间倒序返回，字段是 {id,type,title,text,user,time}。
+- 全站公告只在首页显示。频道管理员文字作为带「官方」标记的频道消息显示在聊天流中，不再置顶到频道顶部。
 
 ## 交易流程和私聊图片
 - 任务带 `status`：open → claimed → finished → paid → done，另外还有 cancelled（已撤回）和 closed（管理员关闭）。
