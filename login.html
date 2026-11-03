@@ -34,7 +34,7 @@ a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
 <script src="config.js"></script>
 <script>
 let mode='login';
-function safeNext(value){try{const u=new URL(value||'index.html',location.href);return u.origin===location.origin&&/^\/(index|chat|me|recharge|admin|login)\.html$/.test(u.pathname)?u.pathname+u.search+u.hash:'index.html'}catch{return 'index.html'}}
+function safeNext(value){try{const u=new URL(value||'index.html',location.href);return u.origin===location.origin&&/^\/(index|tasks|chat|me|recharge|admin|login)\.html$/.test(u.pathname)?u.pathname+u.search+u.hash:'index.html'}catch{return 'index.html'}}
 function set(m){mode=m;tL.className=m==='login'?'on':'';tR.className=m==='register'?'on':'';
  p2.style.display=m==='register'?'block':'none';if(m!=='register')p2.value='';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';tip.style.display=m==='register'?'block':'none';p.autocomplete=m==='register'?'new-password':'current-password';err.textContent=''}
 tL.onclick=()=>set('login');tR.onclick=()=>set('register');
@@ -52,6 +52,6 @@ f.onsubmit=async e=>{e.preventDefault();err.textContent='';
  }catch{err.textContent='网络连接失败，请检查网络后重试'}finally{go.disabled=tL.disabled=tR.disabled=false}};
 fetch((window.API_BASE||'')+'/api/settings').then(r=>r.json()).then(d=>{const c=d&&d.contactInfo;if(!c)return;const p=document.createElement('p');p.style.cssText='margin-top:14px;font-size:13px;color:#6b7280;text-align:center;line-height:1.6';p.textContent='遇到问题（如账号被封禁）？请联系管理员：'+c;document.querySelector('.box').appendChild(p)}).catch(()=>{});
 </script>
-<script src="feedback.js"></script>
+<script src="task-entry.js"></script><script src="feedback.js"></script>
 </body>
 </html>

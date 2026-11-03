@@ -251,3 +251,16 @@ test('banned login and /api/me return ban reason and admin contact configured in
  assert.equal((await call('/api/tasks?status=bogus','')).status,400);
  assert.equal((await call('/api/tasks?status=open','')).status,200);
 }));
+
+test('task hall paginates every available task and preserves the legacy array response',async()=>{
+ const data=seed(),id=1234567890100000;
+ data.messages['校园跑']=Array.from({length:125},(_,i)=>({id:id+i,user:'Alice',task:true,text:'hall task '+i,time:new Date().toISOString()}));
+ data.messages['代取快递']=[{id:id+200,user:'Bob',task:true,text:'parcel available',time:new Date().toISOString()},{id:id+201,user:'Bob',task:true,text:'expired',deadline:new Date(Date.now()-3600000).toISOString(),time:new Date().toISOString()},{id:id+202,user:'Bob',task:true,text:'claimed',claimedBy:'Alice',time:new Date().toISOString()}];
+ await fixture(async({call})=>{
+  const first=await call('/api/tasks?status=open&page=1&limit=20','');assert.equal(first.status,200);assert.equal(first.data.total,126);assert.equal(first.data.pages,7);assert.equal(first.data.tasks.length,20);
+  const ids=[];for(let page=1;page<=7;page++){const r=await call('/api/tasks?page='+page+'&limit=20','');ids.push(...r.data.tasks.map(x=>x.id))}assert.equal(new Set(ids).size,126);assert.ok(ids.includes(id));assert.ok(!ids.includes(id+201));assert.ok(!ids.includes(id+202));
+  const filtered=(await call('/api/tasks?page=1&channel='+encodeURIComponent('代取快递')+'&q=parcel','')).data;assert.equal(filtered.total,1);assert.equal(filtered.tasks[0].id,id+200);
+  assert.ok(Array.isArray((await call('/api/tasks?limit=8','')).data));assert.equal((await call('/api/tasks?page=invalid','')).status,400);assert.equal((await call('/api/tasks?page=1&channel=missing','')).status,400);
+  const past=(await call('/api/tasks?page=999&limit=20','')).data;assert.equal(past.page,7);assert.equal(past.tasks.length,6);
+ },data);
+});

@@ -210,7 +210,7 @@ const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||is
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.webmanifest':'application/manifest+json','.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
 // 只提供明确公开的资源；新增测试、备份或运维文件不会自动暴露到公网。
-const PUBLIC_FILES=new Set(['index.html','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','ui.css','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
+const PUBLIC_FILES=new Set(['index.html','tasks.html','task-entry.js','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','ui.css','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
 // 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
 const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
@@ -865,11 +865,15 @@ const handle=async(req,res)=>{
     if(p==="/api/tasks"&&GET){
       const st=u.searchParams.get("status")||"open", lim=Math.min(Math.max(parseInt(u.searchParams.get("limit"))||10,1),100);
       if(!['open','claimed','done','all'].includes(st))return send(res,400,{error:'任务状态无效'});
+      const paged=u.searchParams.has('page'),page=intIn(u.searchParams.get('page')||'1',1,1000000),channel=u.searchParams.get('channel')||'';
+      if(paged&&page==null)return send(res,400,{error:'页码无效'});
+      if(channel&&!CHANNELS.includes(channel))return send(res,400,{error:'频道无效'});
       const me=userOf(req),q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50),all=[];
-      for(const c of CHANNELS)for(const x of db.messages[c]){if(!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x))||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
+      for(const c of CHANNELS)for(const x of db.messages[c]){if(channel&&c!==channel||!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x)||x.done||x.closed)||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
         if(q&&![x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)))continue;all.push({msg:x,ch:c})}
       const compare=taskComparator(u.searchParams.get('sort'));all.sort((a,b)=>compare(a.msg,b.msg));
-      return send(res,200,all.slice(0,lim).map(x=>withUnread(out(x.msg,x.ch,me),me)));
+      const pages=Math.max(1,Math.ceil(all.length/lim)),current=Math.min(page||1,pages),start=paged?(current-1)*lim:0,tasks=all.slice(start,start+lim).map(x=>withUnread(out(x.msg,x.ch,me),me));
+      return send(res,200,paged?{tasks,total:all.length,page:current,pages}:tasks);
     }
     // GET /api/channels/:name/notices?limit=50  置顶公告：全站公告 + 管理员在这个频道发的普通消息，按时间倒序
     const nm=p.match(/^\/api\/channels\/([^/]+)\/notices$/);

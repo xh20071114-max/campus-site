@@ -3,7 +3,7 @@ const {test,before,after}=require('node:test'),assert=require('node:assert/stric
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const {fixture,password,sleep,seed}=require('./helpers.cjs');
 let browser;
-before(async()=>{browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||(process.platform==='win32'?'msedge':undefined),headless:true})});
+before(async()=>{browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||(process.platform==='win32'?'msedge':undefined),headless:true,...(process.env.BROWSER_EXECUTABLE_PATH?{executablePath:process.env.BROWSER_EXECUTABLE_PATH}:{})})});
 after(async()=>{if(browser)await browser.close()});
 async function setPermissions(call,name,permissions){const d=(await call('/api/admin/roles','AevonEcho')).data,u=d.users.find(x=>x.username===name);const r=await call(`/api/admin/users/${name}/permissions`,'AevonEcho',{permissions,userId:u.userId,version:u.permissionsVersion});assert.equal(r.status,200)}
 
@@ -236,3 +236,15 @@ test('admin message rows retain access to withdrawn offer history',t=>fixture(as
  const m=await task(),offer=(await act(m,'Bob','offer',{price:15,note:'history note'})).data.offer;await call('/api/channels/'+encodeURIComponent('校园跑')+'/messages/'+m.id+'/offers/'+offer.id+'/withdraw','Bob',{});
  const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('#ub').waitFor();await page.locator('[data-t="msgs"]').click();await page.locator('[data-off="'+m.id+'"]').click();await page.locator('.cm .ci').waitFor();assert.ok((await page.locator('.cm .cl').textContent()).includes('history note'));
 }));
+
+test('task hall exposes all pages, filters channels and opens a claimed order on mobile',async t=>{
+ const data=seed(),id=1234567890200000;data.messages['校园跑']=Array.from({length:21},(_,i)=>({id:id+i,user:'Alice',task:true,text:'hall task '+i,time:new Date().toISOString()}));data.messages['代取快递']=[{id:id+30,user:'Alice',task:true,text:'hall parcel',time:new Date().toISOString()}];
+ await fixture(async({base})=>{
+ const page=await pageFor(t,base,'Bob',[],{viewport:{width:390,height:844},hasTouch:true});
+ await page.goto(base+'/index.html');assert.ok(await page.locator('#openTaskHall').evaluate(el=>{const a=el.getBoundingClientRect(),b=document.getElementById('supportBtn').getBoundingClientRect();return getComputedStyle(el).position==='fixed'&&a.bottom<b.top&&a.right<=innerWidth}));assert.equal(await page.locator('header a[href="tasks.html"]').count(),0);await page.getByRole('link',{name:'📋 未接订单'}).click();await page.getByText('共 22 个待接任务 · 每页 20 条',{exact:true}).waitFor();
+ assert.equal(await page.locator('.card').count(),20);await page.getByRole('button',{name:'下一页'}).click();await page.getByText('2 / 2',{exact:true}).waitFor();assert.equal(await page.locator('.card').count(),2);
+ await page.locator('#channel').selectOption('代取快递');await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall parcel',exact:true}).waitFor();
+ await page.locator('#channel').selectOption('');await page.locator('#query').fill('hall task 0');await page.getByRole('button',{name:'查找',exact:true}).click();await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall task 0',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'接单',exact:true}).click();await page.waitForURL(/chat\.html\?task=/);await page.locator('#tc.show').waitFor();
+ },data);
+});

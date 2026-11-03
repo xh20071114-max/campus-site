@@ -129,4 +129,4 @@ if(matchMedia('(display-mode: standalone)').matches||navigator.standalone)docume
 let pwaEvt=null;addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaEvt=e;document.getElementById('pwaBtn').hidden=false});
 document.getElementById('pwaBtn').onclick=async()=>{if(!pwaEvt)return;pwaEvt.prompt();try{await pwaEvt.userChoice}catch{}pwaEvt=null;document.getElementById('pwaBtn').hidden=true};
 addEventListener('appinstalled',()=>{document.getElementById('pwaBtn').hidden=true});
-</script><script src="feedback.js"></script><script src="orders.js"></script></body></html>
+</script><script src="task-entry.js"></script><script src="feedback.js"></script><script src="orders.js"></script></body></html>
