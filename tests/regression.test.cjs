@@ -133,7 +133,7 @@ test('login redirects stay on explicitly allowed local pages',async()=>{
 });
 test('frontend unban polling clears the disabled state',async()=>{
  const html=await fs.readFile(path.join(root,'chat.html'),'utf8'),fn=html.match(/function loadMe\(\)[\s\S]*?(?=\nfunction loadCost)/)[0];let resolve;
- const rendered=new Promise(r=>resolve=r),ctx={token:'valid',isAdmin:false,isBanned:true,localStorage:{setItem(){},getItem(){return 'valid'}},api:async()=>({ok:true,status:200,json:async()=>({admin:false,banned:false})}),setBanned(v){ctx.isBanned=v},renderPts(){},renderMsgs(){resolve()},setBell(){}};
+ const rendered=new Promise(r=>resolve=r),ctx={token:'valid',roleFingerprint:null,isAdmin:false,isBanned:true,localStorage:{setItem(){},getItem(){return 'valid'}},api:async()=>({ok:true,status:200,json:async()=>({admin:false,banned:false})}),setBanned(v){ctx.isBanned=v},renderPts(){},renderMsgs(){resolve()},setBell(){}};
  vm.createContext(ctx);vm.runInContext(fn+';loadMe()',ctx);await rendered;assert.equal(ctx.isBanned,false);
 });
 test('all standalone and inline JavaScript parses',async()=>{

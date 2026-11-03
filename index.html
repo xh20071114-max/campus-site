@@ -54,7 +54,7 @@ nav a{white-space:nowrap}
 <a class="card" href="chat.html#代做作业"><div class="i">📝</div><h3>代做作业</h3><p>作业相关任务发布</p><div class="n" data-c="代做作业">进入频道</div></a>
 </div></section>
 <section id="tasks"><h2>🔥 最新任务 <small style="font-size:14px;color:#9ca3af;font-weight:normal">还没人接的任务</small></h2><div class="tasks" id="taskList"><p style="color:#9ca3af">加载中…</p></div></section>
-<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，频道里只发布任务，同学之间互相发任务、接任务；接单后发布人和接单人可以通过任务私聊沟通细节。本站由管理员管理，管理员可以查看所有内容。请遵守校规校纪，文明发言。</p><p style="margin-top:10px;color:#6b7280;font-size:14px">任务私聊只有发布人和接单人能发言。</p></section>
+<section class="about" id="about"><h2>关于我们</h2><p>Aevon校园交流网是面向本校同学的互助平台。每个项目都是一个频道，频道里只发布任务，同学之间互相发任务、接任务；接单后发布人和接单人可以通过任务私聊沟通细节。本站由总管理员管理，获授权的管理员可查看相应内容（包括私聊和已删除原文）。请遵守校规校纪，文明发言。</p><p style="margin-top:10px;color:#6b7280;font-size:14px">任务私聊只有发布人和接单人能发言。</p></section>
 <section id="install"><h2>📱 添加到手机桌面</h2><div class="pwa">
 <p>把本站添加到手机桌面，下次像 App 一样一点就开。</p>
 <p><b>iPhone（Safari）：</b>点底部的「分享」按钮，选「添加到主屏幕」，再点「添加」。</p>
@@ -89,13 +89,13 @@ loadCounts();loadTasks();setInterval(()=>{if(document.hidden)return;loadCounts()
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCounts();loadTasks()}});
 
 // 公告：读后端，管理员可发布和删除
-const API=window.API_BASE||'';let isAdmin=false;
+const API=window.API_BASE||'';let isAdmin=false,canAnn=false;
 const fmtD=t=>new Date(t).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});
 async function loadAnn(){
   try{const r=await fetch(API+'/api/announcements');if(!r.ok)throw 0;const list=await r.json();
     document.getElementById('offline').style.display='none';
     if(!list.length){document.getElementById('annList').innerHTML='<li style="color:#9ca3af;justify-content:center">暂无公告</li>';return}
-    document.getElementById('annList').innerHTML=list.map(a=>`<li><b>${esc(a.title)}</b><span>${fmtD(a.time)}${isAdmin?`<a class="del" data-id="${a.id}">删除</a>`:''}</span>${a.text?`<div class="body">${esc(a.text)}</div>`:''}</li>`).join('');
+    document.getElementById('annList').innerHTML=list.map(a=>`<li><b>${esc(a.title)}</b><span>${fmtD(a.time)}${canAnn?`<a class="del" data-id="${a.id}">删除</a>`:''}</span>${a.text?`<div class="body">${esc(a.text)}</div>`:''}</li>`).join('');
     document.querySelectorAll('#annList .del').forEach(el=>el.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
       const r=await fetch(API+'/api/announcements/'+el.dataset.id+'/delete',{method:'POST',headers:{Authorization:'Bearer '+token}});
       if(!r.ok){alert((await r.json()).error||'删除失败');return}loadAnn()});
@@ -105,9 +105,9 @@ async function checkAdmin(){
   if(!token)return;
   try{const r=await fetch(API+'/api/me',{headers:{Authorization:'Bearer '+token}});
     if(r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');meEl.textContent='登录';meEl.href='login.html?next=index.html';return}
-    const d=await r.json();isAdmin=!!d.admin;
+    const d=await r.json();isAdmin=!!d.admin;canAnn=!!d.superAdmin||(d.permissions||[]).includes('manageAnnouncements');
     const nd=(d.eventUnread|0)+(d.chatUnread|0),dt=document.getElementById('meDot');dt.hidden=!nd;dt.textContent=nd>99?'99+':nd;dt.title=nd?`${d.eventUnread|0} 条新动态，${d.chatUnread|0} 条私聊未读`:'';
-    if(isAdmin){document.getElementById('annForm').style.display='flex';document.getElementById('adminLink').style.display='';}
+    document.getElementById('annForm').style.display=canAnn?'flex':'none';document.getElementById('adminLink').style.display=isAdmin?'':'none';
   }catch{}
   loadAnn();
 }

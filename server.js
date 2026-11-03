@@ -3,6 +3,26 @@ const http=require('http'),fs=require('fs'),path=require('path'),crypto=require(
 const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
 const CHANNELS=['校园跑','食堂配送','代取快递','代课','代做作业'];
+// 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
+const PERMISSIONS=[
+  ['viewUsers','用户管理','查看用户','查看账号、状态和积分'],
+  ['banUsers','用户管理','封禁与解封','含查看用户；仅操作普通用户'],
+  ['deleteUsers','用户管理','删除用户','含查看用户；仅删除普通用户，删除不可恢复'],
+  ['managePoints','用户管理','调整用户积分','含查看用户；仅调整普通用户积分'],
+  ['viewMessages','内容管理','查看消息与议价','查看全部频道消息、已删除原文和议价历史'],
+  ['deleteMessages','内容管理','删除消息与任务','含查看消息；可选择退还任务积分'],
+  ['viewChats','内容管理','查看任务私聊','查看全部任务私聊、议价历史及图片；不能冒充双方发言'],
+  ['manageAnnouncements','内容管理','管理全站公告','发布与删除全站公告'],
+  ['manageRecharges','积分与审核','审核充值','查看充值记录，核对后通过或拒绝并发放积分'],
+  ['manageSettings','积分与审核','修改积分规则','设置注册送分、发布与接单消耗'],
+  ['publishBonus','积分与审核','发布积分奖励任务','设置完成任务后发放的奖励积分'],
+  ['manageFeedback','平台事务','处理建议','查看、标记已读及删除建议'],
+  ['manageReports','平台事务','处理举报','查看、处理及删除举报'],
+  ['manageDisputes','平台事务','处理任务纠纷','查看纠纷、任务详情和议价，强制完成或关闭并选择退分；私聊需另授权'],
+  ['postOfficial','其他权限','发布频道通知','在频道发布非任务通知并使用官方标记'],
+  ['freeTasks','其他权限','免任务手续费','发布任务和接单不消耗积分']
+].map(([key,group,label,description])=>({key,group,label,description}));
+const PERMISSION_KEYS=new Set(PERMISSIONS.map(x=>x.key));
 // 读数据：data.json 坏了绝不用空库覆盖。先把坏文件改名，再从最近一份能解析的备份恢复；都不行就拒绝启动
 const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Array.isArray(x),check=(ok,field)=>{if(!ok)throw new Error('数据结构无效：'+field)};
   check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
@@ -11,7 +31,8 @@ const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Arr
   for(const k of ['messages','taskChats','events','offers'])for(const l of Object.values(d[k]||{}))check(Array.isArray(l)&&l.every(x=>object(x)&&/^[0-9]+$/.test(String(x.id))&&Number.isSafeInteger(Number(x.id))&&Number(x.id)>0),k);
   for(const k of ['taskChats','chatRead','offers'])for(const id of Object.keys(d[k]||{}))check(/^[0-9]+$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0,k+' 任务 ID');
   for(const l of Object.values(d.taskChats||{}))for(const x of l)if(x.image)check(['jpg','png'].includes(x.imageExt),'taskChats 图片类型');
-  for(const u of Object.values(d.users))check(object(u)&&typeof u.pw==='string'&&u.pw.length>0&&(typeof u.created==='number'||typeof u.created==='string')&&Number.isFinite(new Date(u.created).getTime())&&(!Object.hasOwn(u,'points')||(Number.isSafeInteger(u.points)&&u.points>=0)),'users 记录');
+  for(const u of Object.values(d.users)){check(object(u)&&typeof u.pw==='string'&&u.pw.length>0&&(typeof u.created==='number'||typeof u.created==='string')&&Number.isFinite(new Date(u.created).getTime())&&(!Object.hasOwn(u,'points')||(Number.isSafeInteger(u.points)&&u.points>=0)),'users 记录');
+    if(Object.hasOwn(u,'adminPermissions'))check(Array.isArray(u.adminPermissions)&&u.adminPermissions.every(k=>PERMISSION_KEYS.has(k)),'users 管理权限');}
   for(const x of Object.values(d.sessions||{}))check((typeof x==='string'&&x.length>0)||(object(x)&&typeof x.user==='string'&&Number.isFinite(x.exp)),'sessions 记录');
   for(const x of Object.values(d.chatRead||{}))check(object(x),'chatRead 记录');
   for(const k of ['postCost','claimCost','signupBonus'])if(d.settings&&Object.hasOwn(d.settings,k))check(Number.isSafeInteger(d.settings[k])&&d.settings[k]>=0&&d.settings[k]<=1000000,'settings.'+k);
@@ -58,12 +79,20 @@ const persistNow=()=>{if(storageError)throw storageError;if(persistTimer){clearT
 const persist=(ms=200)=>{if(!persistTimer&&!storageError)persistTimer=setTimeout(()=>{persistTimer=null;try{persistNow()}catch(e){failStorage(e)}},ms)};
 process.on('exit',()=>{if(persistTimer)try{persistNow()}catch{}});
 for(const sig of ['SIGTERM','SIGINT']) process.on(sig,()=>{try{persistNow()}catch{}process.exit(0)});
-// 唯一管理员：环境变量 ADMIN（兼容旧的 ADMINS，只取第一个），全站只认这一个账号
+// 唯一总管理员；普通管理员的权限绑定在不可复用的用户记录上。
 const ADMIN=(process.env.ADMIN||(process.env.ADMINS||'').split(',')[0]||'AevonEcho').trim();
 const ADMINS=ADMIN?[ADMIN]:[];
 const banned=n=>!!(n&&db.users[n]&&db.users[n].banned);
 const BANNED={error:'账号已被封禁',banned:true};
-const isAdmin=n=>!!n&&ADMINS.includes(n);
+const isSuperAdmin=n=>!!n&&n===ADMIN;
+const hasAdminRole=n=>!!n&&!!db.users[n]&&(isSuperAdmin(n)||(db.users[n].adminPermissions||[]).length>0);
+const isAdmin=n=>hasAdminRole(n)&&!banned(n);
+const can=(n,key)=>isAdmin(n)&&(isSuperAdmin(n)||(db.users[n].adminPermissions||[]).includes(key));
+const canUsers=n=>['viewUsers','banUsers','deleteUsers','managePoints'].some(k=>can(n,k));
+const canMessages=n=>can(n,'viewMessages')||can(n,'deleteMessages');
+const canInspect=n=>canMessages(n)||can(n,'viewChats')||can(n,'manageDisputes');
+const roleInfo=n=>({admin:isAdmin(n),superAdmin:isSuperAdmin(n),permissions:isSuperAdmin(n)?[...PERMISSION_KEYS]:(db.users[n]?.adminPermissions||[]).slice()});
+const protectedUser=(actor,target)=>isSuperAdmin(target)||(!isSuperAdmin(actor)&&hasAdminRole(target));
 const legacy=p=>crypto.createHash("sha256").update("campus:"+p).digest("hex");
 const hash=(p,salt=crypto.randomBytes(16).toString("hex"))=>"s1$"+salt+"$"+crypto.scryptSync(p,salt,32).toString("hex");
 // 每次 scrypt 约占 16MB 原生内存，限制并发并为等待队列设上限。
@@ -161,7 +190,7 @@ const overdue=x=>!!(x.task&&x.deadline&&x.claimedBy&&!x.done&&!x.cancelled&&!x.s
 const status=x=>!x.task?undefined:x.closed?'closed':x.cancelled?'cancelled':x.done?'done':x.stage?x.stage:x.claimedBy?'claimed':'open';
 const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOverlap,...v}=rs[k];o[k]=v}return o};
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
-const out=(x,c,v)=>{const full=v===true||(!!v&&(isAdmin(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||isAdmin(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
+const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
@@ -239,6 +268,32 @@ const handle=async(req,res)=>{
     // 先完整读取 JSON，再做身份和状态检查；慢速请求不能沿用换人/封禁/退出之前的授权。
     // 图片走自己的二进制限额，上传结束后单独复核会话与账号。
     if(POST&&!/^\/api\/tasks\/\d+\/chat\/image$/.test(p)) await body(req);
+    if(p.startsWith('/api/admin/')){
+      const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});if(!isAdmin(n))return send(res,403,{error:'没有管理权限'});
+      const allowed=p==='/api/admin/roles'||/^\/api\/admin\/users\/[^/]+\/permissions$/.test(p)||p==='/api/admin/backup'?isSuperAdmin(n):
+        p==='/api/admin/overview'?(u.searchParams.get('summary')==='1'||isSuperAdmin(n)):
+        p==='/api/admin/users'?canUsers(n):p==='/api/admin/messages'?canMessages(n):
+        /^\/api\/admin\/users\/[^/]+\/(ban|unban)$/.test(p)?can(n,'banUsers'):
+        /^\/api\/admin\/users\/[^/]+\/delete$/.test(p)?can(n,'deleteUsers'):
+        /^\/api\/admin\/users\/[^/]+\/points$/.test(p)?can(n,'managePoints'):
+        p.startsWith('/api/admin/settings')?can(n,'manageSettings'):p.startsWith('/api/admin/recharges')?can(n,'manageRecharges'):
+        p.startsWith('/api/admin/feedback')?can(n,'manageFeedback'):p.startsWith('/api/admin/reports')?can(n,'manageReports'):
+        p==='/api/admin/disputes'||/^\/api\/admin\/tasks\/\d+\/force$/.test(p)?can(n,'manageDisputes'):
+        p==='/api/admin/chats'?can(n,'viewChats'):isSuperAdmin(n);
+      if(!allowed)return send(res,403,{error:'未获授权，只有总管理员可分配管理权限'});
+    }
+    if(p==='/api/admin/roles'&&GET)return send(res,200,{catalog:PERMISSIONS,users:Object.entries(db.users).map(([username,v])=>({username,userId:v.id,...roleInfo(username),permissionsVersion:v.permissionsVersion||0,permissionsUpdatedAt:v.permissionsUpdatedAt||null,banned:!!v.banned}))});
+    const roleMatch=p.match(/^\/api\/admin\/users\/([^/]+)\/permissions$/);
+    if(roleMatch&&POST){
+      const n=userOf(req),name=roleMatch[1],target=db.users[name],b=await body(req);
+      if(isSuperAdmin(name))return send(res,403,{error:'总管理员身份与权限不可修改'});
+      if(!target)return send(res,404,{error:'用户不存在'});
+      if(b.userId!==target.id||b.version!==(target.permissionsVersion||0))return send(res,409,{error:'账号或权限已变化，请刷新后重新设置'});
+      if(!Array.isArray(b.permissions)||b.permissions.length>PERMISSIONS.length||b.permissions.some(k=>typeof k!=='string'||!PERMISSION_KEYS.has(k))||new Set(b.permissions).size!==b.permissions.length)return send(res,400,{error:'权限列表无效'});
+      if(target.banned&&b.permissions.length)return send(res,400,{error:'请先解封该账号，再授予管理权限'});
+      target.adminPermissions=PERMISSIONS.filter(x=>b.permissions.includes(x.key)).map(x=>x.key);target.permissionsVersion=(target.permissionsVersion||0)+1;target.permissionsUpdatedAt=new Date().toISOString();target.permissionsUpdatedBy=n;
+      nextRev();persist();return send(res,200,{username:name,...roleInfo(name),permissionsVersion:target.permissionsVersion});
+    }
     // POST /api/register、/api/login {username,password} -> {token,username,admin}
     if(POST&&(p==='/api/register'||p==='/api/login')){
       const {username,password,password2}=await body(req);
@@ -270,10 +325,10 @@ const handle=async(req,res)=>{
       const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,userId:db.users[username].id,exp:Date.now()+SESSION_MS};
       {const mine=Object.entries(db.sessions).filter(([,v])=>v===username||(v&&v.user===username)); if(mine.length>10){mine.sort((a,b)=>(a[1].exp||0)-(b[1].exp||0)); for(const [k] of mine.slice(0,mine.length-10)) delete db.sessions[k]}} // 每人最多保留 10 个登录，挤掉最旧的
       persist();
-      return send(res,200,{token,username,admin:isAdmin(username)});
+      return send(res,200,{token,username,...roleInfo(username)});
     }
     if(p==="/api/logout"&&POST){delete db.sessions[tokenOf(req)];persist();return send(res,200,{ok:true})}
-    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,admin:isAdmin(n),banned:banned(n),points:pts(n),postCost:S().postCost,claimCost:S().claimCost,eventUnread:(db.events[n]||[]).filter(x=>!x.read).length,chatUnread:totalChatUnread(n)}):send(res,401,{error:'未登录'});}
+    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,...roleInfo(n),banned:banned(n),points:pts(n),postCost:S().postCost,claimCost:S().claimCost,eventUnread:(db.events[n]||[]).filter(x=>!x.read).length,chatUnread:totalChatUnread(n)}):send(res,401,{error:'未登录'});}
     // POST /api/password {oldPassword,newPassword}  改密码，成功后其他设备的登录全部失效，当前 token 保留
     if(p==='/api/password'&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
@@ -290,21 +345,21 @@ const handle=async(req,res)=>{
     // 公告：GET /api/announcements（新的在前）；POST 同路径 {title,text}（仅管理员）；POST /api/announcements/:id/delete（仅管理员）
     if(p==='/api/announcements'){
       if(GET) return send(res,200,db.announcements.slice().sort((a,b)=>b.id-a.id));
-      if(POST){const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能发公告'});
+      if(POST){const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!can(n,'manageAnnouncements')) return send(res,403,{error:'没有公告管理权限'});
         const b=await body(req),title=str(b.title,60),text=str(b.text,2000); if(!title) return send(res,400,{error:'公告标题不能为空'});
         const a={id:newId(),title,text,user:n,time:new Date().toISOString()}; db.announcements.push(a); persist(); return send(res,200,a);}
     }
     const am=p.match(/^\/api\/announcements\/(\d+)\/delete$/);
-    if(am&&POST){const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能删除公告'});
+    if(am&&POST){const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!can(n,'manageAnnouncements')) return send(res,403,{error:'没有公告管理权限'});
       const i=db.announcements.findIndex(x=>String(x.id)===am[1]); if(i<0) return send(res,404,{error:'公告不存在'});
       db.announcements.splice(i,1); persist(); return send(res,200,{ok:true});}
     // 管理员总览：GET /api/admin/overview（仅管理员）-> 全部用户、全部频道消息（含已删除消息的原文 deletedText）、公告
     if(p==='/api/admin/overview'&&GET){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
-      const summary={unreadFeedback:db.feedback.filter(x=>!x.read).length,unreadReports:db.reports.filter(x=>!x.resolved).length,disputes:CHANNELS.reduce((a,c)=>a+db.messages[c].filter(x=>x.task&&x.stage==='disputed'&&!x.done&&!x.cancelled&&!x.deleted).length,0),disk:diskInfo()};
+      const summary={...(can(n,'manageFeedback')?{unreadFeedback:db.feedback.filter(x=>!x.read).length}:{}),...(can(n,'manageReports')?{unreadReports:db.reports.filter(x=>!x.resolved).length}:{}),...(can(n,'manageDisputes')?{disputes:CHANNELS.reduce((a,c)=>a+db.messages[c].filter(x=>x.task&&x.stage==='disputed'&&!x.done&&!x.cancelled&&!x.deleted).length,0)}:{}),...(isSuperAdmin(n)?{disk:diskInfo()}:{})};
       if(u.searchParams.get('summary')==='1')return send(res,200,summary);
       const online=Object.create(null); for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
-      const users=Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0}));
+      const users=Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),...roleInfo(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0}));
       const channels=Object.fromEntries(CHANNELS.map(c=>[c,db.messages[c].map(x=>({...out(x,null,true),...(x.deleted?{deletedText:db.deletedTexts[x.id]||'',originalText:db.deletedTexts[x.id]||''}:{})}))]));
       return send(res,200,{users,channels,announcements:db.announcements,...summary});
     }
@@ -326,7 +381,7 @@ const handle=async(req,res)=>{
       }
       const cnt=Object.create(null);for(const c of CHANNELS)for(const x of db.messages[c])cnt[x.user]=(cnt[x.user]||0)+1;
       const online=Object.create(null); for(const v of Object.values(db.sessions)){const un=typeof v==='string'?v:(v.exp>Date.now()?v.user:null); if(un) online[un]=(online[un]||0)+1;}
-      return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),admin:isAdmin(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
+      return send(res,200,Object.entries(db.users).map(([k,v])=>({username:k,created:new Date(v.created).toISOString(),...roleInfo(k),points:v.points||0,banned:!!v.banned,bannedAt:v.bannedAt||null,banReason:v.banReason||'',activeSessions:online[k]||0,messages:cnt[k]||0})));
     }
     // 封禁/解封：POST /api/admin/users/<用户名>/ban {reason}、/unban（仅管理员，不能封管理员）
     // 删除账号：POST /api/admin/users/<用户名>/delete（仅管理员，不能删管理员）
@@ -334,7 +389,7 @@ const handle=async(req,res)=>{
     const dm=p.match(/^\/api\/admin\/users\/([^/]+)\/delete$/);
     if(dm&&POST){ let du; try{du=decodeURIComponent(dm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
-      if(!db.users[du]) return send(res,404,{error:'用户不存在'}); if(isAdmin(du)) return send(res,400,{error:'不能删除管理员'});
+      if(!db.users[du]) return send(res,404,{error:'用户不存在'}); if(protectedUser(n,du)) return send(res,403,{error:'不能删除总管理员或其他管理员'});
       const now=new Date().toISOString(); let msgs=0,cancelled=0,released=0,disputed=0;
       for(const c of CHANNELS) for(const m of db.messages[c]){
         let ch=false;
@@ -369,7 +424,7 @@ const handle=async(req,res)=>{
     const bm=p.match(/^\/api\/admin\/users\/([^/]+)\/(ban|unban)$/);
     if(bm&&POST){ let bu; try{bu=decodeURIComponent(bm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
-      const t=db.users[bu]; if(!t) return send(res,404,{error:'用户不存在'}); if(isAdmin(bu)) return send(res,400,{error:'不能封禁管理员'});
+      const t=db.users[bu]; if(!t) return send(res,404,{error:'用户不存在'}); if(protectedUser(n,bu)) return send(res,403,{error:'不能封禁总管理员或其他管理员'});
       if(bm[2]==='ban'){const b=await body(req); t.banned=true; t.bannedAt=new Date().toISOString(); t.banReason=str(b.reason,100);}
       else {delete t.banned; delete t.bannedAt; delete t.banReason;}
       persist(); return send(res,200,{username:bu,banned:!!t.banned});
@@ -426,7 +481,7 @@ const handle=async(req,res)=>{
       const pm=p.match(/^\/api\/admin\/users\/([^/]+)\/points$/);
       if(pm&&POST){
         let pu; try{pu=decodeURIComponent(pm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
-        if(!db.users[pu]) return send(res,404,{error:'用户不存在'});
+        if(!db.users[pu]) return send(res,404,{error:'用户不存在'}); if(!isSuperAdmin(n)&&hasAdminRole(pu))return send(res,403,{error:'不能调整管理员的积分'});
         const b=await body(req), d=intIn(b.delta,-1000000,1000000); if(d==null||d===0) return send(res,400,{error:'调整的积分要是非 0 整数'});
         if(pts(pu)+d<0) return send(res,400,{error:'扣完会变成负数，当前只有 '+pts(pu)+' 积分'});
         addPoints(pu,d,'admin',str(b.reason,100)||'管理员调整'); persist(); return send(res,200,{username:pu,points:pts(pu)});
@@ -444,8 +499,8 @@ const handle=async(req,res)=>{
       const ix=IDX.get(am2[2]), msg=ix&&ix.ch===am2[1]?ix.msg:null; if(!msg||msg.deleted) return send(res,404,{error:'消息不存在'});
       const prevClaimer=msg.claimedBy, act=am2[3]==='kick'?'release':am2[3],now=new Date().toISOString();
       if(act==='delete'){ // 管理员可删任何消息；普通用户可删自己没人接的消息
-        if(!isAdmin(n)&&!(msg.user===n&&!msg.claimedBy)) return send(res,403,{error:'没有权限删除这条消息'});
-        if(isAdmin(n)&&msg.task){ // 管理员删任务：不自动退分，只退勾选的 refundPost / refundClaim（已退过、已注销的跳过）
+        if(!can(n,'deleteMessages')&&!(msg.user===n&&!msg.claimedBy)) return send(res,403,{error:'没有权限删除这条消息'});
+        if(can(n,'deleteMessages')&&msg.task){ // 管理员删任务：不自动退分，只退勾选的 refundPost / refundClaim（已退过、已注销的跳过）
           const b=await body(req); if(msg.deleted) return send(res,404,{error:'消息不存在'}); const yes=v=>v===true||v==='true'||v===1||v==='1';
           const rp=yes(b.refundPost)&&msg.cost&&!msg.refunded&&!msg.userDeleted&&db.users[msg.user]?msg.cost:0, rc=yes(b.refundClaim)&&msg.claimedBy&&msg.claimCost&&!msg.claimRefunded&&!msg.claimerDeleted&&db.users[msg.claimedBy]?msg.claimCost:0;
           if(rp){addPoints(msg.user,rp,'refund','管理员删除任务，退还发布积分',msg.id);msg.refunded=true}
@@ -473,7 +528,7 @@ const handle=async(req,res)=>{
           if(expired(msg)) return send(res,409,{error:'任务已过期'});
           if((db.taskChats[msg.id]||[]).length>=TASK_CHAT_MAX)return send(res,409,{error:'任务历史记录已满，请发布人撤回后重新发布'});
           delete msg.claimCost; delete msg.claimRefunded;
-          if(!isAdmin(n)){const c=S().claimCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'claim','接单',msg.id); msg.claimCost=c}}
+          if(!can(n,'freeTasks')){const c=S().claimCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'claim','接单',msg.id); msg.claimCost=c}}
           msg.claimedBy=n;msg.claimedAt=now; sysChat(msg,n+' 接单了');
         } else if(act==='unclaim'){ // 接单人放弃，任务回到待接单
           if(msg.claimedBy!==n) return send(res,403,{error:'只有接单人能放弃接单'});
@@ -525,7 +580,7 @@ const handle=async(req,res)=>{
         else if(act==='paid') ev(msg.claimedBy,'paid',msg,'发布人已付款，请确认收款',n);
         else if(act==='received') ev(msg.user,'received',msg,n+' 已确认收款，任务完成',n);
         else if(act==='complete'||act==='done') ev(msg.claimedBy,'done',msg,'发布人确认任务完成',n);
-        else if(act==='delete'&&isAdmin(n)){const dr=msg.deleteRefund||{}; ev(msg.user,'deleted',msg,'任务被管理员删除'+(dr.post?'，退还你 '+dr.post+' 发布积分':msg.cost&&!msg.refunded?'，发布积分不退':''),n); ev(pc,'deleted',msg,'任务被管理员删除'+(dr.claim?'，退还你 '+dr.claim+' 接单积分':msg.claimCost&&!msg.claimRefunded?'，接单积分不退':''),n)}}
+        else if(act==='delete'&&can(n,'deleteMessages')){const dr=msg.deleteRefund||{}; ev(msg.user,'deleted',msg,'任务被管理员删除'+(dr.post?'，退还你 '+dr.post+' 发布积分':msg.cost&&!msg.refunded?'，发布积分不退':''),n); ev(pc,'deleted',msg,'任务被管理员删除'+(dr.claim?'，退还你 '+dr.claim+' 接单积分':msg.claimCost&&!msg.claimRefunded?'，接单积分不退':''),n)}}
       if(act==='delete'&&msg.task) rmImgs(msg.id);
       if(msg.task&&(act==='claim'||act==='cancel'||act==='delete')) expireOffers(msg,act==='claim'?'任务已被 '+n+' 接走':act==='cancel'?'发布人撤回了任务':'任务已被删除',n);
       recalc(msg); msg.rev=nextRev(); persist(); return send(res,200,out(msg,null,n));
@@ -537,8 +592,8 @@ const handle=async(req,res)=>{
     const of=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(offer|offers)(?:\/(\d+)\/(accept|reject|counter|withdraw))?$/);
     if(of&&((POST&&of[3]==='offer'&&!of[4])||(GET&&of[3]==='offers'&&!of[4])||(POST&&of[3]==='offers'&&of[4]))){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      const ix=IDX.get(of[2]), m=ix&&ix.ch===of[1]&&ix.msg.task?ix.msg:null; if(!m||(m.deleted&&!isAdmin(n))) return send(res,404,{error:'任务不存在'});
-      const list=db.offers[m.id]||[], poster=isPoster(m,n), adm=isAdmin(n);
+      const ix=IDX.get(of[2]), m=ix&&ix.ch===of[1]&&ix.msg.task?ix.msg:null; if(!m||(m.deleted&&!canInspect(n))) return send(res,404,{error:'任务不存在'});
+      const list=db.offers[m.id]||[], poster=isPoster(m,n), adm=canInspect(n);
       const view=o=>offerView(o,m,n);
       if(GET){ if(adm||poster) return send(res,200,{count:pendingOffers(m).length,offers:list.slice().reverse().map(view)});
         return send(res,200,{count:pendingOffers(m).length,offers:list.filter(o=>ownsOffer(o,n)).reverse().map(view)}) }
@@ -577,7 +632,7 @@ const handle=async(req,res)=>{
       }
       // accept：同意当前价格，讨价人当场接单
       const cu=o.user; if(!ownsOffer(o,cu)) return send(res,409,{error:'讨价人已不存在'}); if(banned(cu)) return send(res,409,{error:'讨价人已被封禁'});
-      const c=isAdmin(cu)?0:S().claimCost;
+      const c=can(cu,'freeTasks')?0:S().claimCost;
       if(pts(cu)<c) return send(res,402,poster?{error:'对方积分不足（接单需要 '+c+' 积分，对方只有 '+pts(cu)+' 积分），暂时不能同意',need:c}:noPoints(cu,c));
       delete m.claimCost; delete m.claimRefunded; if(c>0){addPoints(cu,-c,'claim','议价接单',m.id); m.claimCost=c}
       if(m.originalReward==null) m.originalReward=m.reward||''; m.reward=o.price+'元'; m.negotiated=true; m.offerId=o.id;
@@ -662,11 +717,11 @@ const handle=async(req,res)=>{
     const ti=p.match(/^\/api\/tasks\/(\d+)\/chat\/image(?:\/(\d+))?$/);
     if(ti&&((POST&&!ti[2])||(GET&&ti[2]))){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      const t=findTask(ti[1]); if(!t||(t.msg.deleted&&!isAdmin(n))) return send(res,404,{error:'任务不存在'});
-      const m=t.msg, adm=isAdmin(n), mine=isPoster(m,n)||isClaimer(m,n),account=db.users[n];
+      const t=findTask(ti[1]); if(!t||(t.msg.deleted&&!can(n,'viewChats'))) return send(res,404,{error:'任务不存在'});
+      const m=t.msg, adm=can(n,'viewChats'), mine=isPoster(m,n)||isClaimer(m,n),account=db.users[n];
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
       if(GET){ const x=chatOf(m,adm).find(y=>String(y.id)===ti[2]&&y.image); if(!x) return send(res,404,{error:'图片不存在'});
-        fs.readFile(path.join(UPLOADS,String(m.id),x.id+'.'+x.imageExt),(e,d)=>{if(e) return send(res,404,{error:'图片不存在'}); res.writeHead(200,{'Content-Type':x.imageExt==='png'?'image/png':'image/jpeg','Cache-Control':'private, max-age=86400','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'}); res.end(d)}); return; }
+        fs.readFile(path.join(UPLOADS,String(m.id),x.id+'.'+x.imageExt),(e,d)=>{if(userOf(req)!==n||(!can(n,'viewChats')&&!(isPoster(m,n)||isClaimer(m,n))))return send(res,403,{error:'查看权限已变化'});if(e) return send(res,404,{error:'图片不存在'}); res.writeHead(200,{'Content-Type':x.imageExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'}); res.end(d)}); return; }
       if(adm&&!mine) return send(res,403,{error:'管理员只能查看私聊，不能发消息'});
       if(banned(n)) return send(res,403,BANNED);
       if(!m.claimedBy) return send(res,409,{error:'任务还没人接，不能私聊'});
@@ -695,8 +750,8 @@ const handle=async(req,res)=>{
     const tc=p.match(/^\/api\/tasks\/(\d+)\/chat$/);
     if(tc&&(GET||POST)){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
-      const t=findTask(tc[1]); if(!t||(t.msg.deleted&&!isAdmin(n))) return send(res,404,{error:'任务不存在'});
-      const m=t.msg, adm=isAdmin(n), mine=isPoster(m,n)||isClaimer(m,n);
+      const t=findTask(tc[1]); if(!t||(t.msg.deleted&&!can(n,'viewChats'))) return send(res,404,{error:'任务不存在'});
+      const m=t.msg, adm=can(n,'viewChats'), mine=isPoster(m,n)||isClaimer(m,n);
       if(!adm&&!mine) return send(res,403,{error:'只有发布人和接单人能看这个私聊'});
       if(GET){
         const a=u.searchParams.get('after'); let list=chatOf(m,adm);
@@ -744,7 +799,7 @@ const handle=async(req,res)=>{
     const nm=p.match(/^\/api\/channels\/([^/]+)\/notices$/);
     if(nm&&GET){const ch=nm[1]; if(!db.messages[ch]) return send(res,404,{error:'频道不存在'}); const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100);
       const a=db.announcements.map(x=>({id:x.id,type:'global',title:x.title,text:x.text,user:x.user,time:x.time}));
-      const c=db.messages[ch].filter(x=>!x.task&&!x.deleted&&isAdmin(x.user)).map(x=>({id:x.id,type:'channel',title:'',text:x.text,user:x.user,time:x.time,channel:ch}));
+      const c=db.messages[ch].filter(x=>!x.task&&!x.deleted&&x.official).map(x=>({id:x.id,type:'channel',title:'',text:x.text,user:x.user,time:x.time,channel:ch}));
       return send(res,200,a.concat(c).sort((x,y)=>y.time.localeCompare(x.time)||y.id-x.id).slice(0,lim))}
     // GET /api/channels/:name/messages?rev=<n>（或旧的 ?since=<id>）；POST 同路径 {text,task,reward,place,deadline}
     const m=p.match(/^\/api\/channels\/([^/]+)\/messages$/);
@@ -765,17 +820,17 @@ const handle=async(req,res)=>{
         if(limited("msg:"+n,10)) return send(res,429,{error:"发得太快了，请稍后再试"});
         const b=await body(req); if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'消息不能为空'});
         for(const k of ['reward','place','deadline']) if(b[k]!=null&&typeof b[k]!=='string'&&typeof b[k]!=='number') return send(res,400,{error:k+' 格式不对'});
-        if(!b.task&&!isAdmin(n)) return send(res,403,{error:'频道里只能发布任务'});
+        if(!b.task&&!can(n,'postOfficial')) return send(res,403,{error:'频道里只能发布任务'});
         const msg={id:newId(),user:n,text:String(b.text).slice(0,2000),task:!!b.task,time:new Date().toISOString()};
-        if(isAdmin(n)) msg.official=true;
+        if(can(n,'postOfficial')) msg.official=true;
         if(msg.task){
           const reward=str(b.reward,20),place=str(b.place,50);
           if(reward) msg.reward=reward; if(place) msg.place=place;
           if(b.deadline){const t=Date.parse(b.deadline); if(isNaN(t)) return send(res,400,{error:'截止时间格式不对'}); if(t<=Date.now()) return send(res,400,{error:'截止时间要晚于现在'}); msg.deadline=new Date(t).toISOString();}
         }
         if(msg.task){
-          if(b.bonusPoints!=null&&b.bonusPoints!==''&&b.bonusPoints!==0){ if(!isAdmin(n)) return send(res,403,{error:'只有管理员能发积分任务'}); const bp=intIn(b.bonusPoints,1,100000); if(bp==null) return send(res,400,{error:'奖励积分要是 1-100000 的整数'}); msg.bonusPoints=bp; }
-          if(!isAdmin(n)){const c=S().postCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'post','发布任务',msg.id); msg.cost=c}}
+          if(b.bonusPoints!=null&&b.bonusPoints!==''&&b.bonusPoints!==0){ if(!can(n,'publishBonus')) return send(res,403,{error:'没有发布积分奖励任务的权限'}); const bp=intIn(b.bonusPoints,1,100000); if(bp==null) return send(res,400,{error:'奖励积分要是 1-100000 的整数'}); msg.bonusPoints=bp; }
+          if(!can(n,'freeTasks')){const c=S().postCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'post','发布任务',msg.id); msg.cost=c}}
         }
         msg.rev=nextRev(); db.messages[ch].push(msg); IDX.set(String(msg.id),{msg,ch}); persist(); return send(res,200,out(msg,null,n));
       }

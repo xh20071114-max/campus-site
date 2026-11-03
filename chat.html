@@ -206,7 +206,7 @@ const touch=matchMedia('(pointer:coarse)').matches;
 function enterSend(e,form){if(e.key!=='Enter'||e.shiftKey||e.isComposing||e.keyCode===229||touch)return;e.preventDefault();form.requestSubmit()}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
-const api=(p,o={})=>fetch(API_BASE+p,{...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
+const api=(p,o={})=>fetch(API_BASE+p,{cache:'no-store',...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
 const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
@@ -288,21 +288,22 @@ function renderSide(){
   title.textContent='# '+cur;
 }
 const isExp=m=>m.task&&!m.claimedBy&&!m.done&&!m.cancelled&&(m.expired||(m.deadline&&new Date(m.deadline)<new Date()));
-let isAdmin=localStorage.getItem('admin')==='1',isBanned=false,points=null,cost={post:1,claim:1};
+let isAdmin=false,isSuperAdmin=false,permissions=[],roleFingerprint=null,isBanned=false,points=null,cost={post:1,claim:1};
+const can=k=>isSuperAdmin||permissions.includes(k);const canInspect=()=>['viewMessages','deleteMessages','viewChats','manageDisputes'].some(can);
 function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const requestedToken=token;
-  api('/api/me').then(r=>localStorage.getItem('token')!==requestedToken?null:r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d||localStorage.getItem('token')!==requestedToken)return;isAdmin=!!d.admin;if(isBanned!==!!d.banned)setBanned(!!d.banned);localStorage.setItem('admin',isAdmin?'1':'0');
+  api('/api/me').then(r=>localStorage.getItem('token')!==requestedToken?null:r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d||localStorage.getItem('token')!==requestedToken)return;const stamp=JSON.stringify([d.admin,d.superAdmin,d.permissions]);if(roleFingerprint!==null&&stamp!==roleFingerprint){location.reload();return}roleFingerprint=stamp;isAdmin=!!d.admin;isSuperAdmin=!!d.superAdmin;permissions=d.permissions||[];if(isBanned!==!!d.banned)setBanned(!!d.banned);localStorage.setItem('admin',isAdmin?'1':'0');
     if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;if(d.eventUnread!=null)setBell(+d.eventUnread);renderPts();renderMsgs()}).catch(()=>{})}
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
-function renderPts(){bal.innerHTML=me&&points!=null?(isAdmin?'💎 管理员':`💎 余额 <b>${points}</b> 分`):'';
-  bonusF.style.display=isAdmin?'flex':'none';
-  send.textContent=isTask.checked?(isAdmin||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送';applyMode()}
+function renderPts(){bal.innerHTML=me&&points!=null?`${isSuperAdmin?'👑 总管理员 · ':isAdmin?'🛡 管理员 · ':''}💎 余额 <b>${points}</b> 分${can('freeTasks')?' · 任务免扣分':''}`:'';
+  bonusF.style.display=can('publishBonus')?'flex':'none';
+  send.textContent=isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):'发送';applyMode()}
 let composing=false,posting=false;
-function applyMode(){const admin=!!(me&&isAdmin);
+function applyMode(){const admin=!!(me&&can('postOfficial'));
   isTaskL.style.display=admin?'':'none';fCancel.style.display=!admin&&composing?'':'none';
   if(!admin&&!composing&&isTask.checked){isTask.checked=false;extra.classList.remove('show')}
   f.style.display=admin||composing?'':'none';postBar.classList.toggle('show',!admin&&!composing);
   postBtn.disabled=isBanned||online===false;
-  postHint.textContent=me&&!admin&&points!=null?`每次发布扣 ${cost.post} 积分 · 余额 ${points}`:(me?'':'登录后即可发布任务')}
+  postHint.textContent=me&&!admin&&points!=null?`${can('freeTasks')?'发布任务免扣分':'每次发布扣 '+cost.post+' 积分'} · 余额 ${points}`:(me?'':'登录后即可发布任务')}
 postBtn.onclick=()=>{if(!token)return showLogin(true);composing=true;isTask.checked=true;isTask.onchange();forceBottom=true;text.focus()};
 fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
@@ -325,7 +326,7 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
   if(m.claimedBy)return [m.overdue?T('red',`⏰ 已超时 · ${who}`):T('green',`✅ 已接单 · ${who}`),
     (poster?btn('complete','直接完成','#16a34a',m.id,'确定不经付款流程，直接完成这个任务吗？')+btn('kick','取消接单人','#f97316',m.id,`确定取消 ${m.claimedBy} 的接单吗？任务会回到待接单，并退还对方的接单积分。`)+(m.overdue?cancelB(`任务已超时，确定撤回吗？${ref?`撤回后退还 ${ref} 积分。`:''}`):''):'')+(taker?btn('unclaim','放弃接单','#6b7280',m.id,'确定放弃这个任务吗？'):'')];
   if(isExp(m))return [T('gray','⏰ 已过期'),''];
-  return poster?[T('amber','待接单'),cancelB(ref?`确定撤回这个任务吗？撤回后退还 ${ref} 积分。`:'确定撤回这个任务吗？')+ofBtn(m)]:[T('amber','待接单'),btn('claim',isAdmin||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,isAdmin||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`)+ofBtn(m)];
+  return poster?[T('amber','待接单'),cancelB(ref?`确定撤回这个任务吗？撤回后退还 ${ref} 积分。`:'确定撤回这个任务吗？')+ofBtn(m)]:[T('amber','待接单'),btn('claim',can('freeTasks')||!cost.claim?'接单':`接单（扣 ${cost.claim} 积分）`,'#f59e0b',m.id,can('freeTasks')||!cost.claim?'':`接单将扣 ${cost.claim} 积分，确定接单吗？`)+ofBtn(m)];
 }
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
@@ -334,7 +335,7 @@ function renderMsgs(){
   sInfo_(S,list.length);
   const top=S?'<div id="sInfo"></div>':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
   msgs.innerHTML=top+list.map(m=>{
-    const canDel=isAdmin||(m.user===me&&!m.claimedBy);
+    const canDel=can('deleteMessages')||(m.user===me&&!m.claimedBy);
     const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'';
     const ops=acts||del||rep_||chat?`<div class="ops">${acts}${del}<span class="sp"></span>${rep_}${chat}</div>`:'';
     return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who"><b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':'<p style="color:#9ca3af">这里还没有消息</p>');
@@ -358,7 +359,7 @@ const tcNote_=document.getElementById('tcNote');
 function openChat(id){const m=findTask(id);if(!m)return;closeChat();
   tc={id:String(id),ch:m._ch,after:'',seen:new Set(),timer:null,task:m};renderProg();
   {const o=m.user===me?m.claimedBy:m.user,u=el('span','un',o);u.dataset.u=o;u.title='查看信用';tcSub.replaceChildren((m.user===me?'与接单人 ':'与发布人 '),u,' · '+String(m.text).slice(0,30))}
-  document.getElementById('tcRep').style.display=isAdmin?'none':'';document.getElementById('tcRep').title=m.user===me?'举报接单人':'举报这单';
+  document.getElementById('tcRep').style.display=canInspect()?'none':'';document.getElementById('tcRep').title=m.user===me?'举报接单人':'举报这单';
   tcList.replaceChildren();tcNote('');tcT.disabled=tcS.disabled=tcI.disabled=isBanned;tcT.value='';tcT.placeholder=touch?'和对方说点什么':'和对方说点什么，回车发送';
   m.chatUnread=0;renderMsgs();
   document.getElementById('tc').classList.add('show');pullChat(true);tc.timer=setInterval(pullChat,4000);if(innerWidth>640)tcT.focus()}
@@ -437,7 +438,7 @@ bell.onclick=async()=>{if(!token)return showLogin(true);const b=openPop('🔔 �
 /* ---- 💬 讨价 ---- */
 const ofN=m=>+(m.offerCount||0)||0;
 function ofBtn(m){if(!m.task||isBanned)return '';const n=ofN(m);
-  if(isAdmin)return n?`<button class="ofB" type="button" data-of="${m.id}">💬 ${n} 个讨价</button>`:'';
+  if(canInspect())return n?`<button class="ofB" type="button" data-of="${m.id}">💬 ${n} 个讨价</button>`:'';
   if(m.user===me)return n?`<button class="ofB hot" type="button" data-of="${m.id}">💬 收到 ${n} 个讨价</button>`:'';
   const o=m.myOffer&&(m.myOffer.status==='pending'||m.myOffer.status==='countered')?m.myOffer:null;
   if(o)return `<button class="ofB${o.myTurn?' hot':''}" type="button" data-of="${m.id}">${o.myTurn?'💬 对方还价 '+esc(o.counter??o.price)+' 元，轮到你':'💬 我的讨价 '+esc(o.price)+' 元 · 待回复'}</button>`+(ofN(m)>1?`<small class="ofCnt">共 ${ofN(m)} 人在讨价</small>`:'');
@@ -447,7 +448,7 @@ const priceOk=v=>{const s=String(v).trim(),n=Number(s);return /^(?:\d+|\d*\.\d{1
 const MAXR=6;
 async function ofErr(r){if(r.status===401){expired();return '登录已过期'}const d=await r.json().catch(()=>({}));return d.error||(r.status===409?'这条讨价已经失效或状态变了，请刷新':r.status===402?'积分不足':'操作失败')}
 function offerNew(m){const b=openPop('💬 讨价');
-  const d=el('div',null,'原报酬：'+(m.reward||'未填写')+'。填写你期望的报酬，发布人同意后才算接单'+(isAdmin||!cost.claim?'':'，届时扣 '+cost.claim+' 积分')+'。讨价本身不扣积分。');d.style.cssText='font-size:13px;color:#6b7280;margin-bottom:8px';
+  const d=el('div',null,'原报酬：'+(m.reward||'未填写')+'。填写你期望的报酬，发布人同意后才算接单'+(can('freeTasks')||!cost.claim?'':'，届时扣 '+cost.claim+' 积分')+'。讨价本身不扣积分。');d.style.cssText='font-size:13px;color:#6b7280;margin-bottom:8px';
   const pi=el('input');pi.type='number';pi.min='0.01';pi.step='0.01';pi.placeholder='期望报酬（元）';pi.style.cssText='width:100%;margin-bottom:8px';
   const ta=el('textarea');ta.maxLength=50;ta.placeholder='说一句理由（选填，最多 50 字），如路远、东西重';
   b.append(d,pi,ta,footer('发送讨价',async()=>{if(!priceOk(pi.value))return '请填写正确的金额（0.01–100000 元）';
@@ -458,7 +459,7 @@ const mine_=o=>o.myTurn!=null?!!o.myTurn:null;
 const OFS={accepted:['green','已成交'],rejected:['gray','已拒绝'],withdrawn:['gray','已放弃'],expired:['gray','已失效']};
 function counterBox(v,o,run){const w=el('div','ofCt'),pi=el('input'),ti=el('input'),ok=el('button',null,'发送还价'),n=el('small');pi.type='number';pi.min='0.01';pi.step='0.01';pi.placeholder='还价金额（元）';pi.value=o.counter??o.price??'';ti.maxLength=50;ti.placeholder='留言（选填，最多 50 字）';ok.type='button';ok.style.background='#2563eb';
   ok.onclick=()=>{if(!priceOk(pi.value)){n.textContent='请填写正确的金额';return}run('counter',{price:+pi.value,note:ti.value.trim().slice(0,50)})};w.append(pi,ti,ok,n);v.append(w);pi.focus()}
-async function offerList(id){const m=findTask(id);if(!m)return;const poster=m.user===me,mgr=poster||isAdmin;const b=openPop(mgr?'💬 收到的讨价':'💬 我的讨价');b.append(el('div',null,'加载中…'));
+async function offerList(id){const m=findTask(id);if(!m)return;const poster=m.user===me,mgr=poster||canInspect();const b=openPop(mgr?'💬 收到的讨价':'💬 我的讨价');b.append(el('div',null,'加载中…'));
   try{const r=await api(ofUrl(m,'offers'));if(r.status===401)return closePop(),expired();const d=await r.json().catch(()=>null);
     if(!r.ok){b.replaceChildren(el('div',null,(d&&d.error)||'暂时无法查看讨价'));return}
     const l=Array.isArray(d)?d:(d&&d.offers)||[];
@@ -479,7 +480,7 @@ async function offerList(id){const m=findTask(id);if(!m)return;const poster=m.us
       const run=async(a,body,cf)=>{if(cf&&!confirm(cf))return;const r=await api(ofUrl(m,'offers/'+encodeURIComponent(o.id)+'/'+a),{method:'POST',body:JSON.stringify(body||{})});
         if(!r.ok){alert(await ofErr(r))}else{loadMe();refresh();if(a==='accept'){closePop();return}}offerList(id)};
       const canCt=o.canCounter!=null?!!o.canCounter:rs.length<MAXR;
-      if(live(o)&&!isBanned&&(!isAdmin||poster)){
+      if(live(o)&&!isBanned&&(!canInspect()||poster)){
         if(poster&&turn==='poster'){B('同意 '+cp+' 元','#16a34a',()=>run('accept',null,`同意以 ${cp} 元交给 ${who}？同意后任务立即算对方接单。`));if(canCt)B('还价','#2563eb',()=>counterBox(v,o,run));B('拒绝','#6b7280',()=>run('reject',null,'确定拒绝这个讨价吗？'))}
         if(!poster&&turn==='claimer'){B(`接受 ${cp} 元并接单`,'#16a34a',()=>run('accept',null,`接受 ${cp} 元？接受即接单${cost.claim?'，扣 '+cost.claim+' 积分':''}。`));if(canCt)B('再还价','#2563eb',()=>counterBox(v,o,run));B('放弃','#6b7280',()=>run('withdraw',null,'确定放弃这次讨价吗？'))}
         if(!poster&&turn==='poster')B('撤回讨价','#6b7280',()=>run('withdraw',null,'确定撤回这次讨价吗？'))}
@@ -514,7 +515,7 @@ async function showProfile(name){if(!name)return;const b=openPop('👤 '+name);b
     if(!rs.length)pf.append(el('div',null,'还没有评价'));
     rs.slice(0,10).forEach(x=>{const v=el('div','rv'),top=el('div');const sc=Math.max(0,Math.min(5,Math.round(+x.score||0)));top.append(el('span','s','★'.repeat(sc)+'☆'.repeat(5-sc)),el('small',null,(x.from?x.from:'已删除用户')+' · '+fmt(x.time)));v.append(top);if(x.comment)v.append(el('div',null,x.comment));pf.append(v)});
     b.append(pf);
-    if(token&&name!==me&&!isAdmin){const rb=el('button','rep','🚩 举报该用户');rb.type='button';rb.style.marginTop='10px';rb.onclick=()=>report('user',name);b.append(rb)}}
+    if(token&&name!==me&&!canInspect()){const rb=el('button','rep','🚩 举报该用户');rb.type='button';rb.style.marginTop='10px';rb.onclick=()=>report('user',name);b.append(rb)}}
   catch(e){b.replaceChildren(el('div',null,'网络异常，请稍后再试'))}}
 document.addEventListener('click',e=>{const u=e.target.closest&&e.target.closest('#tcSub .un');if(u)showProfile(u.dataset.u)});
 /* ---- ⚠️ 申请平台介入 ---- */
@@ -526,7 +527,7 @@ function dispute(){const c=tc;if(!c)return;const b=openPop('⚠️ 申请平台�
     if(r.status===401){expired();return}const x=await r.json().catch(()=>({}));if(!r.ok){if(x.status&&c===tc){c.task.status=x.status;renderProg()}return x.error||'提交失败'}
     c.task.status='disputed';if(c===tc){renderProg();pullChat()}refresh()}))}
 /* ---- 🚩 举报 ---- */
-const canRep=m=>m.task&&me&&!isAdmin&&m.user!==me&&!isBanned;
+const canRep=m=>m.task&&me&&!canInspect()&&m.user!==me&&!isBanned;
 function report(target,id){if(!token)return showLogin(true);
   const m=target==='task'?findTask(id):null,b=openPop(target==='task'?'🚩 举报任务':'🚩 举报用户 '+id);
   const d=el('div',null,target==='task'?'举报「'+String(m?m.text:'').slice(0,30)+'」':'举报这个用户的不当行为');d.style.cssText='font-size:13px;color:#6b7280;margin-bottom:8px';
@@ -583,8 +584,8 @@ tcFile.onchange=async()=>{const c=tc,f=tcFile.files[0];if(!c||!f)return;
 window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   if(posting)return;
-  if(isTask.checked&&!isAdmin&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
-  const bonus=isAdmin&&isTask.checked&&xBonus.value?Math.floor(+xBonus.value):0;
+  if(isTask.checked&&!can('freeTasks')&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
+  const bonus=can('publishBonus')&&isTask.checked&&xBonus.value?Math.floor(+xBonus.value):0;
   posting=true;[...f.elements].forEach(x=>x.disabled=true);
   try{
   const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined},bonus>0?{bonusPoints:bonus}:{}):{}))});

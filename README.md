@@ -37,15 +37,26 @@
 
 需要登录的接口请求头带 `Authorization: Bearer <token>`。token 7 天过期，每账号最多保留 10 个登录。登录、注册和修改密码共用每 IP 每分钟 60 次限额；登录另有同账号同 IP 15 分钟 10 次失败、跨 IP 合计 50 次失败限制（历史成功 IP 豁免后者）。频道发布每人每分钟 10 条，超出返回 429。
 
-## 管理员（只有一个）
-环境变量 `ADMIN=用户名`（写在 `.env` 或托管平台的环境变量里）。普通账号调用以下接口一律返回 403。
+## 总管理员与权限授权
+环境变量 `ADMIN=用户名` 指定唯一总管理员，默认精确匹配 `AevonEcho`，区分大小写。已有账号自动保留总管理员身份。总管理员在管理后台「管理员授权」中搜索用户、勾选权限并保存；取消全部权限即撤销管理员身份。普通管理员不能授权、撤权或变更总管理员身份，完整备份也仅限总管理员。
+
+可分别授予 16 项权限：查看用户、封禁/解封、删除用户、调整积分、查看消息/议价、删除消息/任务、查看私聊/图片、管理公告、审核充值、修改积分规则、发布积分奖励任务、处理建议、处理举报、处理纠纷、发布频道通知、免任务手续费。封禁/删除/调整积分含查看用户，删除消息含查看消息；其他权限独立。普通管理员不能封禁、删除管理员或直接调整管理员积分；总管理员可以管理普通管理员，总管理员账号始终受保护。
+
+权限在服务端逐项检查，撤权对原登录会话立即生效；页面在下次操作或定时核对身份后刷新。权限绑定账号记录，删除后同名新账号不继承。下文「管理员」均指总管理员或获授对应权限的管理员。
+
+| 授权接口（仅总管理员） | 说明 |
+|---|---|
+| GET /api/admin/roles | 权限目录与账号当前权限、userId、permissionsVersion |
+| POST /api/admin/users/<用户名>/permissions | `{permissions:[权限键],userId,version}`；空数组撤权，账号或版本变化返回 409 |
+
+`GET /api/me` 与登录返回 `admin`、`superAdmin`、`permissions`。全量 `/api/admin/overview` 仅总管理员可用，普通管理员使用 `?summary=1`，只返回获授权项目的计数。
 
 | 接口 | 说明 |
 |---|---|
 | GET /api/admin/overview | 用户、全部消息（含已删除，带 deletedText）、公告 |
 | GET /api/admin/users | 用户列表：banned、banReason、activeSessions、messages |
 | GET /api/admin/messages | 全部消息，带 channel，已删除的带 originalText |
-| POST /api/admin/users/<用户名>/ban {reason} | 封禁（管理员不能被封） |
+| POST /api/admin/users/<用户名>/ban {reason} | 封禁（总管理员不能被封；普通管理员只能封禁普通用户） |
 | POST /api/admin/users/<用户名>/unban | 解封 |
 | POST /api/admin/users/<用户名>/delete | 删除账号：token 失效，消息标记已删除（原文留给管理员），未完成的任务撤销，接了的单放回待接单，用户名可重新注册 |
 | POST /api/announcements、/api/announcements/<id>/delete | 发布、删除公告 |
@@ -71,7 +82,7 @@ nohup ./run.sh &
 **环境变量**
 - `PORT`：端口，默认 3000。
 - `DATA_DIR`：数据目录，默认是代码所在目录。
-- `ADMIN`：唯一的管理员账号，默认 `AevonEcho`。
+- `ADMIN`：唯一的总管理员账号，默认 `AevonEcho`。
 - `ADMIN_PASSWORD`：设置后，启动时会直接建好管理员账号，别人就没法抢注了。账号已经存在时这一项不起作用，登录后可以在个人中心改密码。
 - `TRUST_PROXY`：默认 1，部署在网关或反向代理后面时，按 `X-Forwarded-For` 最右边的 IP 做频率限制；直接对外、前面没有代理时设成 0。
 - `ALLOW_ORIGINS`：只有跨域访问时才需要。
@@ -81,7 +92,7 @@ nohup ./run.sh &
 如果没设 `ADMIN_PASSWORD`，部署完要马上用 `AevonEcho` 注册，免得被别人抢先注册。
 
 ## 积分
-新用户注册送 `signupBonus` 积分。发任务扣 `postCost`，接单扣 `claimCost`，普通聊天不扣；管理员发任务、接单都不扣分。积分不够时返回 402 `{error, points, need}`。撤销没人接的任务，或者删掉没人接的任务，发布者的积分会退回来；放弃接单不退。管理员可以发带 `bonusPoints` 的积分任务，发布者确认完成后，奖励自动加给接单人。
+新用户注册送 `signupBonus` 积分。发任务扣 `postCost`，接单扣 `claimCost`，普通聊天不扣；总管理员和获授「免任务手续费」的管理员不扣分，其他管理员照常扣分。积分不够时返回 402 `{error, points, need}`。撤销没人接的任务，或者删掉没人接的任务，发布者的积分会退回来；放弃接单不退。获授「发布积分奖励任务」的管理员可以设置 `bonusPoints`，发布者确认完成后奖励自动加给接单人。
 
 | 接口 | 说明 |
 |---|---|

@@ -5,6 +5,7 @@ const {fixture,password,sleep,seed}=require('./helpers.cjs');
 let browser;
 before(async()=>{browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||(process.platform==='win32'?'msedge':undefined),headless:true})});
 after(async()=>{if(browser)await browser.close()});
+async function setPermissions(call,name,permissions){const d=(await call('/api/admin/roles','AevonEcho')).data,u=d.users.find(x=>x.username===name);const r=await call(`/api/admin/users/${name}/permissions`,'AevonEcho',{permissions,userId:u.userId,version:u.permissionsVersion});assert.equal(r.status,200)}
 async function pageFor(t,base,user='Bob',extraStorage=[]){
  const context=await browser.newContext({storageState:{cookies:[],origins:[{origin:base,localStorage:[{name:'token',value:user},{name:'username',value:user},{name:'admin',value:user==='AevonEcho'?'1':'0'},...extraStorage]}]}}),page=await context.newPage(),errors=[];
  t.after(async()=>{await context.close();assert.deepEqual(errors,[],'uncaught browser errors')});
@@ -13,6 +14,42 @@ async function pageFor(t,base,user='Bob',extraStorage=[]){
  await page.goto(base+'/chat.html#'+encodeURIComponent('校园跑'));await page.waitForFunction(()=>online===true&&points!==null);
  return page;
 }
+
+test('super administrator grants selected permissions through checkboxes; delegate sees only granted controls',t=>fixture(async({base,call})=>{
+ const root=await pageFor(t,base,'AevonEcho');await root.goto(base+'/admin.html');await root.locator('[data-t="roles"]').click();await root.locator('#roleQuery').fill('Bob');
+ const list=root.locator('#roleList');assert.equal(await list.locator('input[type=checkbox]').count(),16);
+ await list.locator('input[name=viewUsers]').check();await list.getByRole('button',{name:'保存权限',exact:true}).click();await list.getByRole('status').filter({hasText:'已保存'}).waitFor();
+ assert.deepEqual((await call('/api/me','Bob')).data.permissions,['viewUsers']);
+ const delegate=await pageFor(t,base,'Bob');await delegate.goto(base+'/admin.html');await delegate.locator('#ub').waitFor();assert.equal(await delegate.locator('[data-t=roles]').count(),0);assert.equal(await delegate.locator('[data-t=msgs]').count(),0);assert.equal(await delegate.locator('#bkBtn').count(),0);assert.equal(await delegate.locator('#ub button').count(),0);
+ await list.getByRole('button',{name:'撤销全部权限'}).click();await list.getByRole('status').filter({hasText:'已撤销'}).waitFor();
+ await delegate.evaluate(()=>render());await delegate.getByRole('heading',{name:'没有权限'}).waitFor();assert.equal((await call('/api/admin/users','Bob')).status,403);
+}));
+
+test('delegated point adjustment does not expose administrator grant, message or private chat controls',t=>fixture(async({base,call})=>{
+ await setPermissions(call,'Bob',['managePoints']);const page=await pageFor(t,base,'Bob');await page.goto(base+'/admin.html');await page.locator('#ub').waitFor();
+ assert.equal(await page.locator('.tabs button').count(),1);assert.equal(await page.locator('#ub button[data-a=points]').count(),2);assert.equal(await page.locator('#ub button[data-a=ban]').count(),0);assert.equal(await page.locator('#ub button[data-a=delete]').count(),0);
+ await page.goto(base+'/index.html');await page.waitForFunction(()=>isAdmin===true);assert.equal(await page.locator('#annForm').isVisible(),false);assert.equal(await page.locator('#adminLink').isVisible(),true);
+}));
+
+test('message viewer cannot delete or intervene and dispute handler cannot open private chats',t=>fixture(async({base,call,task,act})=>{
+ const m=await task();await act(m,'Carol','claim');await act(m,'Alice','dispute',{reason:'test evidence'});
+ await setPermissions(call,'Bob',['viewMessages']);const page=await pageFor(t,base,'Bob');await page.goto(base+'/admin.html');await page.locator('#mb tr').waitFor();
+ assert.equal(await page.locator('#mb [data-c]').count(),0);assert.equal(await page.locator('#mb [data-force]').count(),0);assert.equal(await page.locator('#mb [data-chat]').count(),0);
+ await setPermissions(call,'Bob',['manageDisputes']);await page.reload();await page.locator('#dsb tr').waitFor();assert.equal(await page.locator('#dsb [data-chat]').count(),0);assert.ok(await page.locator('#dsb [data-force]').count()>0);
+}));
+
+test('bonus-only administrator pays normal fees and gets no official message composer',t=>fixture(async({base,call})=>{
+ await setPermissions(call,'Bob',['publishBonus']);const page=await pageFor(t,base,'Bob');assert.equal(await page.locator('#f').isVisible(),false);await page.locator('#postBtn').click();assert.equal(await page.locator('#xBonus').isVisible(),true);assert.equal(await page.locator('#isTaskL').isVisible(),false);
+ await page.locator('#text').fill('delegated bonus task');await page.locator('#xBonus').fill('2');await page.locator('#send').click();await page.waitForFunction(()=>points===99);
+ const d=(await call('/api/my/tasks','Bob')).data.posted[0];assert.equal(d.bonusPoints,2);assert.equal(d.official,undefined);assert.equal(d.cost,1);
+}));
+
+test('permission editor fits desktop and mobile and keeps super administrator immutable',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('[data-t=roles]').click();await page.locator('#roleQuery').fill('Bob');await page.locator('#roleList form').waitFor();
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:'.review/permissions-desktop.jpg'});
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/permissions-mobile.jpg',fullPage:true});
+ await page.locator('#roleQuery').fill('AevonEcho');assert.equal(await page.locator('#roleList input[type=checkbox]').count(),0);assert.equal(await page.locator('#roleList button').count(),0);
+}));
 test('logout removes open private chat and previous-account state',t=>fixture(async({base,task,act,call})=>{
  const m=await task();await act(m,'Bob','claim');await call('/api/tasks/'+m.id+'/chat','Alice',{text:'private Bob evidence'});
  const page=await pageFor(t,base);await page.locator('[data-chat="'+m.id+'"]').click();await page.getByText('private Bob evidence',{exact:true}).waitFor();
