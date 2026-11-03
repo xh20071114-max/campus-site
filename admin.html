@@ -29,7 +29,7 @@ th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;wo
 .empty{padding:30px;text-align:center;color:#9ca3af}.count{color:#6b7280;font-size:13px;margin:-6px 0 10px}
 .need{background:#fff;border-radius:12px;padding:50px;text-align:center}.need a{display:inline-block;margin-top:14px;background:#1e3a8a;color:#fff;padding:10px 24px;border-radius:8px}
 .cm{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}.cw{background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column}.cw h3{padding:14px 18px;border-bottom:1px solid #eef0f4;font-size:16px;display:flex;justify-content:space-between;gap:10px}.cw h3 small{color:#6b7280;font-weight:normal;display:block;margin-top:2px;word-break:break-all}.cw h3 button{border:none;background:#f3f4f6;border-radius:8px;padding:4px 12px;cursor:pointer;align-self:start}.cl{overflow:auto;padding:14px 18px;flex:1}.ci{margin-bottom:12px}.ci .h{font-size:12px;color:#6b7280;margin-bottom:3px}.ci .h b{color:#1f2937}.ci .b{background:#f3f4f6;border-radius:10px;padding:8px 12px;white-space:pre-wrap;word-break:break-word;font-size:14px;display:inline-block;max-width:100%}.ci.p .b{background:#dbeafe}.ro{font-size:12px;color:#9ca3af;text-align:center;padding:8px;border-top:1px solid #eef0f4}
-.cs{text-align:center;color:#9ca3af;font-size:12px;margin:8px 0}.cimg{display:block;max-width:180px;max-height:180px;margin-top:6px;border-radius:8px;border:1px solid #e5e7eb;cursor:zoom-in;object-fit:cover}.act.warn2{background:#fff7ed;color:#c2410c;border-color:#fdba74}</style><link rel="stylesheet" href="ui.css"></head><body class="ui-site ui-admin">
+.cs{text-align:center;color:#9ca3af;font-size:12px;margin:8px 0}.cimg{display:block;max-width:180px;max-height:180px;margin-top:6px;border-radius:8px;border:1px solid #e5e7eb;cursor:zoom-in;object-fit:cover}.act:disabled{opacity:.55;cursor:default}.act.warn2{background:#fff7ed;color:#c2410c;border-color:#fdba74}</style><link rel="stylesheet" href="ui.css"></head><body class="ui-site ui-admin">
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网 · 管理后台</a>
 <nav><a href="index.html">首页</a><a href="chat.html">项目频道</a><a href="me.html">个人中心</a></nav></div></header>
 <main id="main"><p class="empty">加载中…</p></main>
@@ -39,7 +39,7 @@ th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;wo
 const API=window.API_BASE||'',token=localStorage.getItem('token');
 const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
 const M=document.getElementById('main');
 const call=async(path,opt={})=>{const r=await fetch(API+path,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}});
   const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('请求失败 '+r.status)),{status:r.status});return d};
@@ -214,11 +214,49 @@ async function drawRch(version=renderVersion){
 }
 
 // 每周接单奖励只由总管理员查看；现金须在线下实际转账后手动登记。
+let weeklyRewardQuery=0,weeklyRewardPeriod='';
+const weeklyRewardPending=new Set(),weeklyRewardViewed=new Map();
+const weeklyStatus=r=>({paid:'已登记打款',qr_submitted:'收款码已提交',waiting_qr:'等待收款码',points_pending:'积分待发',points_sent:'积分已发放',points_skipped:'账号不符合发放条件，积分未发放',not_eligible:'未达到 20 单'}[r.status]||'待核对');
 async function drawWeeklyRewards(version=renderVersion){
-  const P=document.getElementById('pane'),periods=await call('/api/admin/weekly-rewards');if(version!==renderVersion)return;
-  P.innerHTML=`<p class="count">北京时间周一 01:00 开始统计，周日 01:00 锁定。第 4 至 10 名的 5 积分在下周一 01:00 自动发放；现金由管理员线下转账后登记。</p>${periods.map(p=>`<section class="box" style="margin:14px 0;padding:14px"><h3 style="margin:0 0 8px">${esc(p.key)} 期 <small style="font-weight:normal;color:#6b7280">${fmt(p.startAt)} 至 ${fmt(p.endAt)} · 积分${p.pointsSent?'已发':'待发'}</small></h3><table><thead><tr><th>名次</th><th>用户</th><th>完成数</th><th>奖励</th><th>收款码</th><th>打款状态</th><th>操作</th></tr></thead><tbody>${p.rows.map(r=>`<tr><td>${r.rank}</td><td><b>${esc(r.username)}</b></td><td>${r.count}</td><td>${r.cash?`¥${r.cash}${r.eligible?'':'（未达 20 单）'}`:r.points?`${r.points} 积分`:'—'}</td><td>${r.hasQr?`<button class="act ok" type="button" data-view-qr="${esc(p.key)}" data-uid="${esc(r.userId)}">查看收款码</button>`:'未提交'}</td><td>${r.status==='paid'?`已登记打款<br><small>${fmt(r.paidAt)}</small>`:r.status==='qr_submitted'?'收款码已提交':r.status==='waiting_qr'?'等待收款码':r.status==='points_pending'?'积分待发':'不符合现金奖励条件'}</td><td>${r.eligible&&r.cash&&r.status!=='paid'?`<button class="act ok" type="button" data-paid="${esc(p.key)}" data-uid="${esc(r.userId)}" ${r.hasQr?'':'disabled'}>登记已打款</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">本期没有上榜用户</td></tr>'}</tbody></table></section>`).join('')||'<div class="empty">还没有已截止的周榜。</div>'}`;
-  P.querySelectorAll('[data-view-qr]').forEach(b=>b.onclick=async()=>{try{const r=await fetch(API+`/api/admin/weekly-rewards/${encodeURIComponent(b.dataset.viewQr)}/${encodeURIComponent(b.dataset.uid)}/qr`,{headers:{Authorization:'Bearer '+token}});if(!r.ok)throw new Error('收款码暂时无法读取');const url=URL.createObjectURL(await r.blob()),modal=document.createElement('div');modal.className='cm';modal.innerHTML=`<div class="cw" style="max-width:420px"><h3>获奖者收款码 <button type="button">关闭</button></h3><div class="cl" style="text-align:center"><img alt="获奖者提交的收款码" style="max-width:100%;max-height:65vh" src="${url}"></div></div>`;document.body.append(modal);modal.querySelector('button').onclick=()=>{URL.revokeObjectURL(url);modal.remove()};modal.onclick=e=>{if(e.target===modal){URL.revokeObjectURL(url);modal.remove()}}}catch(e){alert(e.message)}});
-  P.querySelectorAll('[data-paid]').forEach(b=>b.onclick=async()=>{if(!confirm('确认已经通过收款码完成线下转账？只有实际转账后才能登记。'))return;try{await call(`/api/admin/weekly-rewards/${encodeURIComponent(b.dataset.paid)}/${encodeURIComponent(b.dataset.uid)}/paid`,{method:'POST',body:JSON.stringify({})});await drawWeeklyRewards(version)}catch(e){alert(e.message)}});
+  if(version!==renderVersion||tab!=='rewards')return;
+  const P=document.getElementById('pane'),query=++weeklyRewardQuery,oldStatus=P.querySelector('#weeklyStatus'),oldRefresh=P.querySelector('#weeklyRefresh');
+  if(oldStatus)oldStatus.textContent='正在刷新结算记录…';if(oldRefresh)oldRefresh.disabled=true;
+  try{
+    const periods=await call('/api/admin/weekly-rewards');if(version!==renderVersion||query!==weeklyRewardQuery||tab!=='rewards')return;
+    weeklyRewardPeriod=periods.some(p=>p.key===weeklyRewardPeriod)?weeklyRewardPeriod:(periods[0]?.key||'');
+    P.innerHTML=`<div class="tools"><label>结算周期 <select id="weeklyPeriod" aria-label="选择奖励结算周期">${periods.map(p=>`<option value="${esc(p.key)}">${esc(p.key)} 期</option>`).join('')}</select></label><button type="button" class="act ok" id="weeklyRefresh">刷新结算</button><a href="leaderboard.html" style="align-self:center;color:#1e3a8a">查看接单排行榜</a></div><p class="count">以下时间均为北京时间。周一 01:00 开始，周日 01:00 锁榜，下周一 01:00 自动发积分。现金需先查看收款码，完成线下转账后登记。</p><p id="weeklyStatus" role="status" aria-live="polite" class="count"></p><div id="weeklyRows"></div>`;
+    const select=P.querySelector('#weeklyPeriod'),refresh=P.querySelector('#weeklyRefresh'),status=P.querySelector('#weeklyStatus'),rows=P.querySelector('#weeklyRows');
+    select.value=weeklyRewardPeriod;select.disabled=!periods.length;refresh.onclick=()=>drawWeeklyRewards(version);
+    const showStatus=text=>{if(version===renderVersion&&query===weeklyRewardQuery&&status.isConnected)status.textContent=text};
+    const paint=()=>{
+      const period=periods.find(p=>p.key===weeklyRewardPeriod);if(!period){rows.innerHTML='<div class="empty">还没有已截止的周榜。</div>';return}
+      const pending=period.rows.filter(r=>r.eligible&&r.cash&&r.status!=='paid'&&!r.accountDeleted&&!r.userBanned).length;
+      rows.innerHTML=`<section class="box" style="margin:14px 0;padding:14px"><h3 style="margin:0 0 8px">${esc(period.key)} 期</h3><p class="count" style="margin:0 0 12px">${fmt(period.startAt)} 至 ${fmt(period.endAt)} · 积分${period.pointsSent?'结算已完成':'待结算'} · 待登记现金奖励 ${pending} 笔</p><table><thead><tr><th>名次</th><th>用户</th><th>完成数</th><th>奖励</th><th>收款码</th><th>结算状态</th><th>操作</th></tr></thead><tbody>${period.rows.map(r=>{const ref=period.key+':'+r.userId,viewed=r.qrVersion&&weeklyRewardViewed.get(ref)===r.qrVersion,blocked=!r.hasQr||!viewed||r.accountDeleted||r.userBanned||weeklyRewardPending.has(ref);return `<tr><td>${r.rank}</td><td><b>${esc(r.username)}</b>${r.accountDeleted?'<br><span class="tg x">账号已注销</span>':r.userBanned?'<br><span class="tg r">账号已封禁</span>':''}</td><td>${r.count}</td><td>${r.cash?`¥${r.cash}${r.eligible?'':'（未达 20 单）'}`:r.points?`${r.points} 积分`:'—'}</td><td>${r.hasQr?`<button class="act ok" type="button" data-view-qr="${esc(r.userId)}">查看收款码</button>`:r.eligible?'未提交':'—'}</td><td>${esc(weeklyStatus(r))}${r.paidAt?`<br><small>${fmt(r.paidAt)}</small>`:''}</td><td>${r.eligible&&r.cash&&r.status!=='paid'?`<button class="act ok" type="button" data-paid="${esc(r.userId)}" ${blocked?'disabled':''}>${weeklyRewardPending.has(ref)?'正在登记…':'登记已打款'}</button>${r.hasQr&&!viewed&&!r.accountDeleted&&!r.userBanned?'<br><small>请先查看收款码</small>':''}`:'—'}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty">本期没有上榜用户</td></tr>'}</tbody></table></section>`;
+      rows.querySelectorAll('[data-view-qr]').forEach(button=>button.onclick=async()=>{
+        if(button.disabled)return;const r=period.rows.find(r=>r.userId===button.dataset.viewQr),ref=period.key+':'+r.userId;button.disabled=true;showStatus('正在读取私密收款码…');
+        try{
+          const response=await fetch(API+`/api/admin/weekly-rewards/${encodeURIComponent(period.key)}/${encodeURIComponent(r.userId)}/qr?version=${encodeURIComponent(r.qrVersion||'')}`,{cache:'no-store',headers:{Authorization:'Bearer '+token}});
+          if(!response.ok){const d=await response.json().catch(()=>({}));throw new Error(d.error||'收款码暂时无法读取，请刷新后重试')}
+          const blob=await response.blob();if(version!==renderVersion||query!==weeklyRewardQuery||tab!=='rewards')return;
+          const url=URL.createObjectURL(blob),modal=document.createElement('div');modal.className='cm';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','获奖者收款码');
+          modal.innerHTML=`<div class="cw" style="max-width:420px"><h3>${esc(r.username)} · ¥${r.cash} 收款码 <button type="button">关闭</button></h3><div class="cl" style="text-align:center"><img alt="获奖者提交的收款码" style="max-width:100%;max-height:65vh" src="${url}"><p class="muted" style="font-size:13px;color:#6b7280">请核对收款方与金额，实际转账后再登记。</p></div></div>`;
+          const close=()=>{URL.revokeObjectURL(url);document.removeEventListener('keydown',onKey);modal.remove();const trigger=[...rows.querySelectorAll('[data-view-qr]')].find(b=>b.dataset.viewQr===r.userId);if(trigger)trigger.focus()},onKey=e=>{if(e.key==='Escape')close()};document.body.append(modal);document.addEventListener('keydown',onKey);modal.querySelector('button').onclick=close;modal.onclick=e=>{if(e.target===modal)close()};modal.querySelector('button').focus();weeklyRewardViewed.set(ref,r.qrVersion);showStatus('收款码已读取，请完成线下转账后登记。');paint();
+        }catch(e){showStatus(e.message)}finally{button.disabled=false}
+      });
+      rows.querySelectorAll('[data-paid]').forEach(button=>button.onclick=async()=>{
+        const r=period.rows.find(r=>r.userId===button.dataset.paid),ref=period.key+':'+r.userId;if(weeklyRewardPending.has(ref))return;
+        if(!confirm(`确认已向「${r.username}」实际转账 ¥${r.cash}？登记不会自动转账。`))return;
+        weeklyRewardPending.add(ref);button.disabled=true;button.textContent='正在登记…';showStatus('正在保存打款登记，请勿重复操作…');
+        try{await call(`/api/admin/weekly-rewards/${encodeURIComponent(period.key)}/${encodeURIComponent(r.userId)}/paid`,{method:'POST',body:JSON.stringify({qrVersion:r.qrVersion})});showStatus('已登记打款');await drawWeeklyRewards(version)}
+        catch(e){weeklyRewardViewed.delete(ref);showStatus(e.message+'；请刷新结算记录，核对状态后再操作。')}
+        finally{weeklyRewardPending.delete(ref);if(version===renderVersion&&query===weeklyRewardQuery&&tab==='rewards')paint()}
+      });
+    };
+    select.onchange=()=>{weeklyRewardPeriod=select.value;status.textContent='';paint()};paint();
+  }catch(e){
+    if(version!==renderVersion||query!==weeklyRewardQuery)return;
+    const status=P.querySelector('#weeklyStatus');if(status)status.textContent='刷新失败：'+e.message+'。现有记录可能不是最新状态，请重试。';else{P.innerHTML=`<p class="empty">结算记录读取失败：${esc(e.message)} <button class="act ok" type="button" id="weeklyRetry">重新加载</button></p>`;P.querySelector('#weeklyRetry').onclick=()=>drawWeeklyRewards(version)}
+  }finally{if(version===renderVersion&&query===weeklyRewardQuery){const refresh=P.querySelector('#weeklyRefresh');if(refresh)refresh.disabled=false}}
 }
 
 // 积分设置

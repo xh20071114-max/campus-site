@@ -24,8 +24,9 @@ test('legacy offer migration isolates records older than the current account',as
  data.offers={[id]:[{id:id+1,user:'Bob',status:'withdrawn',price:8,turn:'poster',time:new Date(Date.now()-172800000).toISOString(),updated:new Date().toISOString(),rounds:[{by:'claimer',price:8,note:'old',time:new Date().toISOString()}]}]};
  await fixture(async({call})=>{assert.deepEqual((await call(ch+'/'+id+'/offers','Bob')).data.offers,[]);assert.equal((await call(ch+'/'+id+'/offers','AevonEcho')).data.offers.length,1)},data);
 });
-test('existing active offers migrate and remain actionable',async()=>{
+for(const createdFormat of ['timestamp','ISO'])test('existing active offers migrate and remain actionable with '+createdFormat+' account creation time',async()=>{
  const data=seed(),id=1234567890123456;data.messages['校园跑']=[{id,user:'Alice',text:'old task',task:true,time:new Date().toISOString()}];
+ if(createdFormat==='ISO')data.users.Bob.created=new Date(data.users.Bob.created).toISOString();
  data.offers={[id]:[{id:id+1,user:'Bob',status:'pending',price:8,turn:'poster',time:new Date().toISOString(),updated:new Date().toISOString(),rounds:[{by:'claimer',price:8,note:'valid',time:new Date().toISOString()}]}]};
  await fixture(async({call})=>{assert.equal((await call(ch+'/'+id+'/offers','Bob')).data.offers.length,1);assert.equal((await call(ch+'/'+id+'/offers/'+(id+1)+'/accept','Alice',{})).data.task.claimedBy,'Bob')},data);
 });

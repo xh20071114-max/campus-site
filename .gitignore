@@ -3,7 +3,9 @@ data.json.tmp
 data.corrupt-*.json
 backups/
 uploads/
+weekly-reward-qr/
 server.log
 .env
+.env.*
 .review/
 node_modules/

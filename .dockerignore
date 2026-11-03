@@ -1,5 +1,6 @@
 .git
 .env
+.env.*
 .review
 tests
 data.json
@@ -7,5 +8,6 @@ data.json.tmp
 data.corrupt-*.json
 backups
 uploads
+weekly-reward-qr
 server.log
 node_modules

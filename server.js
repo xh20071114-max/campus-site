@@ -29,8 +29,11 @@ const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Arr
   check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
   for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily','savedTasks'])if(Object.hasOwn(d,k))check(object(d[k]),k);
   for(const k of ['ledger','recharges','feedback','reports','announcements','weeklyRewards'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
-  for(const p of d.weeklyRewards||[]){check(/^\d{4}-\d{2}-\d{2}$/.test(p.key)&&Number.isFinite(Date.parse(p.startAt))&&Number.isFinite(Date.parse(p.endAt))&&Array.isArray(p.rows),'weeklyRewards 记录');
-    for(const r of p.rows)check(typeof r.username==='string'&&typeof r.userId==='string'&&Number.isInteger(r.rank)&&Number.isInteger(r.count)&&(!r.qrFile||/^[a-f0-9-]{36}\.(png|jpg)$/.test(r.qrFile))&&(!r.qrExt||['png','jpg'].includes(r.qrExt)),'weeklyRewards 用户记录')}
+  if(Object.hasOwn(d,'weeklyRewardsStartedAt'))check(Number.isFinite(Date.parse(d.weeklyRewardsStartedAt)),'weeklyRewardsStartedAt');
+  const rewardKeys=new Set();for(const p of d.weeklyRewards||[]){
+    check(/^\d{4}-\d{2}-\d{2}$/.test(p.key)&&!rewardKeys.has(p.key)&&Number.isFinite(Date.parse(p.startAt))&&Date.parse(p.endAt)-Date.parse(p.startAt)===6*864e5&&Array.isArray(p.rows)&&p.rows.length<=10,'weeklyRewards 记录');rewardKeys.add(p.key);
+    const ids=new Set(),ranks=new Set();for(const r of p.rows){
+      check(object(r)&&typeof r.username==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(r.userId)&&!ids.has(r.userId)&&Number.isInteger(r.rank)&&r.rank>=1&&r.rank<=10&&!ranks.has(r.rank)&&Number.isSafeInteger(r.count)&&r.count>0&&r.cash===(r.rank<=3?[10,5,3][r.rank-1]:0)&&r.points===(r.rank>=4?5:0)&&r.eligible===(r.rank<=3&&r.count>=20)&&['waiting_qr','qr_submitted','paid','not_eligible','points_pending','points_sent','points_skipped'].includes(r.status)&&(!r.qrFile||/^[a-f0-9-]{36}\.(png|jpg)$/.test(r.qrFile))&&(!r.qrExt||['png','jpg'].includes(r.qrExt)),'weeklyRewards 用户记录');ids.add(r.userId);ranks.add(r.rank)}}
   for(const k of ['messages','taskChats','events','offers'])for(const l of Object.values(d[k]||{}))check(Array.isArray(l)&&l.every(x=>object(x)&&/^[0-9]+$/.test(String(x.id))&&Number.isSafeInteger(Number(x.id))&&Number(x.id)>0),k);
   for(const k of ['taskChats','chatRead','offers'])for(const id of Object.keys(d[k]||{}))check(/^[0-9]+$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0,k+' 任务 ID');
   for(const ids of Object.values(d.savedTasks||{}))check(Array.isArray(ids)&&ids.length<=200&&ids.every(id=>/^[0-9]+$/.test(String(id))&&Number.isSafeInteger(Number(id))&&Number(id)>0),'savedTasks 记录');
@@ -48,7 +51,7 @@ function loadDB(){
   if(!fs.existsSync(DB)){const d=fromBackup('data.json 不存在');if(d)return d; // 之前坏过（有 data.corrupt-*）又没有备份：不能当成全新站点用空库启动
     const old=fs.readdirSync(DATA_DIR).some(f=>/^data\.corrupt-.*\.json$/.test(f)||f==='data.json.tmp');
     const hasFiles=dir=>fs.existsSync(dir)&&fs.readdirSync(dir).length>0;
-    if(old||hasFiles(BAK)||hasFiles(path.join(DATA_DIR,'uploads'))){console.error('发现历史数据，但主库缺失且没有能用的备份，拒绝用空库启动，请人工处理');process.exit(1)}
+    if(old||hasFiles(BAK)||hasFiles(path.join(DATA_DIR,'uploads'))||hasFiles(path.join(DATA_DIR,'weekly-reward-qr'))){console.error('发现历史数据，但主库缺失且没有能用的备份，拒绝用空库启动，请人工处理');process.exit(1)}
     return {users:{},sessions:{},messages:{}}}
   try{return parseDB(fs.readFileSync(DB,'utf8'))}catch(e){
     const bad=path.join(DATA_DIR,'data.corrupt-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
@@ -137,29 +140,32 @@ const addPoints=(n,delta,type,reason,ref)=>{const u=db.users[n];if(!u||!delta)re
 // Weekly rewards run on China Standard Time: Monday 01:00 starts a round,
 // Sunday 01:00 locks it, and the next round starts Monday 01:00.
 db.weeklyRewards=Array.isArray(db.weeklyRewards)?db.weeklyRewards:[];
-const REWARD_DIR=path.join(DATA_DIR,'weekly-reward-qr');
+const REWARD_DIR=path.join(DATA_DIR,'weekly-reward-qr'),REWARD_QR_MAX=2*1024*1024;
 const SHANGHAI_OFFSET=8*3600e3,REWARD_ROUND_MS=7*864e5,REWARD_LOCK_MS=6*864e5;
 const mondayOne=(input=Date.now())=>{const shifted=new Date(input+SHANGHAI_OFFSET),day=(shifted.getUTCDay()+6)%7;
   const localMonday=Date.UTC(shifted.getUTCFullYear(),shifted.getUTCMonth(),shifted.getUTCDate()-day,1)-SHANGHAI_OFFSET;
   return localMonday>input?localMonday-REWARD_ROUND_MS:localMonday};
 const periodKey=start=>new Date(start+SHANGHAI_OFFSET).toISOString().slice(0,10);
-const completedCounts=(start,end)=>{const counts=new Map();for(const c of CHANNELS)for(const m of db.messages[c]){
-  if(!m.task||!m.done||!m.doneAt||!m.claimedBy||m.claimerDeleted)continue;
+if(!db.weeklyRewardsStartedAt){const now=Date.now(),current=mondayOne(now),first=current+(now>=current+REWARD_LOCK_MS?REWARD_ROUND_MS:0);
+  db.weeklyRewardsStartedAt=new Date(db.weeklyRewards.length?Math.min(...db.weeklyRewards.map(p=>Date.parse(p.startAt))):first).toISOString()}
+for(const period of db.weeklyRewards)for(const row of period.rows)if(row.qrFile&&!row.qrVersion)row.qrVersion=crypto.randomUUID();
+const completedCounts=(start,end)=>{const counts=new Map(),seen=new Set();for(const c of CHANNELS)for(const m of db.messages[c]){
+  if(!m.task||!m.done||!m.doneAt||!m.claimedBy||m.claimerDeleted||m.deleted||m.cancelled||m.closed||m.user===m.claimedBy||seen.has(String(m.id)))continue;
   const done=Date.parse(m.doneAt);if(!Number.isFinite(done)||done<start||done>=end)continue;
-  const uid=m.claimedById||db.users[m.claimedBy]?.id;if(!uid)continue;const row=counts.get(uid)||{userId:uid,username:m.claimedBy,count:0};row.count++;counts.set(uid,row)}
-  return [...counts.values()].sort((a,b)=>b.count-a.count||a.username.localeCompare(b.username,'zh-CN')).slice(0,10).map((x,i)=>({...x,rank:i+1}))};
+  const uid=m.claimedById;if(!uid||db.users[m.claimedBy]?.id!==uid)continue;seen.add(String(m.id));
+  const row=counts.get(uid)||{userId:uid,username:m.claimedBy,count:0,lastDoneAt:0};row.count++;row.lastDoneAt=Math.max(row.lastDoneAt,done);counts.set(uid,row)}
+  return [...counts.values()].sort((a,b)=>b.count-a.count||a.lastDoneAt-b.lastDoneAt||a.username.localeCompare(b.username,'zh-CN')).slice(0,10).map((x,i)=>({...x,rank:i+1}))};
 const publicEntries=(rows,uid)=>rows.map(row=>({username:row.username,count:row.count,rank:row.rank,cash:row.rank===1?10:row.rank===2?5:row.rank===3?3:0,eligible:row.rank<=3&&row.count>=20,points:row.rank>=4?5:0,...(uid?{mine:row.userId===uid,...(row.userId===uid?{rewardStatus:row.status||null,qrSubmitted:!!row.qrFile}:{})}:{})}));
 const lockRewardPeriod=start=>{const key=periodKey(start);if(db.weeklyRewards.some(x=>x.key===key))return false;
   const rows=completedCounts(start,start+REWARD_LOCK_MS).map(x=>({...x,cash:x.rank===1?10:x.rank===2?5:x.rank===3?3:0,
     points:x.rank>=4?5:0,eligible:x.rank<=3&&x.count>=20,status:x.rank<=3&&x.count>=20?'waiting_qr':x.rank>=4?'points_pending':'not_eligible'}));
   db.weeklyRewards.push({key,startAt:new Date(start).toISOString(),endAt:new Date(start+REWARD_LOCK_MS).toISOString(),createdAt:new Date().toISOString(),pointsSent:false,rows});persist();return true};
-const settleDueRewards=()=>{const now=Date.now(),current=mondayOne(now),due=now>=current+REWARD_LOCK_MS?current:current-REWARD_ROUND_MS,latest=db.weeklyRewards.reduce((m,x)=>Math.max(m,Date.parse(x.startAt)||0),0);
-  const from=latest?latest+REWARD_ROUND_MS:due;for(let start=from;start<=due;start+=REWARD_ROUND_MS)lockRewardPeriod(start);
+const settleDueRewards=()=>{if(storageError)return;const now=Date.now(),current=mondayOne(now),due=now>=current+REWARD_LOCK_MS?current:current-REWARD_ROUND_MS,latest=db.weeklyRewards.reduce((m,x)=>Math.max(m,Date.parse(x.startAt)||0),0);
+  const from=Math.max(Date.parse(db.weeklyRewardsStartedAt),latest?latest+REWARD_ROUND_MS:0);for(let start=from;start<=due;start+=REWARD_ROUND_MS)lockRewardPeriod(start);
   let changed=false;for(const period of db.weeklyRewards){if(period.pointsSent||now<Date.parse(period.startAt)+REWARD_ROUND_MS)continue;
     for(const row of period.rows)if(row.points>0){if(row.userId&&db.users[row.username]?.id===row.userId){addPoints(row.username,row.points,'weekly_reward','每周接单排行榜第 '+row.rank+' 名积分补贴',period.key+'-'+row.userId);row.status='points_sent'}else row.status='points_skipped'}
     period.pointsSent=true;period.pointsSentAt=new Date(now).toISOString();changed=true}
   if(changed)persist()};
-settleDueRewards();setInterval(settleDueRewards,30e3).unref();
 const noPoints=(n,need)=>({error:'积分不足：需要 '+need+' 积分，当前 '+pts(n)+' 积分，请先充值',points:pts(n),need});
 for(const [k,u] of Object.entries(db.users)) if(u.points==null){u.points=0;if(!isAdmin(k))addPoints(k,S().signupBonus,'signup','老账号补发注册积分')}
 // 任务私聊辅助：找任务、判断能不能读、算未读
@@ -187,7 +193,7 @@ db.events=Object.assign(Object.create(null),db.events||{}); db.reports=db.report
 db.offers=Object.assign(Object.create(null),db.offers||{});
 // 旧库议价按账号创建时间迁移；已注销账号的记录只保留给发布人和管理员。
 for(const l of Object.values(db.offers)) for(const o of l){const u=db.users[o.user];
-  if(!u||o.userDeleted||(o.userId?o.userId!==u.id:!(Date.parse(o.time)>=Number(u.created)))){o.userDeleted=true;if(o.status==='pending'){o.status='expired';o.reason='原账号已注销或身份无法确认';o.updated=new Date().toISOString()}}
+  if(!u||o.userDeleted||(o.userId?o.userId!==u.id:!(Date.parse(o.time)>=new Date(u.created).getTime()))){o.userDeleted=true;if(o.status==='pending'){o.status='expired';o.reason='原账号已注销或身份无法确认';o.updated=new Date().toISOString()}}
   else o.userId=u.id}
 const ownsOffer=(o,n)=>!o.userDeleted&&o.user===n&&!!db.users[n]&&o.userId===db.users[n].id;
 const resetNegotiation=m=>{if(!m.negotiated)return;if(m.originalReward)m.reward=m.originalReward;else delete m.reward;delete m.originalReward;delete m.negotiated;delete m.offerId};
@@ -240,7 +246,7 @@ const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOv
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
 const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
-  delete o.formerClaims;
+  delete o.formerClaims;delete o.claimedById;
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
 const alive=x=>!x.deleted&&!x.cancelled;
@@ -298,9 +304,10 @@ function cleanup(){const now=Date.now();let ch=false;
   for(const [k,a] of fails) if(!loginPending.has(k)&&!a.some(t=>now-t<FAIL_MS)) fails.delete(k);
   if(ch) persist()}
 cleanup();setInterval(cleanup,60e3).unref();
+settleDueRewards();setInterval(settleDueRewards,30e3).unref();
 cleanImgs();setInterval(cleanImgs,3600e3).unref(); remindPayments();setInterval(remindPayments,600e3).unref();
 const diskInfo=()=>{let free=null,size=null;try{const st=fs.statfsSync(DATA_DIR);free=st.bavail*st.bsize;size=st.blocks*st.bsize}catch{}
-  let data=0;try{data=fs.statSync(DB).size}catch{} return {uploads:uploadBytes,uploadsMax:UPLOAD_MAX,data,backups:duSize(BAK),free,size,uploadBytes,uploadLimit:UPLOAD_MAX,dataBytes:data}};
+  let data=0;try{data=fs.statSync(DB).size}catch{} return {uploads:uploadBytes+duSize(REWARD_DIR),uploadsMax:UPLOAD_MAX,data,backups:duSize(BAK),free,size,uploadBytes,uploadLimit:UPLOAD_MAX,dataBytes:data}};
 
 // 兜底：单个请求出错只记日志，不让整个进程退出
 process.on('uncaughtException',e=>console.error('未捕获错误',e&&e.stack||e));process.on('unhandledRejection',e=>console.error('未处理的 Promise 错误',e&&e.stack||e));
@@ -322,6 +329,7 @@ const handle=async(req,res)=>{
     // 先完整读取 JSON，再做身份和状态检查；慢速请求不能沿用换人/封禁/退出之前的授权。
     // 图片走自己的二进制限额，上传结束后单独复核会话与账号。
     if(POST&&!/^\/api\/tasks\/\d+\/chat\/image$/.test(p)&&p!=='/api/my/weekly-reward/qr') await body(req);
+    settleDueRewards();
     if(p.startsWith('/api/admin/')){
       const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});if(!isAdmin(n))return send(res,403,{error:'没有管理权限'});
       const allowed=p==='/api/admin/roles'||/^\/api\/admin\/users\/[^/]+\/permissions$/.test(p)||p==='/api/admin/backup'?isSuperAdmin(n):
@@ -340,27 +348,53 @@ const handle=async(req,res)=>{
       const now=Date.now(),start=mondayOne(now),n=userOf(req),uid=n&&db.users[n]?.id,live=now<start+REWARD_LOCK_MS?{key:periodKey(start),startAt:new Date(start).toISOString(),endAt:new Date(start+REWARD_LOCK_MS).toISOString(),locked:false,rows:publicEntries(completedCounts(start,start+REWARD_LOCK_MS),uid)}:null;
       const locked=db.weeklyRewards.slice().sort((a,b)=>Date.parse(b.startAt)-Date.parse(a.startAt))[0]||null;
       const pending=n?db.weeklyRewards.flatMap(x=>x.rows.filter(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid').map(r=>({key:x.key,rank:r.rank,count:r.count,cash:r.cash,status:r.status,qrSubmitted:!!r.qrFile}))):[];
-      return send(res,200,{timezone:'Asia/Shanghai',live,locked:locked?{key:locked.key,startAt:locked.startAt,endAt:locked.endAt,pointsSent:!!locked.pointsSent,rows:publicEntries(locked.rows,uid)}:null,myRewards:pending})}
+      return send(res,200,{timezone:'Asia/Shanghai',qrMaxBytes:REWARD_QR_MAX,live,locked:locked?{key:locked.key,startAt:locked.startAt,endAt:locked.endAt,pointsSent:!!locked.pointsSent,rows:publicEntries(locked.rows,uid)}:null,myRewards:pending})}
     if(p==='/api/my/weekly-reward/qr'&&POST){
       const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});if(banned(n))return send(res,403,BANNED);
-      const len=+req.headers['content-length']||0;if(len>IMG_MAX){req.resume();return send(res,413,{error:'收款码图片不能超过 300KB'})}
-      const buf=await rawBody(req,IMG_MAX);if(!buf)return send(res,413,{error:'收款码图片不能超过 300KB'});if(!buf.length)return send(res,400,{error:'请选择收款码图片'});
+      const account=db.users[n],banVersion=account.banVersion||0,key=u.searchParams.get('period');
+      if(!key||!/^\d{4}-\d{2}-\d{2}$/.test(key)||u.searchParams.getAll('period').length!==1)return send(res,400,{error:'请指定要领取奖励的期数'});
+      const period=db.weeklyRewards.find(x=>x.key===key),row=period?.rows.find(r=>r.userId===account.id&&r.eligible&&r.cash>0);
+      if(!row||row.status==='paid')return send(res,403,{error:'本期没有待领取的现金奖励'});
+      if(limited('weekly-qr:'+account.id,10))return send(res,429,{error:'提交太频繁，请稍后再试'});
+      const len=+req.headers['content-length']||0;if(len>REWARD_QR_MAX){req.resume();return send(res,413,{error:'收款码图片不能超过 2MB'})}
+      const buf=await rawBody(req,REWARD_QR_MAX);
+      if(userOf(req)!==n||db.users[n]!==account||(account.banVersion||0)!==banVersion||banned(n))return send(res,403,{error:'账号状态已变化，请重新登录后提交'});
+      if(storageError)return send(res,503,{error:'数据保存失败，暂时无法提交'});
+      if(row.status==='paid')return send(res,409,{error:'这笔奖励已经登记打款，请刷新核对'});
+      if(!buf)return send(res,413,{error:'收款码图片不能超过 2MB'});if(!buf.length)return send(res,400,{error:'请选择收款码图片'});
       const png=buf.length>=8&&buf.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpg=buf.length>=3&&buf[0]===255&&buf[1]===216&&buf[2]===255;
       if(!png&&!jpg)return send(res,400,{error:'请上传 PNG 或 JPEG 图片'});
-      const uid=db.users[n].id,period=db.weeklyRewards.slice().reverse().find(x=>x.rows.some(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid'));
-      if(!period)return send(res,403,{error:'当前没有待领取的现金奖励'});const row=period.rows.find(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid');
-      if(limited('weekly-qr:'+uid,10))return send(res,429,{error:'提交太频繁，请稍后再试'});
-      fs.mkdirSync(REWARD_DIR,{recursive:true,mode:0o700});const ext=png?'png':'jpg',file=crypto.randomUUID()+'.'+ext,full=path.join(REWARD_DIR,file);
-      try{fs.writeFileSync(full,buf,{flag:'wx',mode:0o600})}catch(e){return send(res,507,{error:'收款码保存失败，请稍后重试'})}
-      if(row.qrFile)try{fs.unlinkSync(path.join(REWARD_DIR,row.qrFile))}catch{}
-      row.qrFile=file;row.qrExt=ext;row.qrSubmittedAt=new Date().toISOString();row.status='qr_submitted';persist();return send(res,200,{ok:true,status:row.status})}
-    if(p==='/api/admin/weekly-rewards'&&GET)return send(res,200,db.weeklyRewards.slice().reverse().map(x=>({key:x.key,startAt:x.startAt,endAt:x.endAt,pointsSent:!!x.pointsSent,rows:x.rows.map(r=>({username:r.username,userId:r.userId,count:r.count,rank:r.rank,cash:r.cash,points:r.points,eligible:r.eligible,status:r.status,qrSubmittedAt:r.qrSubmittedAt||null,paidAt:r.paidAt||null,hasQr:!!r.qrFile}))})));
-    const qrAdmin=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([a-f0-9-]{36})\/qr$/);
-    if(qrAdmin&&GET){const adminName=userOf(req),period=db.weeklyRewards.find(x=>x.key===qrAdmin[1]),row=period?.rows.find(x=>x.userId===qrAdmin[2]&&x.qrFile);if(!row)return send(res,404,{error:'收款码不存在'});
-      fs.readFile(path.join(REWARD_DIR,row.qrFile),(e,img)=>{if(userOf(req)!==adminName||!isSuperAdmin(adminName))return send(res,403,{error:'查看权限已变化'});if(e)return send(res,404,{error:'收款码文件不存在'});res.writeHead(200,{'Content-Type':row.qrExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'});res.end(img)});return}
-    const paidReward=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([a-f0-9-]{36})\/paid$/);
-    if(paidReward&&POST){const period=db.weeklyRewards.find(x=>x.key===paidReward[1]),row=period?.rows.find(x=>x.userId===paidReward[2]);if(!row||!row.eligible||row.cash<1)return send(res,404,{error:'现金奖励记录不存在'});if(row.status==='paid')return send(res,409,{error:'这笔奖励已登记为已打款'});
-      if(!row.qrFile)return send(res,409,{error:'请先让获奖者提交收款码'});const b=await body(req);row.status='paid';row.paidAt=new Date().toISOString();row.paidBy=n;row.paymentNote=str(b.note,100);persist();return send(res,200,{ok:true,status:row.status})}
+      const ext=png?'png':'jpg',version=crypto.randomUUID(),file=version+'.'+ext,previous=row.qrFile;
+      let oldSize=0;try{if(previous)oldSize=fs.statSync(path.join(REWARD_DIR,previous)).size}catch{}
+      if(uploadBytes+duSize(REWARD_DIR)+buf.length-oldSize>UPLOAD_MAX)return send(res,507,{error:'服务器图片空间已满，请联系管理员'});
+      try{fs.mkdirSync(REWARD_DIR,{recursive:true,mode:0o700});fs.writeFileSync(path.join(REWARD_DIR,file),buf,{flag:'wx',mode:0o600})}catch(e){return send(res,507,{error:'收款码保存失败，请稍后重试'})}
+      Object.assign(row,{qrFile:file,qrExt:ext,qrVersion:version,qrSubmittedAt:new Date(Date.now()).toISOString(),status:'qr_submitted'});
+      // Save the new reference before deleting the previous image so a crash never loses the only referenced code.
+      try{persistNow()}catch(e){failStorage(e);return send(res,503,{error:'奖励记录保存失败，请稍后联系管理员核对'})}
+      if(previous)try{fs.unlinkSync(path.join(REWARD_DIR,previous))}catch(e){if(e.code!=='ENOENT')console.error('旧收款码清理失败',e.message)}
+      return send(res,200,{ok:true,status:row.status})}
+    if(p==='/api/admin/weekly-rewards'&&GET)return send(res,200,db.weeklyRewards.slice().sort((a,b)=>b.startAt.localeCompare(a.startAt)).map(x=>({key:x.key,startAt:x.startAt,endAt:x.endAt,pointsSent:!!x.pointsSent,rows:x.rows.map(r=>({username:r.username,userId:r.userId,count:r.count,rank:r.rank,cash:r.cash,points:r.points,eligible:r.eligible,status:r.status,qrVersion:r.qrVersion||null,qrSubmittedAt:r.qrSubmittedAt||null,paidAt:r.paidAt||null,hasQr:!!r.qrFile,accountDeleted:db.users[r.username]?.id!==r.userId,userBanned:db.users[r.username]?.id===r.userId&&banned(r.username)}))})));
+    const qrAdmin=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([A-Za-z0-9_-]{1,100})\/qr$/);
+    if(qrAdmin&&GET){
+      const adminName=userOf(req),period=db.weeklyRewards.find(x=>x.key===qrAdmin[1]),row=period?.rows.find(x=>x.userId===qrAdmin[2]&&x.qrFile);
+      if(!row)return send(res,404,{error:'收款码不存在'});const version=row.qrVersion;
+      if(u.searchParams.has('version')&&u.searchParams.get('version')!==version)return send(res,409,{error:'收款码已更新，请刷新后重新核对'});
+      fs.readFile(path.join(REWARD_DIR,row.qrFile),(e,img)=>{
+        if(userOf(req)!==adminName||!isAdmin(adminName)||!isSuperAdmin(adminName))return send(res,403,{error:'查看权限已变化'});
+        if(row.qrVersion!==version)return send(res,409,{error:'收款码已更新，请刷新后重新核对'});
+        if(e)return send(res,404,{error:'收款码文件不存在，请让获奖者重新提交'});
+        res.writeHead(200,{'Content-Type':row.qrExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'});res.end(img)});return}
+    const paidReward=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([A-Za-z0-9_-]{1,100})\/paid$/);
+    if(paidReward&&POST){
+      const b=await body(req),adminName=userOf(req),period=db.weeklyRewards.find(x=>x.key===paidReward[1]),row=period?.rows.find(x=>x.userId===paidReward[2]);
+      if(!adminName||!isAdmin(adminName)||!isSuperAdmin(adminName))return send(res,403,{error:'没有奖励结算权限'});
+      if(!row||!row.eligible||row.cash<1)return send(res,404,{error:'现金奖励记录不存在'});
+      if(row.status==='paid')return send(res,409,{error:'这笔奖励已登记为已打款'});
+      if(db.users[row.username]?.id!==row.userId||banned(row.username))return send(res,409,{error:'获奖账号已注销或封禁，请先核对账号状态'});
+      if(!row.qrFile)return send(res,409,{error:'请先让获奖者提交收款码'});
+      if(!b.qrVersion||b.qrVersion!==row.qrVersion)return send(res,409,{error:'收款码已变化，请刷新并核对最新收款码'});
+      try{fs.accessSync(path.join(REWARD_DIR,row.qrFile),fs.constants.R_OK)}catch{return send(res,409,{error:'收款码文件不存在，请让获奖者重新提交'})}
+      row.status='paid';row.paidAt=new Date(Date.now()).toISOString();row.paidBy=adminName;row.paymentNote=str(b.note,100);persist();return send(res,200,{ok:true,status:row.status})}
     if(p==='/api/admin/roles'&&GET)return send(res,200,{catalog:PERMISSIONS,users:Object.entries(db.users).map(([username,v])=>({username,userId:v.id,...roleInfo(username),permissionsVersion:v.permissionsVersion||0,permissionsUpdatedAt:v.permissionsUpdatedAt||null,banned:!!v.banned}))});
     const roleMatch=p.match(/^\/api\/admin\/users\/([^/]+)\/permissions$/);
     if(roleMatch&&POST){
@@ -486,7 +520,7 @@ const handle=async(req,res)=>{
         } else if(m.task&&m.claimedBy===du&&!m.done&&m.stage&&!m.cancelled){if(!m.claimerDeleted){m.claimerDeleted=true; // 接单人在 finished/paid 删号：转成纠纷交给管理员
             if(m.stage!=='disputed'){m.dispute={by:null,role:'system',reason:'接单人已注销',time:now,from:m.stage};m.stage='disputed';disputed++;ev(m.user,'dispute',m,'接单人已注销，任务转交管理员处理',du)}
             sysChat(m,'接单人已注销，任务转交管理员处理');ch=true}}
-        else if(m.task&&m.claimedBy===du&&!m.done){rmImgs(m.id,x=>x.claimer===du);delete m.claimedBy;delete m.claimedAt;delete m.claimCost;resetNegotiation(m);m.unclaimedAt=now;released++;ch=true;
+        else if(m.task&&m.claimedBy===du&&!m.done){rmImgs(m.id,x=>x.claimer===du);delete m.claimedBy;delete m.claimedById;delete m.claimedAt;delete m.claimCost;resetNegotiation(m);m.unclaimedAt=now;released++;ch=true;
           if(!m.cancelled&&!m.deleted) ev(m.user,'unclaim',m,'接单人已注销，任务回到待接单',du)}
         else if(m.task&&m.claimedBy===du&&m.done&&!m.claimerDeleted){m.claimerDeleted=true;ch=true} // 已完成的保留，但标记接单人已删号，同名新账号不会认领
         if(ch) m.rev=nextRev();
@@ -638,7 +672,7 @@ const handle=async(req,res)=>{
           if(msg.stage) return send(res,409,{error:'你已经点了「我已完成」，不能再放弃'});
           sysChat(msg,msg.claimedBy+' 放弃了接单');
           rememberFormerClaim(msg,'unclaimed',now);
-          delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
+          delete msg.claimedBy;delete msg.claimedById;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='release'){ // 发布人取消接单人：任务回到待接单，退还接单人的接单分
           if(msg.user!==n) return send(res,403,{error:'只有发布者能取消接单人'});
           if(!msg.claimedBy) return send(res,400,{error:'任务还没人接单'});
@@ -647,7 +681,7 @@ const handle=async(req,res)=>{
           sysChat(msg,'发布人取消了接单人 '+msg.claimedBy);
           rememberFormerClaim(msg,'released',now);
           if(msg.claimCost&&!msg.claimerDeleted&&db.users[msg.claimedBy]) addPoints(msg.claimedBy,msg.claimCost,'refund','发布人取消接单，退还接单积分',msg.id);
-          msg.releasedBy=msg.claimedBy;delete msg.claimedBy;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
+          msg.releasedBy=msg.claimedBy;delete msg.claimedBy;delete msg.claimedById;delete msg.claimedAt;delete msg.claimCost;resetNegotiation(msg);msg.unclaimedAt=now;
         } else if(act==='cancel'){ // 发布者撤销没人接的任务，或已超时的任务
           if(msg.user!==n) return send(res,403,{error:'只有发布者能撤销'});
           if(msg.done) return send(res,409,{error:'任务已完成'});
@@ -749,7 +783,7 @@ const handle=async(req,res)=>{
       if(pts(cu)<c) return send(res,402,poster?{error:'对方积分不足（接单需要 '+c+' 积分，对方只有 '+pts(cu)+' 积分），暂时不能同意',need:c}:noPoints(cu,c));
       delete m.claimCost; delete m.claimRefunded; if(c>0){addPoints(cu,-c,'claim','议价接单',m.id); m.claimCost=c}
       if(m.originalReward==null) m.originalReward=m.reward||''; m.reward=o.price+'元'; m.negotiated=true; m.offerId=o.id;
-      m.claimedBy=cu; m.claimedAt=now; o.status='accepted'; o.updated=now;
+      m.claimedBy=cu; m.claimedById=db.users[cu].id; m.claimedAt=now; o.status='accepted'; o.updated=now;
       sysChat(m,'双方已议价 '+o.price+' 元'+(m.originalReward?'（原价 '+m.originalReward+'）':'')+'，'+cu+' 接单了');
       ev(poster?cu:m.user,'offer_accept',m,(poster?'发布人同意了你的讨价，':cu+' 接受了你的还价，')+'按 '+o.price+' 元成交',n);
       expireOffers(m,'任务已被 '+cu+' 接走',null); recalc(m);
@@ -851,7 +885,7 @@ const handle=async(req,res)=>{
       if(!ext) return send(res,400,{error:'只支持 JPEG 或 PNG 图片'});
       const day=new Date(Date.now()+8*3600e3).toISOString().slice(0,10), dc=db.imgDaily[n]&&db.imgDaily[n].day===day?db.imgDaily[n].count:0;
       if(dc>=IMG_DAILY) return send(res,429,{error:'每人每天最多发 '+IMG_DAILY+' 张图片'});
-      if(uploadBytes+buf.length>UPLOAD_MAX) return send(res,507,{error:'服务器图片空间已满，请联系管理员'});
+      if(uploadBytes+duSize(REWARD_DIR)+buf.length>UPLOAD_MAX) return send(res,507,{error:'服务器图片空间已满，请联系管理员'});
       if((UB.get(n)||0)+buf.length>USER_IMG_MAX) return send(res,409,{error:'你的图片空间已满（每人最多 20MB），旧任务结束 30 天后会自动清理'});
       const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
       const x={id:newId(),user:n,text:cap,time:new Date().toISOString(),claimer:m.claimedBy,...(!isPoster(m,n)&&!isClaimer(m,n)?{moderator:true}:{}),imageExt:ext,imageSize:buf.length,...(kind?{kind}:{})};

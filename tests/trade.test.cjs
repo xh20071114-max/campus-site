@@ -1,4 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');const {fixture,seed,pendingRequest,sleep}=require('./helpers.cjs');
+const fs=require('node:fs/promises'),path=require('node:path');
 async function grant(call,name,permissions){const u=(await call('/api/admin/roles','AevonEcho')).data.users.find(x=>x.username===name);assert.equal((await call('/api/admin/users/'+name+'/permissions','AevonEcho',{userId:u.userId,version:u.permissionsVersion,permissions})).status,200)}
 test('unverified payment remains open after 48 hours and can be disputed',async()=>{
  const data=seed(),then=new Date(Date.now()-49*3600000).toISOString();data.messages={'校园跑':[{id:123,task:true,user:'Alice',claimedBy:'Bob',text:'Payment test',time:then,paidAt:then,stage:'paid',bonusPoints:5}]};
@@ -28,4 +29,14 @@ test('former claim history is private, survives reassignment and is bound to the
  await act(m,'Alice','release');assert.equal((await call('/api/my/tasks?includeHistory=1','Carol')).data.claimed[0].formerStatus,'released');
  await act(m,'Bob','claim');history=(await call('/api/my/tasks?includeHistory=1','Bob')).data.claimed;assert.equal(history.length,1);assert.notEqual(history[0].formerClaim,true);
  await act(m,'Bob','unclaim');await call('/api/admin/users/Bob/delete','AevonEcho',{});const reg=await call('/api/register','',{username:'Bob',password:'password123'});assert.equal(reg.status,200);assert.equal((await call('/api/my/tasks?includeHistory=1',reg.data.token)).data.claimed.length,0);
+}));
+test('reassigned negotiated claims persist the current account identity without publishing it',()=>fixture(async({call,task,act,tmp,restart})=>{
+ const m=await task();await act(m,'Bob','claim');await act(m,'Bob','unclaim');
+ const readTask=async()=>JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8')).messages['校园跑'].find(x=>x.id===m.id);
+ assert.equal((await readTask()).claimedById,undefined);
+ const offer=(await act(m,'Carol','offer',{price:12})).data.offer;
+ const accepted=await call('/api/channels/'+encodeURIComponent('校园跑')+'/messages/'+m.id+'/offers/'+offer.id+'/accept','Alice',{});
+ assert.equal(accepted.status,200);assert.equal(accepted.data.task.claimedBy,'Carol');assert.equal(accepted.data.task.claimedById,undefined);
+ assert.equal((await readTask()).claimedById,'account-Carol');await restart();assert.equal((await readTask()).claimedById,'account-Carol');
+ const publicTask=(await call('/api/tasks?status=claimed','')).data.find(x=>x.id===m.id);assert.equal(publicTask.claimedBy,'Carol');assert.equal(publicTask.claimedById,undefined);
 }));
