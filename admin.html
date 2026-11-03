@@ -319,7 +319,9 @@ async function openChat(id,title){
   const esc_=e=>{if(e.key==='Escape')close()};const close=()=>{closed=true;clearInterval(timer);controller.abort();for(const v of viewers)v.remove();viewers.clear();for(const url of urls)URL.revokeObjectURL(url);urls.clear();w.remove();document.removeEventListener('keydown',esc_)};
   w.querySelector('h3 button').onclick=close;w.onclick=e=>{if(e.target===w)close()};document.addEventListener('keydown',esc_);
   document.body.appendChild(w);const L=w.querySelector('.cl'),form=w.querySelector('form'),note=w.querySelector('.ro');
-  async function pull(){const request=++pullVersion;
+  let pulling=null;
+  async function pull(force=false){if(pulling){if(force){await pulling;if(!closed)return pull()}return}const work=pullOnce();pulling=work;try{return await work}finally{if(pulling===work)pulling=null}}
+  async function pullOnce(){const request=++pullVersion;
   let d;try{d=await call(`/api/tasks/${encodeURIComponent(id)}/chat${after?'?after='+after:''}`,{signal:controller.signal})}catch(e){if(!closed&&request===pullVersion){if(!loaded)L.textContent='加载失败：'+e.message;note.textContent='读取失败：'+e.message;if(e.status===401||e.status===403){L.replaceChildren();form.style.display='none'}}return}if(closed||request!==pullVersion)return;
   const list=Array.isArray(d)?d:(d.messages||[]);const poster=d.poster||(d.task&&d.task.user);
   if(!loaded){L.innerHTML='';loaded=true}const near=L.scrollHeight-L.scrollTop-L.clientHeight<80;if(list.length)L.querySelector('.empty')?.remove();
@@ -336,8 +338,8 @@ async function openChat(id,title){
     L.appendChild(it)});
   if(near)L.scrollTop=L.scrollHeight;if(!L.children.length)L.innerHTML='<p class="empty">还没有消息，可以开始沟通</p>';
   }
-  form.onsubmit=async e=>{e.preventDefault();const text=form.elements.message.value.trim();if(!text||sending||closed)return;sending=true;form.querySelector('button').disabled=true;try{await call('/api/tasks/'+id+'/chat',{method:'POST',signal:controller.signal,body:JSON.stringify({text})});if(closed)return;if(form.elements.message.value.trim()===text)form.elements.message.value='';await pull();L.scrollTop=L.scrollHeight}catch(e){if(!closed)note.textContent=e.message}finally{sending=false;if(!closed)form.querySelector('button').disabled=false}};
-  form.querySelector('[type=file]').onchange=async e=>{const file=e.target.files[0];if(!file||sending||closed)return;if(file.size>300*1024){note.textContent='图片不能超过 300KB';e.target.value='';return}sending=true;try{const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)});if(closed)return;await call('/api/tasks/'+id+'/chat/image',{method:'POST',signal:controller.signal,body:JSON.stringify({data})});if(!closed)await pull()}catch(e){if(!closed)note.textContent=e.message||'图片发送失败'}finally{sending=false;e.target.value=''}};
+  form.onsubmit=async e=>{e.preventDefault();const text=form.elements.message.value.trim();if(!text||sending||closed)return;sending=true;form.querySelector('button').disabled=true;try{await call('/api/tasks/'+id+'/chat',{method:'POST',signal:controller.signal,body:JSON.stringify({text})});if(closed)return;if(form.elements.message.value.trim()===text)form.elements.message.value='';await pull(true);L.scrollTop=L.scrollHeight}catch(e){if(!closed)note.textContent=e.message}finally{sending=false;if(!closed)form.querySelector('button').disabled=false}};
+  form.querySelector('[type=file]').onchange=async e=>{const file=e.target.files[0];if(!file||sending||closed)return;if(file.size>300*1024){note.textContent='图片不能超过 300KB';e.target.value='';return}sending=true;try{const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file)});if(closed)return;await call('/api/tasks/'+id+'/chat/image',{method:'POST',signal:controller.signal,body:JSON.stringify({data})});if(!closed)await pull(true)}catch(e){if(!closed)note.textContent=e.message||'图片发送失败'}finally{sending=false;e.target.value=''}};
   await pull();if(!closed)timer=setInterval(()=>{if(!document.hidden)pull()},4000);
 }
 // 讨价记录（管理员只读）
