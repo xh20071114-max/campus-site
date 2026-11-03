@@ -72,26 +72,34 @@ const meEl=document.getElementById('me');
 if(me&&token){meEl.textContent='👤 '+me;meEl.href='me.html';}
 else{meEl.textContent='登录';meEl.href='login.html?next=index.html';}
 // 频道卡片上的消息数
+let countsLoading=false;
 async function loadCounts(){
+  if(countsLoading)return;
+  countsLoading=true;
   try{const chs=await (await fetch((window.API_BASE||'')+'/api/channels')).json();
     chs.forEach(c=>{const el=document.querySelector('.n[data-c="'+c.name+'"]');if(el)el.textContent=c.count?c.count+' 条消息 · 进入频道':'进入频道'});
-  }catch{}
+  }catch{}finally{countsLoading=false}
 }
 // 最新待接任务
+let tasksLoading=false;
 async function loadTasks(){
+  if(tasksLoading)return;
+  tasksLoading=true;
   const el=document.getElementById('taskList');
   try{
     const all=await (await fetch((window.API_BASE||'')+'/api/tasks?limit=8')).json();
     el.innerHTML=all.map(m=>`<a class="task" href="chat.html#${encodeURIComponent(m.channel)}"><div><span class="tg">#${esc(m.channel)}</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
-  }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}
+  }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}finally{tasksLoading=false}
 }
 loadCounts();loadTasks();setInterval(()=>{if(document.hidden)return;loadCounts();loadTasks()},10000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCounts();loadTasks()}});
 
 // 公告：读后端，管理员可发布和删除
-const API=window.API_BASE||'';let isAdmin=false,canAnn=false;
+const API=window.API_BASE||'';let isAdmin=false,canAnn=false,annLoading=false,adminCheckInFlight=null;
 const fmtD=t=>new Date(t).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'});
 async function loadAnn(){
+  if(annLoading)return;
+  annLoading=true;
   try{const r=await fetch(API+'/api/announcements');if(!r.ok)throw 0;const list=await r.json();
     document.getElementById('offline').style.display='none';
     if(!list.length){document.getElementById('annList').innerHTML='<li style="color:#9ca3af;justify-content:center">暂无公告</li>';return}
@@ -99,17 +107,18 @@ async function loadAnn(){
     document.querySelectorAll('#annList .del').forEach(el=>el.onclick=async()=>{if(!confirm('确定删除这条公告？'))return;
       const r=await fetch(API+'/api/announcements/'+el.dataset.id+'/delete',{method:'POST',headers:{Authorization:'Bearer '+token}});
       if(!r.ok){alert((await r.json()).error||'删除失败');return}loadAnn()});
-  }catch{document.getElementById('offline').style.display='block';const al=document.getElementById('annList');if(/加载中/.test(al.textContent))al.innerHTML='<li style="color:#9ca3af">公告加载失败</li>'}
+  }catch{document.getElementById('offline').style.display='block';const al=document.getElementById('annList');if(/加载中/.test(al.textContent))al.innerHTML='<li style="color:#9ca3af">公告加载失败</li>'}finally{annLoading=false}
 }
 async function checkAdmin(){
-  if(!token)return;
-  try{const r=await fetch(API+'/api/me',{headers:{Authorization:'Bearer '+token}});
+  if(!token)return;if(adminCheckInFlight)return adminCheckInFlight;
+  adminCheckInFlight=(async()=>{try{const r=await fetch(API+'/api/me',{headers:{Authorization:'Bearer '+token}});
     if(r.status===401){localStorage.removeItem('token');localStorage.removeItem('username');meEl.textContent='登录';meEl.href='login.html?next=index.html';return}
     const d=await r.json();isAdmin=!!d.admin;canAnn=!!d.superAdmin||(d.permissions||[]).includes('manageAnnouncements');
     const nd=(d.eventUnread|0)+(d.chatUnread|0),dt=document.getElementById('meDot');dt.hidden=!nd;dt.textContent=nd>99?'99+':nd;dt.title=nd?`${d.eventUnread|0} 条新动态，${d.chatUnread|0} 条私聊未读`:'';
     document.getElementById('annForm').style.display=canAnn?'flex':'none';document.getElementById('adminLink').style.display=isAdmin?'':'none';
   }catch{}
-  loadAnn();
+  loadAnn()})();
+  try{await adminCheckInFlight}finally{adminCheckInFlight=null}
 }
 document.getElementById('annForm').onsubmit=async e=>{e.preventDefault();
   const r=await fetch(API+'/api/announcements',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({title:annTitle.value.trim(),text:annText.value.trim()})});
