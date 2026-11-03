@@ -2,7 +2,7 @@
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib');
 const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
-const CHANNELS=['校园跑','食堂配送','代取快递','代课','代做作业'];
+const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
 // 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
 const PERMISSIONS=[
   ['viewUsers','用户管理','查看用户','查看账号、状态和积分'],
@@ -58,6 +58,13 @@ let db=loadDB();
 db.users=db.users||{};db.sessions=db.sessions||{};db.messages=db.messages||{};db.announcements=db.announcements||[];db.deletedTexts=db.deletedTexts||{};
 // 用无原型对象，防止 __proto__、constructor 这类用户名或频道名命中内置属性
 for(const k of ['users','sessions','messages','deletedTexts']) if(db[k]&&typeof db[k]==='object') db[k]=Object.assign(Object.create(null),db[k]);
+// 合并旧配送频道，保留任务 ID、私聊关联和新旧频道中已有的记录。
+if(db.messages['食堂配送']){
+ const merged=new Map((db.messages['校园配送']||[]).map(m=>[String(m.id),m]));
+ for(const m of db.messages['食堂配送'])if(!merged.has(String(m.id)))merged.set(String(m.id),m);
+ db.messages['校园配送']=[...merged.values()].sort((a,b)=>a.id-b.id);delete db.messages['食堂配送'];
+}
+for(const events of Object.values(db.events||{}))for(const e of events)if(e.channel==='食堂配送')e.channel='校园配送';
 CHANNELS.forEach(c=>db.messages[c]=db.messages[c]||[]);
 // 保留旧记录 ID；新 ID 在同一毫秒和时钟回退时也严格递增，重启后不会复用。
 let lastId=Number.isSafeInteger(db.lastId)?db.lastId:0;
@@ -274,6 +281,8 @@ const handle=async(req,res)=>{
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   let u,p; try{u=new URL(req.url.replace(/^\/+/,'/'),'http://x'); p=decodeURIComponent(u.pathname)}catch{res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});return res.end('{"error":"请求地址格式不对"}')}
+  p=p.replace(/^\/api\/channels\/食堂配送(?=\/|$)/,'/api/channels/校园配送');
+  if(u.searchParams.get('channel')==='食堂配送')u.searchParams.set('channel','校园配送');
   // 允许 GitHub Pages 上的前端跨域调用接口（ALLOW_ORIGINS 可用逗号追加其他来源）
   const origin=req.headers.origin||"",allow=(process.env.ALLOW_ORIGINS||"https://plgslzlexpmy.sealoshzh.site").split(",");
   if(allow.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Access-Control-Allow-Headers","Content-Type, Authorization");res.setHeader("Access-Control-Allow-Methods","GET, POST, OPTIONS");res.setHeader("Access-Control-Expose-Headers","X-Rev")}

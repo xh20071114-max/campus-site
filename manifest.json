@@ -1,7 +1,7 @@
 {
   "name": "Aevon校园交流网",
   "short_name": "Aevon校园",
-  "description": "校园跑、食堂配送、代取快递、代课、代做作业，同学之间互相发任务、接任务。",
+  "description": "校园跑、校园配送、代取快递、代课、代做作业，同学之间互相发任务、接任务。",
   "lang": "zh-CN",
   "start_url": "/index.html?from=pwa",
   "scope": "/",

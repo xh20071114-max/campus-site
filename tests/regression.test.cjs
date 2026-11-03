@@ -264,3 +264,15 @@ test('task hall paginates every available task and preserves the legacy array re
   const past=(await call('/api/tasks?page=999&limit=20','')).data;assert.equal(past.page,7);assert.equal(past.tasks.length,6);
  },data);
 });
+
+test('campus delivery merges old tasks and supports old channel links across restart',async()=>{
+ const data=seed(),id=1234567890400000;data.messages['食堂配送']=[{id,user:'Alice',task:true,text:'old delivery',time:new Date().toISOString()}];data.messages['校园配送']=[{id:id+1,user:'Alice',task:true,text:'new delivery',time:new Date().toISOString()}];
+ await fixture(async({call,restart})=>{
+  const channels=(await call('/api/channels','')).data.map(c=>c.name);assert.ok(channels.includes('校园配送'));assert.ok(!channels.includes('食堂配送'));
+  const old='/api/channels/'+encodeURIComponent('食堂配送')+'/messages';const current='/api/channels/'+encodeURIComponent('校园配送')+'/messages';
+  assert.deepEqual((await call(current,'')).data.map(m=>m.id),[id,id+1]);assert.deepEqual((await call(old,'')).data.map(m=>m.id),[id,id+1]);
+  assert.equal((await call(old+'/'+id+'/claim','Bob',{})).status,200);
+  await restart();const tasks=(await call('/api/tasks?status=claimed','Bob')).data;assert.equal(tasks[0].id,id);assert.equal(tasks[0].channel,'校园配送');assert.equal(tasks[0].claimedBy,'Bob');
+  const open=(await call('/api/tasks?page=1&channel='+encodeURIComponent('食堂配送'),'')).data;assert.equal(open.total,1);assert.equal(open.tasks[0].id,id+1);
+ },data);
+});

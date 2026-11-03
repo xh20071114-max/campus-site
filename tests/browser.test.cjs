@@ -248,3 +248,9 @@ test('task hall exposes all pages, filters channels and opens a claimed order on
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'接单',exact:true}).click();await page.waitForURL(/chat\.html\?task=/);await page.locator('#tc.show').waitFor();
  },data);
 });
+
+test('campus delivery purpose copy and legacy channel bookmark use the new name',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Bob');await page.goto(base+'/index.html');await page.getByRole('heading',{name:'校园配送',exact:true}).waitFor();await page.getByText('餐食、饮品、日用品，校园内帮你送到',{exact:true}).waitFor();
+ assert.equal(await page.locator('#channels .card p').count(),5);
+ await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='校园配送'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 校园配送');
+}));

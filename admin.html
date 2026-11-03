@@ -37,7 +37,7 @@ th{color:#6b7280;font-weight:normal;white-space:nowrap}td.txt{max-width:420px;wo
 <script src="config.js"></script>
 <script>
 const API=window.API_BASE||'',token=localStorage.getItem('token');
-const CHANNELS=['校园跑','食堂配送','代取快递','代课','代做作业'];
+const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=t=>t?new Date(t).toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
 const M=document.getElementById('main');
