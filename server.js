@@ -28,7 +28,9 @@ const PERMISSION_KEYS=new Set(PERMISSIONS.map(x=>x.key));
 const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Array.isArray(x),check=(ok,field)=>{if(!ok)throw new Error('数据结构无效：'+field)};
   check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
   for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily','savedTasks'])if(Object.hasOwn(d,k))check(object(d[k]),k);
-  for(const k of ['ledger','recharges','feedback','reports','announcements'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
+  for(const k of ['ledger','recharges','feedback','reports','announcements','weeklyRewards'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
+  for(const p of d.weeklyRewards||[]){check(/^\d{4}-\d{2}-\d{2}$/.test(p.key)&&Number.isFinite(Date.parse(p.startAt))&&Number.isFinite(Date.parse(p.endAt))&&Array.isArray(p.rows),'weeklyRewards 记录');
+    for(const r of p.rows)check(typeof r.username==='string'&&typeof r.userId==='string'&&Number.isInteger(r.rank)&&Number.isInteger(r.count)&&(!r.qrFile||/^[a-f0-9-]{36}\.(png|jpg)$/.test(r.qrFile))&&(!r.qrExt||['png','jpg'].includes(r.qrExt)),'weeklyRewards 用户记录')}
   for(const k of ['messages','taskChats','events','offers'])for(const l of Object.values(d[k]||{}))check(Array.isArray(l)&&l.every(x=>object(x)&&/^[0-9]+$/.test(String(x.id))&&Number.isSafeInteger(Number(x.id))&&Number(x.id)>0),k);
   for(const k of ['taskChats','chatRead','offers'])for(const id of Object.keys(d[k]||{}))check(/^[0-9]+$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0,k+' 任务 ID');
   for(const ids of Object.values(d.savedTasks||{}))check(Array.isArray(ids)&&ids.length<=200&&ids.every(id=>/^[0-9]+$/.test(String(id))&&Number.isSafeInteger(Number(id))&&Number(id)>0),'savedTasks 记录');
@@ -74,6 +76,7 @@ for(const k of ['ledger','recharges','feedback','reports','announcements']) if(A
 db.lastId=lastId;
 const newId=()=>{lastId=Math.max(Date.now()*1000,lastId+1);if(!Number.isSafeInteger(lastId))throw new Error('ID 超出安全整数范围');return db.lastId=lastId};
 for(const u of Object.values(db.users)) if(!u.id)u.id=crypto.randomUUID();
+for(const c of CHANNELS)for(const m of db.messages[c])if(m.claimedBy&&!m.claimedById&&db.users[m.claimedBy])m.claimedById=db.users[m.claimedBy].id;
 // 临时文件写入并 fsync 后再替换主库。接口成功响应前会刷新待写数据。
 // 写盘失败时停止接受操作并退出，避免在未保存的余额上继续交易。
 let persistTimer=null,storageError=null;
@@ -131,6 +134,32 @@ const S=()=>db.settings, pts=n=>(db.users[n]&&db.users[n].points)||0;
 const intIn=(v,min,max)=>{const x=typeof v==='string'&&v.trim()!==''?Number(v):v;return Number.isInteger(x)&&x>=min&&x<=max?x:null};
 // 改积分必须走这里：同步完成「改余额+记流水」，中间没有 await，并发请求不会扣成负数
 const addPoints=(n,delta,type,reason,ref)=>{const u=db.users[n];if(!u||!delta)return;u.points=(u.points||0)+delta;db.ledger.push({id:newId(),user:n,time:new Date().toISOString(),delta,balance:u.points,type,reason:reason||'',...(ref!=null?{ref:String(ref)}:{})})};
+// Weekly rewards run on China Standard Time: Monday 01:00 starts a round,
+// Sunday 01:00 locks it, and the next round starts Monday 01:00.
+db.weeklyRewards=Array.isArray(db.weeklyRewards)?db.weeklyRewards:[];
+const REWARD_DIR=path.join(DATA_DIR,'weekly-reward-qr');
+const SHANGHAI_OFFSET=8*3600e3,REWARD_ROUND_MS=7*864e5,REWARD_LOCK_MS=6*864e5;
+const mondayOne=(input=Date.now())=>{const shifted=new Date(input+SHANGHAI_OFFSET),day=(shifted.getUTCDay()+6)%7;
+  const localMonday=Date.UTC(shifted.getUTCFullYear(),shifted.getUTCMonth(),shifted.getUTCDate()-day,1)-SHANGHAI_OFFSET;
+  return localMonday>input?localMonday-REWARD_ROUND_MS:localMonday};
+const periodKey=start=>new Date(start+SHANGHAI_OFFSET).toISOString().slice(0,10);
+const completedCounts=(start,end)=>{const counts=new Map();for(const c of CHANNELS)for(const m of db.messages[c]){
+  if(!m.task||!m.done||!m.doneAt||!m.claimedBy||m.claimerDeleted)continue;
+  const done=Date.parse(m.doneAt);if(!Number.isFinite(done)||done<start||done>=end)continue;
+  const uid=m.claimedById||db.users[m.claimedBy]?.id;if(!uid)continue;const row=counts.get(uid)||{userId:uid,username:m.claimedBy,count:0};row.count++;counts.set(uid,row)}
+  return [...counts.values()].sort((a,b)=>b.count-a.count||a.username.localeCompare(b.username,'zh-CN')).slice(0,10).map((x,i)=>({...x,rank:i+1}))};
+const publicEntries=(rows,uid)=>rows.map(row=>({username:row.username,count:row.count,rank:row.rank,cash:row.rank===1?10:row.rank===2?5:row.rank===3?3:0,eligible:row.rank<=3&&row.count>=20,points:row.rank>=4?5:0,...(uid?{mine:row.userId===uid,...(row.userId===uid?{rewardStatus:row.status||null,qrSubmitted:!!row.qrFile}:{})}:{})}));
+const lockRewardPeriod=start=>{const key=periodKey(start);if(db.weeklyRewards.some(x=>x.key===key))return false;
+  const rows=completedCounts(start,start+REWARD_LOCK_MS).map(x=>({...x,cash:x.rank===1?10:x.rank===2?5:x.rank===3?3:0,
+    points:x.rank>=4?5:0,eligible:x.rank<=3&&x.count>=20,status:x.rank<=3&&x.count>=20?'waiting_qr':x.rank>=4?'points_pending':'not_eligible'}));
+  db.weeklyRewards.push({key,startAt:new Date(start).toISOString(),endAt:new Date(start+REWARD_LOCK_MS).toISOString(),createdAt:new Date().toISOString(),pointsSent:false,rows});persist();return true};
+const settleDueRewards=()=>{const now=Date.now(),current=mondayOne(now),due=now>=current+REWARD_LOCK_MS?current:current-REWARD_ROUND_MS,latest=db.weeklyRewards.reduce((m,x)=>Math.max(m,Date.parse(x.startAt)||0),0);
+  const from=latest?latest+REWARD_ROUND_MS:due;for(let start=from;start<=due;start+=REWARD_ROUND_MS)lockRewardPeriod(start);
+  let changed=false;for(const period of db.weeklyRewards){if(period.pointsSent||now<Date.parse(period.startAt)+REWARD_ROUND_MS)continue;
+    for(const row of period.rows)if(row.points>0){if(row.userId&&db.users[row.username]?.id===row.userId){addPoints(row.username,row.points,'weekly_reward','每周接单排行榜第 '+row.rank+' 名积分补贴',period.key+'-'+row.userId);row.status='points_sent'}else row.status='points_skipped'}
+    period.pointsSent=true;period.pointsSentAt=new Date(now).toISOString();changed=true}
+  if(changed)persist()};
+settleDueRewards();setInterval(settleDueRewards,30e3).unref();
 const noPoints=(n,need)=>({error:'积分不足：需要 '+need+' 积分，当前 '+pts(n)+' 积分，请先充值',points:pts(n),need});
 for(const [k,u] of Object.entries(db.users)) if(u.points==null){u.points=0;if(!isAdmin(k))addPoints(k,S().signupBonus,'signup','老账号补发注册积分')}
 // 任务私聊辅助：找任务、判断能不能读、算未读
@@ -217,7 +246,7 @@ const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||is
 const alive=x=>!x.deleted&&!x.cancelled;
 const MIME={'.webmanifest':'application/manifest+json','.html':'text/html; charset=utf-8','.css':'text/css','.js':'application/javascript','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.ico':'image/x-icon','.jpg':'image/jpeg','.webp':'image/webp'};
 // 只提供明确公开的资源；新增测试、备份或运维文件不会自动暴露到公网。
-const PUBLIC_FILES=new Set(['index.html','tasks.html','task-entry.js','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','ui.css','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
+const PUBLIC_FILES=new Set(['index.html','tasks.html','leaderboard.html','task-entry.js','login.html','chat.html','me.html','recharge.html','admin.html','config.js','session.js','orders.js','ui.css','feedback.js','pwa.js','sw.js','manifest.json','favicon.svg','og.png','pay-alipay.png','pay-wechat.png','icon-192.png','icon-512.png','icon-maskable-512.png']);
 // 真实客户端 IP：部署在网关后面时（默认 TRUST_PROXY=1）读 X-Forwarded-For 里最右边那个，也就是网关自己追加的、伪造不了的那个；直连部署时设 TRUST_PROXY=0
 const clientIp=req=>{if(process.env.TRUST_PROXY!=='0'){const x=String(req.headers['x-forwarded-for']||'').split(',').map(v=>v.trim()).filter(Boolean);if(x.length)return x[x.length-1];const r=req.headers['x-real-ip'];if(r)return String(r).trim()}return req.socket.remoteAddress||''};
 const str=(v,max)=>v==null?'':String(v).trim().slice(0,max);
@@ -292,7 +321,7 @@ const handle=async(req,res)=>{
     const POST=req.method==='POST', GET=req.method==='GET';
     // 先完整读取 JSON，再做身份和状态检查；慢速请求不能沿用换人/封禁/退出之前的授权。
     // 图片走自己的二进制限额，上传结束后单独复核会话与账号。
-    if(POST&&!/^\/api\/tasks\/\d+\/chat\/image$/.test(p)) await body(req);
+    if(POST&&!/^\/api\/tasks\/\d+\/chat\/image$/.test(p)&&p!=='/api/my/weekly-reward/qr') await body(req);
     if(p.startsWith('/api/admin/')){
       const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});if(!isAdmin(n))return send(res,403,{error:'没有管理权限'});
       const allowed=p==='/api/admin/roles'||/^\/api\/admin\/users\/[^/]+\/permissions$/.test(p)||p==='/api/admin/backup'?isSuperAdmin(n):
@@ -307,6 +336,31 @@ const handle=async(req,res)=>{
         p==='/api/admin/chats'?canReadChat(n):isSuperAdmin(n);
       if(!allowed)return send(res,403,{error:'未获授权，只有总管理员可分配管理权限'});
     }
+    if(p==='/api/leaderboard'&&GET){
+      const now=Date.now(),start=mondayOne(now),n=userOf(req),uid=n&&db.users[n]?.id,live=now<start+REWARD_LOCK_MS?{key:periodKey(start),startAt:new Date(start).toISOString(),endAt:new Date(start+REWARD_LOCK_MS).toISOString(),locked:false,rows:publicEntries(completedCounts(start,start+REWARD_LOCK_MS),uid)}:null;
+      const locked=db.weeklyRewards.slice().sort((a,b)=>Date.parse(b.startAt)-Date.parse(a.startAt))[0]||null;
+      const pending=n?db.weeklyRewards.flatMap(x=>x.rows.filter(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid').map(r=>({key:x.key,rank:r.rank,count:r.count,cash:r.cash,status:r.status,qrSubmitted:!!r.qrFile}))):[];
+      return send(res,200,{timezone:'Asia/Shanghai',live,locked:locked?{key:locked.key,startAt:locked.startAt,endAt:locked.endAt,pointsSent:!!locked.pointsSent,rows:publicEntries(locked.rows,uid)}:null,myRewards:pending})}
+    if(p==='/api/my/weekly-reward/qr'&&POST){
+      const n=userOf(req);if(!n)return send(res,401,{error:'请先登录'});if(banned(n))return send(res,403,BANNED);
+      const len=+req.headers['content-length']||0;if(len>IMG_MAX){req.resume();return send(res,413,{error:'收款码图片不能超过 300KB'})}
+      const buf=await rawBody(req,IMG_MAX);if(!buf)return send(res,413,{error:'收款码图片不能超过 300KB'});if(!buf.length)return send(res,400,{error:'请选择收款码图片'});
+      const png=buf.length>=8&&buf.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),jpg=buf.length>=3&&buf[0]===255&&buf[1]===216&&buf[2]===255;
+      if(!png&&!jpg)return send(res,400,{error:'请上传 PNG 或 JPEG 图片'});
+      const uid=db.users[n].id,period=db.weeklyRewards.slice().reverse().find(x=>x.rows.some(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid'));
+      if(!period)return send(res,403,{error:'当前没有待领取的现金奖励'});const row=period.rows.find(r=>r.userId===uid&&r.eligible&&r.cash>0&&r.status!=='paid');
+      if(limited('weekly-qr:'+uid,10))return send(res,429,{error:'提交太频繁，请稍后再试'});
+      fs.mkdirSync(REWARD_DIR,{recursive:true,mode:0o700});const ext=png?'png':'jpg',file=crypto.randomUUID()+'.'+ext,full=path.join(REWARD_DIR,file);
+      try{fs.writeFileSync(full,buf,{flag:'wx',mode:0o600})}catch(e){return send(res,507,{error:'收款码保存失败，请稍后重试'})}
+      if(row.qrFile)try{fs.unlinkSync(path.join(REWARD_DIR,row.qrFile))}catch{}
+      row.qrFile=file;row.qrExt=ext;row.qrSubmittedAt=new Date().toISOString();row.status='qr_submitted';persist();return send(res,200,{ok:true,status:row.status})}
+    if(p==='/api/admin/weekly-rewards'&&GET)return send(res,200,db.weeklyRewards.slice().reverse().map(x=>({key:x.key,startAt:x.startAt,endAt:x.endAt,pointsSent:!!x.pointsSent,rows:x.rows.map(r=>({username:r.username,userId:r.userId,count:r.count,rank:r.rank,cash:r.cash,points:r.points,eligible:r.eligible,status:r.status,qrSubmittedAt:r.qrSubmittedAt||null,paidAt:r.paidAt||null,hasQr:!!r.qrFile}))})));
+    const qrAdmin=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([a-f0-9-]{36})\/qr$/);
+    if(qrAdmin&&GET){const adminName=userOf(req),period=db.weeklyRewards.find(x=>x.key===qrAdmin[1]),row=period?.rows.find(x=>x.userId===qrAdmin[2]&&x.qrFile);if(!row)return send(res,404,{error:'收款码不存在'});
+      fs.readFile(path.join(REWARD_DIR,row.qrFile),(e,img)=>{if(userOf(req)!==adminName||!isSuperAdmin(adminName))return send(res,403,{error:'查看权限已变化'});if(e)return send(res,404,{error:'收款码文件不存在'});res.writeHead(200,{'Content-Type':row.qrExt==='png'?'image/png':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline'});res.end(img)});return}
+    const paidReward=p.match(/^\/api\/admin\/weekly-rewards\/([0-9-]+)\/([a-f0-9-]{36})\/paid$/);
+    if(paidReward&&POST){const period=db.weeklyRewards.find(x=>x.key===paidReward[1]),row=period?.rows.find(x=>x.userId===paidReward[2]);if(!row||!row.eligible||row.cash<1)return send(res,404,{error:'现金奖励记录不存在'});if(row.status==='paid')return send(res,409,{error:'这笔奖励已登记为已打款'});
+      if(!row.qrFile)return send(res,409,{error:'请先让获奖者提交收款码'});const b=await body(req);row.status='paid';row.paidAt=new Date().toISOString();row.paidBy=n;row.paymentNote=str(b.note,100);persist();return send(res,200,{ok:true,status:row.status})}
     if(p==='/api/admin/roles'&&GET)return send(res,200,{catalog:PERMISSIONS,users:Object.entries(db.users).map(([username,v])=>({username,userId:v.id,...roleInfo(username),permissionsVersion:v.permissionsVersion||0,permissionsUpdatedAt:v.permissionsUpdatedAt||null,banned:!!v.banned}))});
     const roleMatch=p.match(/^\/api\/admin\/users\/([^/]+)\/permissions$/);
     if(roleMatch&&POST){
@@ -577,7 +631,7 @@ const handle=async(req,res)=>{
           if((db.taskChats[msg.id]||[]).length>=TASK_CHAT_MAX)return send(res,409,{error:'任务历史记录已满，请发布人撤回后重新发布'});
           delete msg.claimCost; delete msg.claimRefunded;
           if(!can(n,'freeTasks')){const c=S().claimCost; if(pts(n)<c) return send(res,402,noPoints(n,c)); if(c>0){addPoints(n,-c,'claim','接单',msg.id); msg.claimCost=c}}
-          msg.claimedBy=n;msg.claimedAt=now; sysChat(msg,n+' 接单了');
+          msg.claimedBy=n;msg.claimedById=db.users[n].id;msg.claimedAt=now; sysChat(msg,n+' 接单了');
         } else if(act==='unclaim'){ // 接单人放弃，任务回到待接单
           if(msg.claimedBy!==n) return send(res,403,{error:'只有接单人能放弃接单'});
           if(msg.done) return send(res,409,{error:'任务已完成，不能放弃'});

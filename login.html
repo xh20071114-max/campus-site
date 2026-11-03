@@ -34,7 +34,7 @@ a{display:block;text-align:center;margin-top:14px;color:#6b7280;font-size:14px}
 <script src="config.js"></script>
 <script>
 let mode='login';
-function safeNext(value){try{const u=new URL(value||'index.html',location.href);return u.origin===location.origin&&/^\/(index|tasks|chat|me|recharge|admin|login)\.html$/.test(u.pathname)?u.pathname+u.search+u.hash:'index.html'}catch{return 'index.html'}}
+function safeNext(value){try{const u=new URL(value||'index.html',location.href);return u.origin===location.origin&&/^\/(index|tasks|leaderboard|chat|me|recharge|admin|login)\.html$/.test(u.pathname)?u.pathname+u.search+u.hash:'index.html'}catch{return 'index.html'}}
 function set(m){mode=m;tL.className=m==='login'?'on':'';tR.className=m==='register'?'on':'';
  p2.style.display=m==='register'?'block':'none';if(m!=='register')p2.value='';p2.required=m==='register';go.textContent=m==='login'?'登录':'注册';tip.style.display=m==='register'?'block':'none';p.autocomplete=m==='register'?'new-password':'current-password';err.textContent=''}
 tL.onclick=()=>set('login');tR.onclick=()=>set('register');
