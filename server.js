@@ -231,15 +231,15 @@ function cleanImgs(){const now=Date.now();let k=0;
     const end=!m?0:Date.parse((m.deleted?m.deletedAt:m.done?m.doneAt:m.cancelledAt)||0)||0;
     if(now-end>IMG_KEEP_MS) k+=rmImgs(tid)}
   if(k){console.log('已清理过期图片',k,'张');persist()}}
-// paid 状态超过 48 小时，系统自动确认收款（纠纷中的任务 stage 是 disputed，不会被自动确认）
-const PAID_AUTO_MS=48*3600e3;
+// 网站不能核实实际转账：超过 48 小时只提醒，不代接单人确认收款。
+const PAID_REMIND_MS=48*3600e3;
 function expireDue(){let ch=false; for(const tid of Object.keys(db.offers)){const t=IDX.get(tid); if(!t) continue; const m=t.msg;
     if(pendingOffers(m).length&&(expired(m)||m.cancelled||m.deleted||m.claimedBy)){const k=expireOffers(m,m.claimedBy?'任务已被接走':expired(m)?'任务已过截止时间':'任务已撤回',null); if(k&&expired(m)) ev(m.user,'offer_expire',m,'任务已过截止时间，'+k+' 个讨价已失效',null); m.rev=nextRev(); ch=true}}
   if(ch) persist()}
-function autoConfirm(){expireDue();const now=Date.now();let ch=false;
-  for(const c of CHANNELS) for(const m of db.messages[c]) if(m.task&&m.stage==='paid'&&!m.done&&!m.cancelled&&!m.deleted&&Date.parse(m.paidAt||0)+PAID_AUTO_MS<now){
-    finishTask(m,new Date().toISOString()); m.autoConfirmed=true; sysChat(m,'发布人付款已超过 48 小时，系统自动确认收款，任务完成');
-    ev(m.user,'auto',m,'付款超过 48 小时，系统已自动确认收款，任务完成',null); ev(m.claimedBy,'auto',m,'付款超过 48 小时，系统已自动确认收款，任务完成',null); m.rev=nextRev(); ch=true}
+function remindPayments(){expireDue();const now=Date.now();let ch=false;
+  for(const c of CHANNELS) for(const m of db.messages[c]) if(m.task&&m.stage==='paid'&&!m.done&&!m.cancelled&&!m.deleted&&!m.paymentReminderAt&&Date.parse(m.paidAt||0)+PAID_REMIND_MS<now){
+    m.paymentReminderAt=new Date().toISOString();sysChat(m,'发布人标记付款已超过 48 小时，请接单人核实到账后确认；如未到账可申请平台介入');
+    ev(m.user,'payment_reminder',m,'标记付款已超过 48 小时，仍在等待接单人核实到账',null);ev(m.claimedBy,'payment_reminder',m,'请核实到账后确认收款；如未到账可申请平台介入',null);m.rev=nextRev();ch=true}
   if(ch) persist()}
 // 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份
 function backup(){try{
@@ -261,7 +261,7 @@ function cleanup(){const now=Date.now();let ch=false;
   for(const [k,a] of fails) if(!loginPending.has(k)&&!a.some(t=>now-t<FAIL_MS)) fails.delete(k);
   if(ch) persist()}
 cleanup();setInterval(cleanup,60e3).unref();
-cleanImgs();setInterval(cleanImgs,3600e3).unref(); autoConfirm();setInterval(autoConfirm,600e3).unref();
+cleanImgs();setInterval(cleanImgs,3600e3).unref(); remindPayments();setInterval(remindPayments,600e3).unref();
 const diskInfo=()=>{let free=null,size=null;try{const st=fs.statfsSync(DATA_DIR);free=st.bavail*st.bsize;size=st.blocks*st.bsize}catch{}
   let data=0;try{data=fs.statSync(DB).size}catch{} return {uploads:uploadBytes,uploadsMax:UPLOAD_MAX,data,backups:duSize(BAK),free,size,uploadBytes,uploadLimit:UPLOAD_MAX,dataBytes:data}};
 
