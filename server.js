@@ -906,11 +906,13 @@ const handle=async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405,{'Allow':'GET, HEAD'});return res.end()}
   const f=path.join(ROOT,publicName);
   fs.stat(f,(e,st)=>{if(e||!st.isFile()){res.writeHead(404);return res.end('Not found')}
-    const ext=path.extname(f).toLowerCase(), img=/^\.(png|jpe?g|webp|svg|ico|gif)$/.test(ext), etag='"'+st.size.toString(36)+'-'+Math.floor(st.mtimeMs).toString(36)+'"';
-    const h={'Content-Type':MIME[ext]||'application/octet-stream','ETag':etag,'Cache-Control':img?'public, max-age=604800':'no-cache',...(/\/sw\.js$/.test(f)?{'Service-Worker-Allowed':'/'}:{}),'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN'};
-    if(req.headers['if-none-match']===etag){res.writeHead(304,h);return res.end()}
+    const ext=path.extname(f).toLowerCase(), img=/^\.(png|jpe?g|webp|svg|ico|gif)$/.test(ext), compressible=/^\.(html|js|css|json|svg|txt)$/.test(ext), etag='W/"'+st.size.toString(36)+'-'+Math.floor(st.mtimeMs).toString(36)+'"';
+    const h={'Content-Type':MIME[ext]||'application/octet-stream','ETag':etag,'Cache-Control':img?'public, max-age=604800':'no-cache',...(compressible?{'Vary':'Accept-Encoding'}:{}),...(/\/sw\.js$/.test(f)?{'Service-Worker-Allowed':'/'}:{}),'X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN'};
+    const inm=String(req.headers['if-none-match']||'').split(',').map(x=>x.trim()), weakTag=x=>x.replace(/^W\//,'');
+    if(inm.includes('*')||inm.some(x=>weakTag(x)===weakTag(etag))){res.writeHead(304,h);return res.end()}
     fs.readFile(f,(e,d)=>{if(e){res.writeHead(404);return res.end('Not found')}
-      const gz=/gzip/.test(req.headers['accept-encoding']||'')&&/^\.(html|js|css|json|svg|txt)$/.test(ext)&&d.length>512;
+      const acceptsGzip=String(req.headers['accept-encoding']||'').split(',').some(part=>{const [name,...params]=part.trim().toLowerCase().split(';');if(name!=='gzip')return false;const q=params.map(x=>x.trim()).find(x=>x.startsWith('q='));return q==null||Number(q.slice(2))>0});
+      const gz=acceptsGzip&&compressible&&d.length>512;
       if(gz){let c=gzCache.get(f); if(!c||c.etag!==etag){c={etag,data:zlib.gzipSync(d)};gzCache.set(f,c)} h['Content-Encoding']='gzip';h['Vary']='Accept-Encoding';d=c.data}
       res.writeHead(200,h);res.end(req.method==='HEAD'?undefined:d)})});
 };
