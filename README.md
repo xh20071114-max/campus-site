@@ -75,7 +75,7 @@ docker run -d --name aevon --restart=always -p 80:3000 -v aevon-data:/data -e AD
 ```
 数据（`data.json` 和 `backups/`）都放在 `/data` 存储卷里，重新部署也不会丢。
 
-**不用 Docker（需要 Node 18 以上）**
+**不用 Docker（需要 Node.js 20 以上）**
 ```
 echo 'ADMIN=AevonEcho' > .env && echo 'ADMIN_PASSWORD=你的管理员密码' >> .env && echo 'DATA_DIR=/var/lib/aevon' >> .env
 nohup ./run.sh &
