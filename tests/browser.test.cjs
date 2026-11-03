@@ -20,6 +20,12 @@ test('order window separates active and history, filters roles and fits mobile',
  await page.getByRole('button',{name:'关闭订单窗口'}).click();await page.goto(base+'/me.html');await page.getByText('把每一单，安排明白').waitFor();await page.screenshot({path:'.review/order-workspace-desktop.jpg'});await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/order-workspace-mobile.jpg',fullPage:true});await page.locator('.order-intro button').click();await page.locator('#orderRows').waitFor();
 }));
 
+test('repeated refreshes share an in-flight order request and display its result',t=>fixture(async({base,task})=>{
+ await task('Bob',{text:'First order'});const page=await pageFor(t,base,'Bob');await page.locator('#ordersOpen').click();await page.locator('#orderRows .order-card').waitFor();await task('Bob',{text:'New order after refresh'});
+ let arrivals=0,arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/my/tasks?includeHistory=1',async route=>{arrivals++;arrived();await gate;await route.continue()});
+ try{await page.locator('#ordersRefresh').click();await waiting;await page.locator('#ordersRefresh').click();await page.locator('#ordersRefresh').click();await page.waitForTimeout(200);assert.equal(arrivals,1)}finally{release()}await page.locator('#orderRows').getByText('New order after refresh',{exact:true}).waitFor();
+}));
+
 test('a late order response cannot display the previous account after the token changes',t=>fixture(async({base,task})=>{
  await task('Bob',{text:'Bob private order'});const page=await pageFor(t,base,'Bob');let arrived,release;const waiting=new Promise(r=>arrived=r),gate=new Promise(r=>release=r);await page.route('**/api/my/tasks?includeHistory=1',async route=>{arrived();await gate;await route.continue()});await page.locator('#ordersOpen').click();await waiting;await page.evaluate(()=>{localStorage.setItem('token','Carol');localStorage.setItem('username','Carol')});release();await page.waitForFunction(()=>!document.querySelector('.orders-mask'));assert.equal(await page.getByText('Bob private order',{exact:true}).count(),0);
 }));
