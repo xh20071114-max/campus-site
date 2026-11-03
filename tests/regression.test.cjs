@@ -240,6 +240,7 @@ test('task selection preserves state, ordering, channel and personalized fields'
  data.taskChats={[id+3]:[{id:id+100,user:'Alice',text:'unread',claimer:'Bob',time}]};data.offers={[id+2]:[{id:id+200,user:'Bob',userId:'account-Bob',status:'pending',price:4,turn:'poster',rounds:[{by:'claimer',price:4,note:'',time}],time,updated:time}]};
  await fixture(async({call})=>{const open=(await call('/api/tasks?limit=8','Bob')).data;assert.deepEqual(open.map(x=>x.id),[id+7,id+2]);assert.equal(open[0].channel,'代取快递');const search=(await call('/api/tasks?q='+encodeURIComponent('北门'),'Bob')).data;assert.equal(search[0].myOffer.price,4);assert.equal((await call('/api/tasks?status=claimed','Bob')).data[0].chatUnread,1);assert.equal((await call('/api/tasks?status=claimed','')).data[0].chatUnread,undefined);assert.deepEqual((await call('/api/tasks?status=all&sort=reward&limit=2','Bob')).data.map(x=>x.id),[id+4,id+3])},data);
 });
+
 test('banned login and /api/me return ban reason and admin contact configured in settings',()=>fixture(async({call})=>{
  assert.equal((await call('/api/admin/settings','AevonEcho',{contactInfo:'邮箱 admin@example.com / QQ 123456'})).status,200);
  const pub=await call('/api/settings','');assert.equal(pub.data.contactInfo,'邮箱 admin@example.com / QQ 123456');

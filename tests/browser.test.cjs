@@ -6,14 +6,29 @@ let browser;
 before(async()=>{browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||(process.platform==='win32'?'msedge':undefined),headless:true})});
 after(async()=>{if(browser)await browser.close()});
 async function setPermissions(call,name,permissions){const d=(await call('/api/admin/roles','AevonEcho')).data,u=d.users.find(x=>x.username===name);const r=await call(`/api/admin/users/${name}/permissions`,'AevonEcho',{permissions,userId:u.userId,version:u.permissionsVersion});assert.equal(r.status,200)}
-async function pageFor(t,base,user='Bob',extraStorage=[]){
- const context=await browser.newContext({storageState:{cookies:[],origins:[{origin:base,localStorage:[{name:'token',value:user},{name:'username',value:user},{name:'admin',value:user==='AevonEcho'?'1':'0'},...extraStorage]}]}}),page=await context.newPage(),errors=[];
+async function pageFor(t,base,user='Bob',extraStorage=[],options={}){
+ const context=await browser.newContext({...options,storageState:{cookies:[],origins:[{origin:base,localStorage:[{name:'token',value:user},{name:'username',value:user},{name:'admin',value:user==='AevonEcho'?'1':'0'},...extraStorage]}]}}),page=await context.newPage(),errors=[];
  t.after(async()=>{await context.close();assert.deepEqual(errors,[],'uncaught browser errors')});
  page.on('pageerror',e=>errors.push(e.message));
  context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
  await page.goto(base+'/chat.html#'+encodeURIComponent('校园跑'));await page.waitForFunction(()=>online===true&&points!==null);
  return page;
 }
+
+test('mobile permission checkboxes respond to taps and preserve drafts across account choice and refresh',t=>fixture(async({base,call})=>{
+ const page=await pageFor(t,base,'AevonEcho',[],{hasTouch:true,viewport:{width:390,height:844}});await page.goto(base+'/admin.html');await page.locator('[data-t=roles]').tap();await page.locator('#roleQuery').fill('Bob');await page.locator('input[name=viewUsers]').tap();assert.equal(await page.locator('input[name=viewUsers]').isChecked(),true);
+ await page.locator('#roleList [role=status]').filter({hasText:'已勾选 1 项'}).waitFor();await page.locator('#roleQuery').fill('');assert.equal(await page.locator('#roleList form').count(),1);
+ const options=await page.locator('#roleSelect option').evaluateAll(es=>es.map(x=>({id:x.value,name:x.textContent})));await page.locator('#roleSelect').selectOption(options.find(x=>x.name.startsWith('Carol')).id);await page.locator('#roleSelect').selectOption(options.find(x=>x.name.startsWith('Bob')).id);assert.equal(await page.locator('input[name=viewUsers]').isChecked(),true);
+ await page.evaluate(()=>render());await page.locator('#roleList form').waitFor();assert.equal(await page.locator('input[name=viewUsers]').isChecked(),true);await page.locator('#roleList button[type=submit]').tap();await page.getByRole('status').filter({hasText:'已保存'}).waitFor();assert.deepEqual((await call('/api/me','Bob')).data.permissions,['viewUsers']);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+}));
+
+test('banned login offers contact and administrator replies are visible without granting a normal session',t=>fixture(async({base,call})=>{
+ await call('/api/admin/users/Bob/ban','AevonEcho',{reason:'test reason'});const context=await browser.newContext(),page=await context.newPage();page.setDefaultTimeout(5000);t.after(()=>context.close());const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/login.html');await page.locator('#u').fill('Bob');await page.locator('#p').fill(password);await page.locator('#go').click();await page.getByRole('button',{name:'联系管理员 / 申诉',exact:true}).click();
+ await page.locator('#supportForm').waitFor();await page.locator('#supportForm textarea').fill('Please review <img src=x onerror=alert(1)>');await page.locator('#supportForm [type=submit]').click();await page.locator('#supportForm [role=status]').filter({hasText:'已发送'}).waitFor();assert.equal(await page.evaluate(()=>localStorage.getItem('token')),null);assert.equal(await page.locator('#supportHistory img').count(),0);
+ const admin=await pageFor(t,base,'AevonEcho');await admin.goto(base+'/admin.html');await admin.locator('[data-t=fb]').click();await admin.locator('#fbb [data-a=reply]').waitFor();admin.once('dialog',d=>d.accept('Reply <b>reviewed</b>'));await admin.locator('#fbb [data-a=reply]').click();await admin.waitForFunction(()=>document.querySelector('#fbb')?.textContent.includes('Reply <b>reviewed</b>'));
+ await page.getByRole('button',{name:'刷新回复',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#supportHistory')?.textContent.includes('Reply <b>reviewed</b>'));assert.equal(await page.locator('#supportHistory b').filter({hasText:'reviewed'}).count(),0);assert.deepEqual(errors,[]);
+}));
 
 test('super administrator grants selected permissions through checkboxes; delegate sees only granted controls',t=>fixture(async({base,call})=>{
  const root=await pageFor(t,base,'AevonEcho');await root.goto(base+'/admin.html');await root.locator('[data-t="roles"]').click();await root.locator('#roleQuery').fill('Bob');

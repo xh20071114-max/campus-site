@@ -16,7 +16,7 @@ const PERMISSIONS=[
   ['manageRecharges','积分与审核','审核充值','查看充值记录，核对后通过或拒绝并发放积分'],
   ['manageSettings','积分与审核','修改积分规则','设置注册送分、发布与接单消耗'],
   ['publishBonus','积分与审核','发布积分奖励任务','设置完成任务后发放的奖励积分'],
-  ['manageFeedback','平台事务','处理建议','查看、标记已读及删除建议'],
+  ['manageFeedback','平台事务','处理建议与联系','查看、回复联系留言和封禁申诉，标记已读或删除'],
   ['manageReports','平台事务','处理举报','查看、处理及删除举报'],
   ['manageDisputes','平台事务','处理任务纠纷','查看纠纷、任务详情和议价，强制完成或关闭并选择退分；私聊需另授权'],
   ['postOfficial','其他权限','发布频道通知','在频道发布非任务通知并使用官方标记'],
@@ -182,6 +182,11 @@ let uploadBytes=0; const duSize=d=>{let t=0;try{for(const e of fs.readdirSync(d,
 const rawBody=(req,max)=>new Promise(r=>{const a=[];let n=0,over=false;req.on('data',c=>{if(over)return;n+=c.length;if(n>max){over=true;a.length=0;r(null);return}a.push(c)});req.on('end',()=>{if(!over)r(Buffer.concat(a))});req.on('error',()=>r(null))});
 const tokenOf=req=>(req.headers.authorization||"").replace("Bearer ","");
 const userOf=req=>{const t=tokenOf(req),x=db.sessions[t];if(!x)return null;const u=db.users[x.user];if(typeof x!=='object'||!u||x.userId!==u.id||Date.now()>=x.exp){delete db.sessions[t];persist();return null}return x.user};
+// 封禁登录仅签发 15 分钟的申诉凭证，不能当普通登录令牌使用。
+const supportSecret=crypto.randomBytes(32);
+const supportSignature=(payload,account)=>crypto.createHmac('sha256',supportSecret).update(payload+'.'+account.pw).digest('base64url');
+const supportToken=n=>{const a=db.users[n],payload=Buffer.from(JSON.stringify({user:n,id:a.id,ban:a.bannedAt,version:a.banVersion||0,exp:Date.now()+15*60e3})).toString('base64url');return payload+'.'+supportSignature(payload,a)};
+const supportUser=req=>{const normal=userOf(req);if(normal)return normal;try{const t=tokenOf(req);if(t.length>2000)return null;const [payload,signature,...extra]=t.split('.');if(extra.length||!payload||!signature)return null;const p=JSON.parse(Buffer.from(payload,'base64url').toString()),a=db.users[p.user];if(!a||a.id!==p.id||!a.banned||a.bannedAt!==p.ban||(a.banVersion||0)!==p.version||!Number.isFinite(p.exp)||Date.now()>=p.exp)return null;const expected=Buffer.from(supportSignature(payload,a)),given=Buffer.from(signature);return expected.length===given.length&&crypto.timingSafeEqual(expected,given)?p.user:null}catch{return null}};
 const expired=x=>!!(x.deadline&&!x.claimedBy&&Date.parse(x.deadline)<Date.now());
 // 返回给前端时附上计算字段 expired（截止时间已过且没人接）
 // 已接单、没完成、超过截止时间 24 小时 = 超时，发布人可以撤销
@@ -320,7 +325,7 @@ const handle=async(req,res)=>{
         if(!originalPw.startsWith('s1$')){const h=await hashA(String(password));if(db.users[username]!==account||account.pw!==originalPw)return send(res,401,{error:'账号状态已变化，请重新登录'});account.pw=h}
         }finally{for(const k of keys){const n=(loginPending.get(k)||0)-1;if(n>0)loginPending.set(k,n);else loginPending.delete(k)}}
       }
-      if(p==="/api/login"&&banned(username)) return send(res,403,BANNED);
+      if(p==="/api/login"&&banned(username)) return send(res,403,{...BANNED,reason:db.users[username].banReason||'',banReason:db.users[username].banReason||'',contact:S().contactInfo||'',appealToken:supportToken(username)});
       {const uu=db.users[username],ip=clientIp(req); if(uu&&ip){uu.ips=[ip,...(uu.ips||[]).filter(x=>x!==ip)].slice(0,5)}}
       const token=crypto.randomBytes(16).toString('hex'); db.sessions[token]={user:username,userId:db.users[username].id,exp:Date.now()+SESSION_MS};
       {const mine=Object.entries(db.sessions).filter(([,v])=>v===username||(v&&v.user===username)); if(mine.length>10){mine.sort((a,b)=>(a[1].exp||0)-(b[1].exp||0)); for(const [k] of mine.slice(0,mine.length-10)) delete db.sessions[k]}} // 每人最多保留 10 个登录，挤掉最旧的
@@ -328,9 +333,10 @@ const handle=async(req,res)=>{
       return send(res,200,{token,username,...roleInfo(username)});
     }
     if(p==="/api/logout"&&POST){delete db.sessions[tokenOf(req)];persist();return send(res,200,{ok:true})}
-    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,...roleInfo(n),banned:banned(n),points:pts(n),postCost:S().postCost,claimCost:S().claimCost,eventUnread:(db.events[n]||[]).filter(x=>!x.read).length,chatUnread:totalChatUnread(n)}):send(res,401,{error:'未登录'});}
+    if(p==='/api/me'){const n=userOf(req); return n?send(res,200,{username:n,...roleInfo(n),banned:banned(n),banReason:db.users[n].banReason||'',contact:S().contactInfo||'',points:pts(n),postCost:S().postCost,claimCost:S().claimCost,eventUnread:(db.events[n]||[]).filter(x=>!x.read).length,chatUnread:totalChatUnread(n)}):send(res,401,{error:'未登录'});}
     // POST /api/password {oldPassword,newPassword}  改密码，成功后其他设备的登录全部失效，当前 token 保留
     if(p==='/api/password'&&POST){
+      if(banned(userOf(req)))return send(res,403,BANNED);
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
       if(limited("auth:"+clientIp(req),60)) return send(res,429,{error:"操作太频繁，请一分钟后再试"});
       const {oldPassword,newPassword,newPassword2}=await body(req);
@@ -418,6 +424,7 @@ const handle=async(req,res)=>{
       for(const [tid,l] of Object.entries(db.offers)){const t=IDX.get(tid); for(const o of l){if(o.user===du)o.userDeleted=true;if(o.status==='pending'){
         if(o.user===du){o.status='withdrawn';o.reason='讨价人已注销';o.updated=now}
         else if(t&&t.msg.user===du){o.status='expired';o.reason='发布人已注销';o.updated=now;if(ownsOffer(o,o.user))ev(o.user,'offer_expire',t.msg,'你的讨价已失效：发布人已注销',du)}}}}
+      for(const f of db.feedback)if(f.user===du&&(!f.userId||f.userId===db.users[du].id))f.userDeleted=true;
       delete db.users[du]; persist();
       return send(res,200,{username:du,deleted:true,messages:msgs,cancelledTasks:cancelled,releasedTasks:released,disputedTasks:disputed,rejectedRecharges:rej});
     }
@@ -425,11 +432,20 @@ const handle=async(req,res)=>{
     if(bm&&POST){ let bu; try{bu=decodeURIComponent(bm[1])}catch{return send(res,400,{error:'用户名格式不对'})}
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
       const t=db.users[bu]; if(!t) return send(res,404,{error:'用户不存在'}); if(protectedUser(n,bu)) return send(res,403,{error:'不能封禁总管理员或其他管理员'});
+      t.banVersion=(t.banVersion||0)+1;
       if(bm[2]==='ban'){const b=await body(req); t.banned=true; t.bannedAt=new Date().toISOString(); t.banReason=str(b.reason,100);}
       else {delete t.banned; delete t.bannedAt; delete t.banReason;}
       persist(); return send(res,200,{username:bu,banned:!!t.banned});
     }
     if(p==='/api/settings'&&GET) return send(res,200,S());
+    if(p==='/api/support'&&(GET||POST)){
+      const n=supportUser(req);if(!n)return send(res,401,{error:'请登录；封禁账号请在登录页验证原账号密码后申诉'});const id=db.users[n].id;
+      const own=db.feedback.filter(x=>x.kind==='support'&&x.userId===id);
+      if(GET)return send(res,200,own.slice(-50).reverse().map(({id,text,contact,time,replies,read})=>({id,text,contact,time,replies:replies||[],read:!!read})));
+      const b=await body(req);if(typeof b.text!=='string'||!b.text.trim()||(b.contact!=null&&typeof b.contact!=='string'))return send(res,400,{error:'请填写留言，联系方式须为文字'});
+      if(limited('support:'+id,3)||own.filter(x=>Date.now()-Date.parse(x.time)<86400000).length>=10)return send(res,429,{error:'留言过于频繁，每分钟最多 3 条、每天最多 10 条'});
+      const f={id:String(newId()),kind:'support',user:n,userId:id,text:b.text.trim().slice(0,1000),contact:str(b.contact,100),time:new Date().toISOString(),read:false,banned:banned(n),replies:[]};db.feedback.push(f);persist();return send(res,200,{ok:true,id:f.id});
+    }
     // 建议：只有管理员能看，普通用户连自己的也看不到
     if(p==='/api/feedback'||p.startsWith('/api/admin/feedback')){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
@@ -442,8 +458,9 @@ const handle=async(req,res)=>{
       }
       if(!isAdmin(n)) return send(res,403,{error:'只有管理员能查看'});
       if(p==='/api/admin/feedback'&&GET) return send(res,200,db.feedback.slice().reverse());
-      const fm=p.match(/^\/api\/admin\/feedback\/([^/]+)\/(read|delete)$/);
+      const fm=p.match(/^\/api\/admin\/feedback\/([^/]+)\/(read|delete|reply)$/);
       if(fm&&POST){ const i=db.feedback.findIndex(x=>x.id===fm[1]); if(i<0) return send(res,404,{error:'建议不存在'});
+        if(fm[2]==='reply'){const f=db.feedback[i],b=await body(req);if(f.kind!=='support')return send(res,400,{error:'只有联系留言可以站内回复'});if(!db.users[f.user]||db.users[f.user].id!==f.userId)return send(res,409,{error:'原留言账号已注销，不能回复同名新账号'});if(typeof b.text!=='string'||!b.text.trim())return send(res,400,{error:'请填写回复内容'});const replies=f.replies||(f.replies=[]);if(replies.length>=20)return send(res,409,{error:'该留言回复已达上限'});replies.push({id:String(newId()),user:n,text:b.text.trim().slice(0,1000),time:new Date().toISOString()});f.read=true;persist();return send(res,200,{ok:true})}
         if(fm[2]==='read') db.feedback[i].read=true; else db.feedback.splice(i,1);
         persist(); return send(res,200,{ok:true}); }
       return send(res,404,{error:'接口不存在'});
@@ -466,6 +483,7 @@ const handle=async(req,res)=>{
       if(p==='/api/admin/settings'&&POST){
         const b=await body(req), nx={...S()};
         for(const k of ['postCost','claimCost','signupBonus']) if(b[k]!=null){const v=intIn(b[k],0,1000000); if(v==null) return send(res,400,{error:k+' 要是 0 以上的整数'}); nx[k]=v}
+        if(Object.hasOwn(b,'contactInfo')){if(!isSuperAdmin(n))return send(res,403,{error:'仅总管理员可修改联系渠道'});if(typeof b.contactInfo!=='string'||b.contactInfo.length>200)return send(res,400,{error:'联系方式须为 200 字以内的文字'});nx.contactInfo=b.contactInfo.trim()}
         db.settings=nx; persist(); return send(res,200,S());
       }
       if(p==='/api/admin/recharges'&&GET){const st=u.searchParams.get('status'); return send(res,200,db.recharges.filter(x=>!st||x.status===st).slice().reverse().map(x=>({...x,userPoints:pts(x.user),userExists:!x.userDeleted&&!!db.users[x.user]})))}
@@ -789,6 +807,7 @@ const handle=async(req,res)=>{
     // GET /api/tasks?status=open|claimed|done|all&limit=10  跨频道任务；open=没人接、没撤销、没过期
     if(p==="/api/tasks"&&GET){
       const st=u.searchParams.get("status")||"open", lim=Math.min(Math.max(parseInt(u.searchParams.get("limit"))||10,1),100);
+      if(!['open','claimed','done','all'].includes(st))return send(res,400,{error:'任务状态无效'});
       const me=userOf(req),q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50),all=[];
       for(const c of CHANNELS)for(const x of db.messages[c]){if(!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x))||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
         if(q&&![x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)))continue;all.push({msg:x,ch:c})}

@@ -45,6 +45,7 @@ const call=async(path,opt={})=>{const r=await fetch(API+path,{...opt,headers:{'C
   const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('请求失败 '+r.status)),{status:r.status});return d};
 let tab='users',users=[],msgs=[],anns=[],renderVersion=0;
 let adminMe=null,roleFingerprint='';
+const roleEditor={selected:'',query:'',drafts:new Map()};
 const can=k=>!!adminMe&&(adminMe.superAdmin||adminMe.permissions.includes(k));
 const userAccess=()=>['viewUsers','banUsers','deleteUsers','managePoints'].some(can);
 const messageAccess=()=>can('viewMessages')||can('deleteMessages');
@@ -61,7 +62,7 @@ async function init(){
     return stop('⚠️ 网络连接失败','请检查网络后重试','<a href="#" onclick="location.reload();return false">重试</a>')}
   if(!me.admin)return stop('没有权限','只有管理员能进入管理后台','<a href="index.html">回首页</a>');
   adminMe=me;roleFingerprint=roleStamp(me);
-  const tabs=[['users','👥 用户',userAccess()],['roles','🔑 授权管理',me.superAdmin],['msgs','💬 消息',messageAccess()],['anns','📢 公告',can('manageAnnouncements')],['rch','💰 充值审核',can('manageRecharges')],['set','⚙️ 积分设置',can('manageSettings')],['chats','💬 私聊',can('viewChats')],['fb','💡 建议',can('manageFeedback'),'fbN'],['rpt','🚩 举报',can('manageReports'),'rpN'],['dsp','⚠️ 纠纷',can('manageDisputes'),'dsN']].filter(x=>x[2]);
+  const tabs=[['users','👥 用户',userAccess()],['roles','🔑 授权管理',me.superAdmin],['msgs','💬 消息',messageAccess()],['anns','📢 公告',can('manageAnnouncements')],['rch','💰 充值审核',can('manageRecharges')],['set','⚙️ 积分设置',can('manageSettings')],['chats','💬 私聊',can('viewChats')],['fb','💡 建议/联系',can('manageFeedback'),'fbN'],['rpt','🚩 举报',can('manageReports'),'rpN'],['dsp','⚠️ 纠纷',can('manageDisputes'),'dsN']].filter(x=>x[2]);
   tab=tabs.some(x=>x[0]===tab)?tab:(tabs[0]?.[0]||'access');
   M.innerHTML=`<p class="count">${me.superAdmin?'总管理员':'管理员'}：${esc(me.username)} · ${me.superAdmin?'只有你可以分配管理权限':'仅可使用总管理员授予的权限'}</p><div class="tabs">${tabs.map(([id,label,_,badge])=>`<button data-t="${id}">${label}${badge?`<span id="${badge}"></span>`:''}</button>`).join('')}</div><div class="bk"><span id="disk"></span>${me.superAdmin?'<span><small style="color:#b91c1c">⚠️ 备份含全部用户数据，请勿外传</small> <button type="button" id="bkBtn" class="act ok" title="下载 data.json，不包含聊天图片">⬇️ 下载备份</button></span>':''}</div><div id="pane"></div>`;
   if(me.superAdmin)document.getElementById('bkBtn').onclick=downloadBackup;
@@ -95,20 +96,25 @@ async function render(){
 // 只有总管理员可进入；账号 ID 和版本防止旧页面覆盖新授权或同名新账号。
 async function drawRoles(version){
   const d=await call('/api/admin/roles');if(version!==renderVersion)return;const P=document.getElementById('pane');
-  P.innerHTML='<div class="tools"><input id="roleQuery" placeholder="搜索用户名"></div><p class="count">勾选哪些权限，该用户就拥有哪些权限；取消全部权限并保存，即恢复普通用户。授权、撤权和完整数据备份仅限总管理员。</p><div id="roleList" style="display:grid;gap:12px"></div>';
-  const list=document.getElementById('roleList'),query=document.getElementById('roleQuery');
-  const draw=()=>{const q=query.value.trim().toLowerCase();list.innerHTML='';for(const u of d.users.filter(x=>x.username.toLowerCase().includes(q))){
-    const card=document.createElement('section');card.className='box';card.style.padding='16px';
+  P.innerHTML='<div class="tools"><input id="roleQuery" aria-label="搜索授权账号" placeholder="输入用户名快速搜索"><select id="roleSelect" aria-label="选择授权账号" style="max-width:100%;min-width:180px"></select></div><p class="count" id="roleCount"></p><p class="count">一次只设置一个账号。勾选后点击“保存权限”生效；撤销全部权限可恢复普通用户。</p><div id="roleList" style="display:grid;gap:12px"></div>';
+  const list=document.getElementById('roleList'),query=document.getElementById('roleQuery'),select=document.getElementById('roleSelect'),count=document.getElementById('roleCount');query.value=roleEditor.query;
+  const draw=()=>{list.innerHTML='';const u=d.users.find(x=>x.userId===select.value);if(!u){list.innerHTML='<p class="empty">没有符合条件的用户</p>';return}roleEditor.selected=u.userId;{
+    const card=document.createElement('section');card.className='box';card.style.cssText='padding:16px;overflow:visible';
     card.innerHTML=`<h3 style="margin-bottom:8px">${esc(u.username)} <span class="tg ${u.superAdmin?'r':u.admin?'b':'x'}">${u.superAdmin?'总管理员':u.admin?'管理员':'普通用户'}</span>${u.banned?'<span class="tg r">已封禁</span>':''}</h3>`;
-    if(u.superAdmin){card.insertAdjacentHTML('beforeend','<p class="count" style="margin:0">拥有全部权限，身份不可在此修改。</p>');list.append(card);continue}
+    if(u.superAdmin){card.insertAdjacentHTML('beforeend','<p class="count" style="margin:0">你是总管理员，已拥有全部权限，无须勾选。</p>');list.append(card);return}
+    if(u.banned){const notice=document.createElement('p');notice.style.cssText='padding:12px;background:#fff7ed;color:#9a3412;border-radius:8px;margin-bottom:12px';notice.textContent='此账号已封禁，因此权限框不可勾选。请先在“用户”中解封，再回来授权；也可直接撤销已有权限。';const go=document.createElement('button');go.type='button';go.className='act';go.textContent='前往用户管理';go.onclick=async()=>{tab='users';await render();const q=document.getElementById('uq');if(q){q.value=u.username;q.dispatchEvent(new Event('input'))}};notice.append(document.createElement('br'),go);card.append(notice)}
+    let draft=roleEditor.drafts.get(u.userId),conflict=false;if(draft&&draft.version!==u.permissionsVersion){roleEditor.drafts.delete(u.userId);draft=null;conflict=true}const chosen=draft?draft.permissions:u.permissions;
     const form=document.createElement('form');form.style.display='grid';form.style.gap='10px';
     for(const group of [...new Set(d.catalog.map(x=>x.group))]){const field=document.createElement('fieldset');field.style.cssText='border:1px solid #e5e7eb;border-radius:8px;padding:10px;min-width:0';const legend=document.createElement('legend');legend.textContent=group;field.append(legend);
-      for(const p of d.catalog.filter(x=>x.group===group)){const label=document.createElement('label');label.style.cssText='display:flex;gap:8px;align-items:start;margin:8px 0;cursor:pointer';const input=document.createElement('input');input.type='checkbox';input.name=p.key;input.checked=u.permissions.includes(p.key);input.disabled=u.banned;input.style.marginTop='3px';const text=document.createElement('span');text.innerHTML=`${esc(p.label)}<small style="display:block;color:#6b7280">${esc(p.description)}</small>`;label.append(input,text);field.append(label)}form.append(field)}
-    const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap';row.innerHTML='<button type="submit" class="act ok">保存权限</button><button type="button" class="act danger">撤销全部权限</button><span role="status" style="font-size:13px"></span>';
+      for(const p of d.catalog.filter(x=>x.group===group)){const label=document.createElement('label');label.style.cssText='display:flex;gap:12px;align-items:start;margin:4px 0;padding:10px 4px;min-height:44px;cursor:pointer;touch-action:manipulation';const input=document.createElement('input');input.type='checkbox';input.name=p.key;input.checked=chosen.includes(p.key);input.disabled=u.banned;input.style.cssText='width:22px;height:22px;padding:0;margin:1px 0 0;flex:none;accent-color:#1e3a8a';const text=document.createElement('span');text.innerHTML=`${esc(p.label)}<small style="display:block;color:#6b7280">${esc(p.description)}</small>`;label.append(input,text);field.append(label)}form.append(field)}
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;bottom:8px;z-index:2;background:white;padding:10px 0;box-shadow:0 -4px 10px #ffffff';row.innerHTML='<button type="submit" class="act ok">保存权限</button><button type="button" class="act danger">撤销全部权限</button><span role="status" style="font-size:13px"></span>';
     const save=row.querySelector('[type=submit]'),revoke=row.querySelector('[type=button]'),status=row.querySelector('[role=status]');save.disabled=u.banned;
-    const submit=async clear=>{const permissions=clear?[]:[...form.querySelectorAll('input:checked')].map(x=>x.name);save.disabled=revoke.disabled=true;status.textContent='保存中…';try{const r=await call(`/api/admin/users/${encodeURIComponent(u.username)}/permissions`,{method:'POST',body:JSON.stringify({permissions,userId:u.userId,version:u.permissionsVersion})});u.permissions=r.permissions;u.admin=r.admin;u.permissionsVersion=r.permissionsVersion;form.querySelectorAll('input').forEach(x=>x.checked=u.permissions.includes(x.name));status.textContent=permissions.length?'已保存，权限立即生效':'已撤销，现为普通用户';card.querySelector('h3 .tg').textContent=u.admin?'管理员':'普通用户'}catch(e){status.textContent=e.message}finally{save.disabled=u.banned;revoke.disabled=false}};
+    const selection=()=>[...form.querySelectorAll('input:checked')].map(x=>x.name);status.textContent=conflict?'权限已被更新，请重新核对后勾选':draft?'已恢复未保存的勾选':'';
+    form.onchange=()=>{roleEditor.drafts.set(u.userId,{version:u.permissionsVersion,permissions:selection()});status.textContent='已勾选 '+selection().length+' 项，点击保存生效'};
+    const submit=async clear=>{const permissions=clear?[]:selection();save.disabled=revoke.disabled=true;form.querySelectorAll('input').forEach(x=>x.disabled=true);status.textContent='保存中…';try{const r=await call(`/api/admin/users/${encodeURIComponent(u.username)}/permissions`,{method:'POST',body:JSON.stringify({permissions,userId:u.userId,version:u.permissionsVersion})});u.permissions=r.permissions;u.admin=r.admin;u.permissionsVersion=r.permissionsVersion;roleEditor.drafts.delete(u.userId);form.querySelectorAll('input').forEach(x=>x.checked=u.permissions.includes(x.name));status.textContent=permissions.length?'已保存，权限立即生效':'已撤销，现为普通用户';card.querySelector('h3 .tg').textContent=u.admin?'管理员':'普通用户';{const option=[...select.options].find(x=>x.value===u.userId);if(option)option.textContent=u.username+(u.admin?'（管理员）':'')}}catch(e){status.textContent=e.message}finally{save.disabled=u.banned;revoke.disabled=false;form.querySelectorAll('input').forEach(x=>x.disabled=u.banned)}};
     form.onsubmit=e=>{e.preventDefault();submit(false)};revoke.onclick=()=>submit(true);form.append(row);card.append(form);list.append(card)}if(!list.children.length)list.innerHTML='<p class="empty">没有符合条件的用户</p>'};
-  query.oninput=draw;draw();
+  const filter=()=>{roleEditor.query=query.value;const q=query.value.trim().toLowerCase(),matches=d.users.filter(x=>x.username.toLowerCase().includes(q)).sort((a,b)=>Number(a.superAdmin)-Number(b.superAdmin)||a.username.localeCompare(b.username,'zh-CN'));select.replaceChildren();for(const u of matches){const option=document.createElement('option');option.value=u.userId;option.textContent=u.username+(u.superAdmin?'（总管理员）':u.banned?'（已封禁）':u.admin?'（管理员）':'');select.append(option)}const selected=matches.find(x=>x.username.toLowerCase()===q)||matches.find(x=>x.userId===roleEditor.selected)||matches[0];if(selected)select.value=selected.userId;select.disabled=!matches.length;count.textContent='找到 '+matches.length+' 个账号，请在上方选择';draw()};
+  query.oninput=filter;select.onchange=draw;filter();
 }
 setInterval(async()=>{if(document.hidden||!adminMe)return;try{const me=await call('/api/me');if(roleStamp(me)!==roleFingerprint)location.reload()}catch(e){if(e.status===401||e.status===403)location.reload()}},15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&adminMe)render()});
@@ -211,9 +217,9 @@ async function drawSet(version=renderVersion){
   const P=document.getElementById('pane');const d=await call('/api/admin/settings');if(version!==renderVersion)return;const s=d.settings||d;
   const F=[['postCost','发布任务扣的积分','普通用户每发一个任务扣多少'],['claimCost','接单扣的积分','普通用户每接一单扣多少'],['signupBonus','新注册赠送积分','只对之后注册的新用户生效']];
   P.innerHTML=`<div class="box"><form class="new" id="sf">${F.map(([k,l,h])=>`<label style="display:grid;gap:4px"><b style="font-size:14px">${l}</b><input id="s_${k}" type="number" min="0" step="1" value="${esc(s[k]??'')}" required><small style="color:#6b7280">${h}</small></label>`).join('')}
-  <button>保存设置</button><small id="sm" style="color:#166534"></small></form></div>`;
+  ${adminMe.superAdmin?`<label><b>管理员联系方式（公开，可选）</b><input id="s_contactInfo" maxlength="200" value="${esc(s.contactInfo||'')}" placeholder="邮箱、QQ 等；也可只使用站内联系入口" style="width:100%"></label>`:''}<button>保存设置</button><small id="sm" style="color:#166534"></small></form></div>`;
   sf.onsubmit=async e=>{e.preventDefault();const body={};for(const[k]of F){const v=Number(document.getElementById('s_'+k).value);if(!Number.isInteger(v)||v<0)return alert('请填 0 或正整数');body[k]=v}
-    try{await call('/api/admin/settings',{method:'POST',body:JSON.stringify(body)});sm.textContent='✅ 已保存'}catch(e){alert(e.message)}};
+    if(adminMe.superAdmin)body.contactInfo=document.getElementById('s_contactInfo').value.trim();try{await call('/api/admin/settings',{method:'POST',body:JSON.stringify(body)});sm.textContent='✅ 已保存'}catch(e){alert(e.message)}};
 }
 // 建议
 let fbF='';
@@ -294,14 +300,14 @@ async function drawFb(version=renderVersion){
   const all=(Array.isArray(d)?d:(d.feedback||d.list||[])).slice().sort((a,b)=>new Date(b.time||0)-new Date(a.time||0));
   const nu=all.filter(f=>!f.read).length;
   P.innerHTML=`<div class="tools"><select id="ff"><option value="">全部（${all.length}）</option><option value="unread">未读（${nu}）</option><option value="read">已读</option></select></div>
-  <div class="box"><table><thead><tr><th>时间</th><th>用户</th><th>建议</th><th>联系方式</th><th>操作</th></tr></thead><tbody id="fbb"></tbody></table></div>`;
+  <div class="box"><table><thead><tr><th>时间</th><th>用户</th><th>建议 / 联系留言</th><th>联系方式</th><th>操作</th></tr></thead><tbody id="fbb"></tbody></table></div>`;
   ff.value=fbF;
   const draw=()=>{fbF=ff.value;const l=all.filter(f=>!fbF||(fbF==='read')===!!f.read);
     fbb.innerHTML=l.map(f=>`<tr style="${f.read?'':'background:#fffbeb'}"><td style="white-space:nowrap">${fmt(f.time)}${f.read?'':'<br><span class="tg r">未读</span>'}</td><td><b>${esc(f.user)}</b></td>
-    <td class="txt" style="white-space:pre-wrap">${esc(f.text)}</td><td>${esc(f.contact||'')}</td>
-    <td style="white-space:nowrap">${f.read?'':`<button class="act ok" data-id="${esc(f.id)}" data-a="read">标为已读</button> `}<button class="act danger" data-id="${esc(f.id)}" data-a="delete">删除</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">还没有建议</td></tr>';
+    <td class="txt" style="white-space:pre-wrap">${f.kind==='support'?'<b>📨 '+(f.banned?'封禁申诉':'联系留言')+'</b><br>':''}${esc(f.text)}${(f.replies||[]).map(r=>'<p style="margin-top:8px;color:#1e3a8a"><b>已回复：</b>'+esc(r.text)+'</p>').join('')}</td><td>${esc(f.contact||'')}</td>
+    <td style="white-space:nowrap">${f.kind==='support'?`<button class="act ok" data-id="${esc(f.id)}" data-a="reply">回复</button> `:''}${f.read?'':`<button class="act ok" data-id="${esc(f.id)}" data-a="read">标为已读</button> `}<button class="act danger" data-id="${esc(f.id)}" data-a="delete">删除</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">还没有建议</td></tr>';
     fbb.querySelectorAll('button').forEach(b=>b.onclick=async()=>{if(b.dataset.a==='delete'&&!confirm('确定删除这条建议？删除后不可恢复'))return;
-      try{await call(`/api/admin/feedback/${encodeURIComponent(b.dataset.id)}/${b.dataset.a}`,{method:'POST'});render()}catch(e){alert(e.message)}})};
+      try{let body;if(b.dataset.a==='reply'){const text=prompt('回复该用户（对方可在“联系管理员”中查看）：','');if(text===null)return;if(!text.trim())return alert('回复不能为空');body=JSON.stringify({text:text.trim()})}await call(`/api/admin/feedback/${encodeURIComponent(b.dataset.id)}/${b.dataset.a}`,{method:'POST',...(body?{body}:{})});render()}catch(e){alert(e.message)}})};
   ff.onchange=draw;draw();
 }
 // 任务私聊（管理员只读）

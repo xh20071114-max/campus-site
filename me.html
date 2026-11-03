@@ -80,7 +80,7 @@ async function load(silent){
   const credHtml=prof?`<div class="cred"><h2>⭐ 我的信用</h2><div class="cs3"><div><b>${rc?pct(good):'—'}</b><span>好评率</span></div><div><b>${rc&&avg!=null?esc(Number(avg).toFixed(1)):'—'}</b><span>平均分</span></div><div><b>${esc(prof.completed??prof.doneCount??0)}</b><span>接单完成</span></div><div><b>${esc(prof.posted??0)}</b><span>发布完成</span></div><div><b>${esc(rc)}</b><span>收到评价</span></div></div>
   <ul>${rv.slice(0,10).map(x=>`<li><span class="stars">${star(x.score)}</span> ${esc(x.comment||'')}<br><small>${x.from?esc(x.from):'（已注销用户）'}${x.role==='claimer'?' · 作为接单人':x.role==='poster'?' · 作为发布人':''} · ${tfmt(x.time)}</small></li>`).join('')||'<li class="empty">还没有收到评价。任务完成后，对方可以给你打分</li>'}</ul></div>`:'';
   const parts={
-    banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px;line-height:1.6">⛔ 你的账号已被管理员封禁'+(banReason?'，原因：'+esc(banReason):'')+'，暂时不能发消息和接单。'+(contact?'如有疑问请联系管理员：'+esc(contact):'如有疑问请联系站点管理员。')+'</div>':'',
+    banbox:ban?'<div style="background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:10px;margin-bottom:14px">⛔ 你的账号已被管理员封禁，暂时不能发消息和接单。'+(banReason?'原因：'+esc(banReason)+'。':'')+(contact?'联系方式：'+esc(contact)+'。':'')+'<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>':'',
     ptsbox:ptsHtml,
     evbox:evHtml,
     credbox:credHtml,

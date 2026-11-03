@@ -155,7 +155,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 <aside><h2><a href="index.html">← Aevon校园交流网</a></h2><div id="chs"></div><div class="me" id="me"></div></aside>
 <main>
   <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span id="title"></span><span class="topR"><button type="button" id="bell" title="任务动态">🔔<i id="bellDot"></i></button><span id="fbSlot"></span></span></div>
-  <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。如有疑问请联系管理员。</div>
+  <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>
   <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
   <div id="notice"><div class="nb"><div><span class="nt" id="nTitle"></span><span id="nMini" style="display:none;color:#6366f1;font-size:12px"></span></div><div class="nx" id="nText"></div><div class="nm" id="nMeta"></div></div><div class="na"><button type="button" id="nAllB">全部公告</button><button type="button" id="nToggle">收起</button></div></div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我发布的</span><span data-f="took">我接的</span></div>
@@ -221,7 +221,7 @@ async function auth(kind){lerr.textContent='';
   if(bGo.disabled)return;bGo.disabled=bLogin.disabled=bReg.disabled=true;
   try{
   const r=await api('/api/'+kind,{method:'POST',body:JSON.stringify(Object.assign({username:lu.value.trim(),password:lp.value},kind==='register'?{password2:lp2.value}:{}))});
-  const d=await r.json();if(!r.ok){lerr.textContent=d.error;return}
+  const d=await r.json();if(!r.ok){lerr.textContent=d.error;if(d.banned&&d.appealToken){const appeal=document.createElement('button');appeal.type='button';appeal.textContent='联系管理员 / 申诉';appeal.onclick=()=>window.openSupport({token:d.appealToken});lerr.append(document.createElement('br'),appeal)}return}
   localStorage.setItem('admin',d.admin?'1':'0');localStorage.setItem('token',d.token);localStorage.setItem('username',d.username);location.reload()
   }catch{lerr.textContent='网络连接失败，请稍后重试'}finally{bGo.disabled=bLogin.disabled=bReg.disabled=false}}
 let lmode='login';function setLMode(k){lmode=k;bLogin.classList.toggle('on',k==='login');bReg.classList.toggle('on',k==='register');bGo.textContent=k==='login'?'登录':'注册';lhint.style.display=k==='login'?'none':'block';lp.autocomplete=k==='login'?'current-password':'new-password';lp2.style.display=k==='login'?'none':'';lp2.required=k!=='login';lp2.value='';lerr.textContent=''}
