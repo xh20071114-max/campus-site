@@ -1,6 +1,6 @@
 // Aevon校园交流网 后端：静态文件 + 登录 + 频道消息 + 公告（数据存 data.json，每日备份到 backups/）
 const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib');
-const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
+const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups'), RELEASE_SHA=/^[0-9a-f]{40}$/i.test(process.env.RELEASE_SHA||'')?process.env.RELEASE_SHA.toLowerCase():null;
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
 const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
 // 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
@@ -623,7 +623,7 @@ const handle=async(req,res)=>{
         storage={ok:true,dataBytes,freeBytes:stat.bavail*stat.bsize};
       }catch{}
       const ok=storage.ok&&!storageError;
-      return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),storage});
+      return send(res,ok?200:503,{ok,commit:RELEASE_SHA,uptime:Math.round(process.uptime()),storage});
     }
     if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive);return{name:c,count:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>

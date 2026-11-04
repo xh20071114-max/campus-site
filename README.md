@@ -100,7 +100,7 @@ nohup ./run.sh &
 - `ALLOW_ORIGINS`：只有跨域访问时才需要。
 
 **部署后检查**
-打开 `http://服务器地址/api/health`，返回 `{"ok":true}` 就说明服务在运行。
+部署时把 `RELEASE_SHA` 环境变量设为实际部署的 40 位 Git commit SHA。打开 `http://服务器地址/api/health`，确认 `ok` 为 `true` 且 `commit` 与部署 SHA 完全一致；这同时验证服务健康和运行版本。
 如果没设 `ADMIN_PASSWORD`，部署完要马上用 `AevonEcho` 注册，免得被别人抢先注册。
 
 ## 积分

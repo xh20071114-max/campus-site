@@ -95,6 +95,10 @@ test('IDs exceed all legacy records and stay increasing across restart and clock
  const data=seed(),future=Date.now()*1000+86400000000;data.feedback=[{id:String(future),user:'Alice',text:'seed',time:new Date().toISOString()}];
  await fixture(async({task,restart})=>{let last=future;for(let i=0;i<5;i++){const m=await task();assert.ok(m.id>last);last=m.id}await restart();assert.ok((await task()).id>last)},data);
 });
+test('health reports the configured full release commit for deployment verification',()=>fixture(async({call})=>{
+ const r=await call('/api/health');assert.equal(r.status,200);assert.equal(r.data.commit,'a'.repeat(40));
+},undefined,{releaseSha:'a'.repeat(40)}));
+
 test('successful mutations are on disk before acknowledgement and survive restart',()=>fixture(async({call,task,tmp,restart})=>{
  const m=await task(),saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));
  assert.equal(saved.users.Alice.points,99);assert.ok(saved.messages['校园跑'].some(x=>x.id===m.id));assert.ok(saved.lastId>=m.id);
