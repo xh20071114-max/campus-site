@@ -40,3 +40,8 @@ test('reassigned negotiated claims persist the current account identity without 
  assert.equal((await readTask()).claimedById,'account-Carol');await restart();assert.equal((await readTask()).claimedById,'account-Carol');
  const publicTask=(await call('/api/tasks?status=claimed','')).data.find(x=>x.id===m.id);assert.equal(publicTask.claimedBy,'Carol');assert.equal(publicTask.claimedById,undefined);
 }));
+
+test('deleted unclaimed task can be restored only by its owner and the post fee is restored too',()=>fixture(async({call,task,act})=>{
+ const m=await task('Alice',{text:'Restore this order'});assert.equal((await call('/api/my/points','Alice')).data.points,99);await act(m,'Alice','delete');assert.equal((await call('/api/my/points','Alice')).data.points,100);assert.equal((await act(m,'Bob','restore')).status,403);const restored=await act(m,'Alice','restore');assert.equal(restored.status,200);assert.equal(restored.data.text,'Restore this order');assert.equal(restored.data.deleted,false);assert.equal((await call('/api/my/points','Alice')).data.points,99);assert.equal((await act(m,'Alice','restore')).status,409);
+ await act(m,'Alice','delete');await call('/api/admin/users/Alice/points','AevonEcho',{delta:-100,reason:'test'});assert.equal((await act(m,'Alice','restore')).status,402);await call('/api/admin/users/Alice/points','AevonEcho',{delta:1,reason:'test'});assert.equal((await act(m,'Alice','restore')).status,200);
+}));

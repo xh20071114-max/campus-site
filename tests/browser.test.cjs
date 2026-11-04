@@ -28,7 +28,7 @@ test('payment status is presented as the publisher claim, not verified receipt',
 }));
 
 test('free completion request is clearly presented to the claimer',t=>fixture(async({base,task,act})=>{
- const m=await task('Alice',{text:'Consent workflow'});await act(m,'Bob','claim');await act(m,'Alice','complete');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Consent workflow'}).getByText('免付款申请待接单人确认',{exact:false}).waitFor();await page.locator('.m').filter({hasText:'Consent workflow'}).locator('[data-chat]').click();await page.locator('#tcP').getByRole('button',{name:'不同意'}).waitFor();page.on('dialog',d=>d.accept());await page.locator('#tcP').getByRole('button',{name:'不同意'}).click();await page.locator('#tcP').getByRole('button',{name:'我已完成'}).waitFor();
+ const m=await task('Alice',{text:'Consent workflow'});await act(m,'Bob','claim');await act(m,'Alice','complete');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Consent workflow'}).getByText('免付款申请待接单人确认',{exact:false}).waitFor();await page.locator('.m').filter({hasText:'Consent workflow'}).locator('[data-chat]').click();await page.locator('#tcP').getByRole('button',{name:'不同意'}).waitFor();page.on('dialog',d=>d.accept());await page.locator('#tcP').getByRole('button',{name:'不同意'}).click();await page.locator('#tcP').getByRole('button',{name:'提交完成说明'}).waitFor();
 }));
 
 test('slow admin chat polling remains single-flight and eventually shows replies',t=>fixture(async({base,task,act,call})=>{

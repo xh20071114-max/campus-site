@@ -28,7 +28,7 @@ async function fixture(run,data=seed(),options={}){
  try{await fs.writeFile(path.join(tmp,'data.json'),JSON.stringify(data));if(options.prepare)await options.prepare(tmp);try{server=await start(tmp,options)}catch(e){if(options.onStartFailure)await options.onStartFailure(tmp,e);throw e}
   const call=async(p,n='Alice',b)=>{const r=await fetch(server.base+p,{method:b===undefined?'GET':'POST',headers:{Authorization:'Bearer '+n,'Content-Type':'application/json'},...(b===undefined?{}:{body:JSON.stringify(b)})});return {status:r.status,data:await r.json()}};
   const task=async(n='Alice',extra={})=>{const r=await call(ch,n,{text:'Regression task',task:true,reward:'10元',...extra});assert.equal(r.status,200,JSON.stringify(r));return r.data};
-  const act=(m,n,a,b={})=>call(ch+'/'+m.id+'/'+a,n,b);
+  const act=(m,n,a,b={})=>call(ch+'/'+m.id+'/'+a,n,['finish','acceptfree'].includes(a)&&b.completionNote===undefined?{...b,completionNote:'已按任务要求完成工作并向发布人交付实际成果'}:b);
   await run({call,task,act,tmp,base:server.base,restart:async()=>{await sleep(250);await server.stop();server=await start(tmp)},advanceTime:async ms=>{const f=path.join(tmp,'clock');await fs.writeFile(f,String(Number(await fs.readFile(f,'utf8'))+ms))},waitForCrypto:async()=>{for(let i=0;i<200;i++){try{await fs.access(path.join(tmp,'crypto-started'));return}catch{}await sleep(10)}throw new Error('Crypto gate was not reached')},releaseCrypto:()=>fs.writeFile(path.join(tmp,'crypto-release'),'release')});
  }finally{if(server)await server.stop();const resolved=path.resolve(tmp);assert.ok(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('aevon-regression-'));await fs.rm(resolved,{recursive:true,force:true})}
 }

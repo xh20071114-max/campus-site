@@ -50,7 +50,7 @@ test('Sunday locks prizes, Monday credits ranks 4-10 once, and restarting does n
 });
 
 test('completing an actual task adds one completion and repeated confirmations do not add another',()=>fixture(async({call,task,act})=>{
- const m=await task('Alice',{text:'Count once'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');assert.equal((await act(m,'Bob','received')).status,200);assert.equal((await act(m,'Bob','received')).status,409);const board=(await call('/api/leaderboard','Bob')).data;if(board.live)assert.equal(board.live.rows.find(r=>r.mine).count,1);else assert.equal(board.live,null);
+ const m=await task('Alice',{text:'Count once'});await act(m,'Bob','claim');assert.equal((await call('/api/channels/'+encodeURIComponent('校园跑')+'/messages/'+m.id+'/finish','Bob',{completionNote:'短'})).status,400);await act(m,'Bob','finish');await act(m,'Alice','paid');assert.equal((await act(m,'Bob','received')).status,200);assert.equal((await act(m,'Bob','received')).status,409);const board=(await call('/api/leaderboard','Bob')).data;if(board.live)assert.equal(board.live.rows.find(r=>r.mine).count,1);else assert.equal(board.live,null);
 }));
 
 test('cash QR uploads are private, bound to the chosen period, preserve original bytes and use versioned payout records',async()=>{

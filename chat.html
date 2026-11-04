@@ -524,10 +524,10 @@ function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={cla
   const st=['接单','完成','标记付款','收款'].map((t,i)=>`<span class="${i<=idx?'on':''}">${t}</span>`).join('');
   const poster=m.user===me,taker=m.claimedBy===me,b=(a,l,col,cf)=>isBanned?'':`<button type="button" data-a="${a}" style="background:${col}"${cf?` data-c="${esc(cf)}"`:''}>${l}</button>`;let ac='';
   if(s==='done')ac='<small>🏁 交易完成'+(m.autoConfirmed?'（超时自动确认收款）':'')+'</small>'+(m.dispute||(m.claimerDeleted&&m.user===me)?'':(rated(m)?'<small>· 已评价</small>':b('rate','⭐ 评价对方','#f59e0b')));
-  else if(taker){if(s==='free_pending')ac='<small>发布人申请无需付款完成，请确认是否同意</small>'+b('acceptfree','同意无需付款','#16a34a','确认同意无需付款并完成订单吗？')+b('declinefree','不同意','#6b7280','不同意后订单继续进行。确认吗？');if(s==='claimed')ac=b('finish','我已完成','#16a34a','确认任务已经完成了吗？');
+  else if(taker){if(s==='free_pending')ac='<small>发布人申请无需付款完成，请确认是否同意</small>'+b('acceptfree','确认收到成果并完成','#16a34a','确认你已实际收到任务成果且无需付款吗？')+b('declinefree','不同意','#6b7280','不同意后订单继续进行。确认吗？');if(s==='claimed')ac=b('finish','提交完成说明','#16a34a','确认任务已经实际交付了吗？下一步发布人会核对交付内容。');
     if(s==='paid')ac+=b('received','确认收款','#4f46e5',`确认已经实际收到对方的付款了吗？确认后交易完成。\n${MONEY_NOTICE}`);
     if(s==='finished')ac+='<small>等对方付款</small>'}
-  else if(poster){if(s==='finished')ac=b('paid','我已付款','#4f46e5',`确认已经线下付款给对方了吗？\n${MONEY_NOTICE}`);
+  else if(poster){if(s==='finished')ac=b('paid','验收交付并标记付款','#4f46e5',`确认已实际收到任务成果并已线下付款吗？确认后才会计入接单奖励。\n${MONEY_NOTICE}`);
     else if(s==='claimed')ac='<small>等对方完成任务</small>'+b('complete','申请无需付款完成','#16a34a','普通任务需接单人同意；纯积分任务将直接完成。确认继续吗？');
     else if(s==='free_pending')ac='<small>等待接单人确认免付款申请</small>'+b('withdrawfree','撤回申请','#6b7280');
     else if(s==='paid')ac='<small>等对方确认收款</small>'}
@@ -535,8 +535,8 @@ function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={cla
   if((poster||taker)&&s!=='done'&&!m.claimerDeleted)ac+=b('dispute','⚠️ 申请平台介入','#dc2626');
   tcP.innerHTML=`<div class="st">${st}</div><div class="ac">${ac}</div>`;tcP.style.display='block';
   tcP.querySelectorAll('button').forEach(x=>x.onclick=()=>x.dataset.a==='qr'?pickImg(true):x.dataset.a==='rate'?rate(c.id):x.dataset.a==='dispute'?dispute():step(x.dataset.a,x.dataset.c,x))}
-async function step(a,cf,el){const c=tc;if(!c||(cf&&!confirm(cf)))return;el.disabled=true;
-  try{const r=await api('/api/channels/'+encodeURIComponent(c.ch)+'/messages/'+encodeURIComponent(c.id)+'/'+a,{method:'POST'});
+async function step(a,cf,el){const c=tc;if(!c||(cf&&!confirm(cf)))return;let body={};if(a==='finish'||a==='acceptfree'){const completionNote=prompt(a==='finish'?'简要说明完成并交付了什么（至少 10 个字）；照片可在任务私聊中补充。':'简要说明你实际收到的成果（至少 10 个字）。');if(completionNote===null)return;if(completionNote.trim().length<10){tcNote('交付说明至少需要 10 个字');return}body={completionNote:completionNote.trim()}}el.disabled=true;
+  try{const r=await api('/api/channels/'+encodeURIComponent(c.ch)+'/messages/'+encodeURIComponent(c.id)+'/'+a,{method:'POST',body:JSON.stringify(body)});
     if(r.status===401)return expired();if(!r.ok){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);return}if(d.status)c.task.status=d.status;tcNote(d.error||'操作失败，请稍后再试');if(c===tc){renderProg();pullChat()}refresh();return}
     tcNote('');const d=await r.json().catch(()=>({}));const t=d.task||d.message||d;if(t&&t.status)c.task.status=t.status;if(t&&t.status)c.task.done=t.status==='done'
     if(c===tc){renderProg();await pullChat()}loadMe();refresh()}
