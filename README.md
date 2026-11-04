@@ -174,7 +174,7 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 
 ## 交易流程和私聊图片
 - 任务带 `status`：open → claimed → finished → paid → done，另外还有 cancelled（已撤回）和 closed（管理员关闭）。
-- `POST /api/channels/<ch>/messages/<id>/finish`：接单人点「我已完成」。`/paid`：发布人点「我已付款」。`/received`：接单人点「确认收款」，任务变成 done，这时发奖励积分。`/complete`：发布人「无需付款，直接完成」，只允许在 claimed 状态使用。进入 finished 之后不能 kick、撤回或放弃接单。每一步都会在私聊里写一条系统消息（`type:'system'`）。
+- `POST /api/channels/<ch>/messages/<id>/finish`：接单人点「我已完成任务」。`/paid`：发布人核对交付并点「确认交付并标记已付款」。`/received`：接单人实际核实到账后点「确认收款」，任务变成 done，这时发奖励积分。`/complete`：发布人申请无需付款完成，普通任务还要接单人确认收到成果；仅纯积分奖励任务由发布人直接确认。每一步都会在私聊里写一条系统消息（`type:'system'`）。
 - `POST /api/admin/tasks/<id>/force {action:'done'|'close', reason, refundPost?, refundClaim?}`：管理员强制完成（发奖励）或关闭任务（按勾选退还积分）。接单人在 finished 或 paid 状态下删号时，标记 `claimerDeleted` 并转入 disputed，由管理员 force 处理。
 - `POST /api/tasks/<id>/chat/image`：请求体是 JPEG/PNG 二进制（Content-Type 填 image/*），或者 JSON `{data: base64 或 dataURL}`。不超过 300KB，后端检查文件头，每人每天最多 20 张，上传目录总量超过 500MB 返回 507。返回的私聊消息带 `image`（读图地址）。
 - `GET /api/tasks/<id>/chat/image/<消息id>`：权限和读私聊一样。可以用 Authorization 头请求，前端用 fetch 带头请求，再转成 blob 显示（不支持在地址里带 token）。上传时 JSON 里可以带 `kind:"payqr"` 和 `text`（最多 100 字）。图片存在 `DATA_DIR/uploads/<任务id>/`，静态目录访问不到。
@@ -187,9 +187,9 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - `GET /api/admin/backup`：下载 `aevon-backup-YYYY-MM-DD.json`，不含 sessions（登录令牌），也不含图片。
 - `sw.js`：service worker，只缓存静态文件，/api 和 admin 都不缓存。
 
-## 纠纷、自动确认、数据安全、图片清理
+## 纠纷、付款提醒、数据安全、图片清理
 - 「无需付款，直接完成」（complete/done）只能在 claimed 状态用，finished、paid 时返回 409。
-- paid 状态超过 48 小时没确认收款，系统会自动完成任务：任务带 `autoConfirmed:true`，并写一条系统消息，双方各收到一条 `auto` 动态。这个检查每 10 分钟跑一次。
+- paid 状态超过 48 小时仍未确认到账时，系统只发送一次提醒并保留待确认状态；不会替接单人确认收款或完成订单，因为平台无法核实线下付款是否实际到账。接单人如未到账可申请平台介入。检查每 10 分钟运行。
 - `POST /api/channels/<ch>/messages/<id>/dispute {reason}`：发布人或接单人在 claimed、finished、paid 状态下都能发起。
   - 发起后 `status` 变成 `disputed`，任务带 `dispute:{by,role,reason,time,from}`，对方收到一条 `dispute` 动态。
   - 之后所有状态动作都返回 409，也不会自动确认收款，只能由管理员用 `/api/admin/tasks/<id>/force` 处理。处理后 `dispute` 里会补上 `resolvedAt`、`resolution`、`resolvedBy` 和 `note`。私聊不受影响。
