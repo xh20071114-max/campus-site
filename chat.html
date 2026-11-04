@@ -42,7 +42,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 #extra{display:none;padding:12px 20px 0;background:#fff;border-top:1px solid #e5e7eb}
 #extra.show{display:block}
 #extra .hd{font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
-#extra .hd small{font-weight:400;color:#9ca3af}
+#extra .hd small{font-weight:400;color:#64748b}
 #extra .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
 #extra .fld{min-width:0;display:flex;align-items:center;gap:6px;border:1px solid #e5e7eb;border-radius:8px;padding:0 10px;background:#f9fafb}
 #extra .fld:focus-within{border-color:#4f46e5;background:#fff}
@@ -51,7 +51,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 #bal{font-size:12px;color:#6b7280;white-space:nowrap;align-self:center}#bal b{color:#4f46e5}
 #tip{display:none;background:#fef2f2;color:#991b1b;padding:8px 20px;font-size:13px}#tip a{color:#4f46e5;font-weight:600;margin-left:6px}
 .bonus-tag{background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;border-radius:4px;font-size:11px;padding:1px 7px;margin-left:6px;font-weight:600}
-@media(max-width:640px){#f{flex-wrap:wrap}#text{flex:1 1 100%}#f label{margin-right:auto}#f button{padding:10px 18px}#extra{padding:10px 10px 0}#extra .grid{grid-template-columns:repeat(2,minmax(0,1fr))}#extra .hd small{display:none}}
+@media(max-width:640px){#f{flex-wrap:wrap}#text{flex:1 1 100%}#f label{margin-right:auto}#f button{padding:10px 18px}#extra{padding:10px 10px 0}#extra .grid{grid-template-columns:repeat(2,minmax(0,1fr))}#extra .hd{align-items:flex-start;flex-direction:column;gap:2px}#extra .hd small{font-size:11px}}
 .m.bonus .txt{border-left-color:#ef4444;background:#fff7ed}
 .meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#92400e;margin-top:4px}
 .expired{margin-left:8px;color:#9ca3af;font-size:12px}
@@ -149,10 +149,10 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务标题或内容"><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
   <div id="msgs"></div>
   <div id="tip"></div>
-  <div id="extra"><div class="hd">📌 任务信息 <small>任务内容写在下方输入框，其余都是选填</small></div><div class="grid">
-    <label class="fld" title="报酬"><span>💰</span><input id="xReward" maxlength="20" placeholder="报酬，如 5元"></label>
-    <label class="fld" title="地点"><span>📍</span><input id="xPlace" maxlength="50" placeholder="地点，如 三食堂"></label>
-    <label class="fld" title="截止时间"><span>⏳</span><input id="xDeadline" type="datetime-local"></label>
+  <div id="extra"><div class="hd">📌 任务信息 <small>写清地点、时间和报酬更容易接单；暂未确定可留空</small></div><div class="grid">
+    <label class="fld" title="报酬"><span aria-hidden="true">💰</span><input id="xReward" aria-label="任务报酬" maxlength="20" placeholder="报酬，如 5元"></label>
+    <label class="fld" title="地点"><span aria-hidden="true">📍</span><input id="xPlace" aria-label="任务地点" maxlength="50" placeholder="地点，如 三食堂"></label>
+    <label class="fld" title="截止时间"><span aria-hidden="true">⏳</span><input id="xDeadline" aria-label="任务截止时间" type="datetime-local"></label>
     <label class="fld bonus" id="bonusF" title="奖励积分（仅管理员）" style="display:none"><span>🎁</span><input id="xBonus" type="number" min="0" step="1" placeholder="奖励积分"></label>
   </div></div>
   <div id="postBar"><button type="button" id="postBtn">＋ 发布任务</button><small id="postHint"></small></div>
@@ -248,7 +248,7 @@ async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]|
   catch(e){}finally{loadingOld=false;more_(false)}}
 function more_(on){const d=document.getElementById('more');if(d)d.textContent=on?'加载中…':(hasMore[cur]?'上滑加载更早的消息':'没有更早的消息了')}
 msgs.addEventListener('scroll',()=>{if(msgs.scrollTop<80)loadOlder()});
-function go(c){cur=c;forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));renderMsgs();refresh()}
+function go(c){cur=c;forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));updateTaskPrompt();renderMsgs();refresh()}
 function renderSide(){
   chs.innerHTML=CHANNELS.map(c=>{const last=c.lastId||0,r=seen[c.name]||0;let n='';
     if(c.name!==cur&&last>r){const l=cache[c.name];n=r?(l?l.filter(m=>m.id>r&&!m.deleted).length||'新':'新'):'新';if(n>99)n='99+'}
@@ -574,7 +574,9 @@ f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   if(!r.ok){await failed(r);return}
   composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
   }catch{alert('网络连接失败，请稍后重试')}finally{posting=false;[...f.elements].forEach(x=>x.disabled=isBanned||online===false)}};
-isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);text.placeholder=isTask.checked?'任务内容：要做什么、有什么要求（必填）':(touch?'发消息':'发消息，回车发送');renderPts()};
+const taskExamples={'校园跑':'写清路线、时长和时间要求（如陪跑 3 公里）','校园配送':'写清门店、商品和送达地点','代取快递':'写清取件点、包裹情况和送达地点','代课':'写清课程、教室、时间和需要协助的内容','代做作业':'写清科目、具体需求和截止时间'};
+function updateTaskPrompt(){text.placeholder=isTask.checked?(taskExamples[cur]||'任务内容：写清要做什么、地点和时间要求'):(touch?'发消息':'发消息，回车发送')}
+isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);updateTaskPrompt();renderPts()};
 text.onkeydown=e=>enterSend(e,f);
 if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
 renderMe();
