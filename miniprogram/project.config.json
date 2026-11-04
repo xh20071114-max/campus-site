@@ -1,14 +1,14 @@
 {
-  "appid": "touristappid",
+  "appid": "wx312deec0abd7330f",
   "compileType": "miniprogram",
   "libVersion": "3.6.6",
   "miniprogramRoot": "./",
   "projectname": "Aevon校园交流网",
   "setting": {
     "urlCheck": true,
-    "es6": true,
-    "enhance": true,
-    "postcss": true,
+    "es6": false,
+    "enhance": false,
+    "postcss": false,
     "minified": true,
     "compileHotReLoad": true
   }
