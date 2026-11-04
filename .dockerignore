@@ -9,5 +9,7 @@ data.corrupt-*.json
 backups
 uploads
 weekly-reward-qr
+pay-alipay.png
+pay-wechat.png
 server.log
 node_modules
