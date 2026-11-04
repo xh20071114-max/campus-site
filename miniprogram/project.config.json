@@ -5,7 +5,7 @@
   "miniprogramRoot": "./",
   "projectname": "Aevon校园交流网",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "es6": false,
     "enhance": false,
     "postcss": false,

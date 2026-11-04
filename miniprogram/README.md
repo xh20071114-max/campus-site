@@ -21,6 +21,8 @@
 4. 开发者工具保持“校验合法域名”开启，逐页检查布局、登录态和 API。`app.js` 中的 API 地址指向现有正式服务。
 5. 小程序的名称、服务类目、隐私保护指引、用户数据处理说明和审核发布需在真实主体账号中完成。
 
+Before real-device testing or release, add https://plgslzlexpmy.sealoshzh.site as a request legal domain in WeChat MP Admin (Development Management > Development Settings > Server Domains). urlCheck:false only supports local DevTools debugging and does not replace the platform allowlist.
+
 ## 本地预检
 
 在仓库根目录用 Node.js 20 运行：
@@ -30,4 +32,4 @@ node miniprogram/tests/preflight.cjs
 node --test miniprogram/tests/runtime.cjs
 ```
 
-目前尚未在绑定真实 AppID 的开发者工具中编译，也未提交微信审核或发布。正式发布前还需完成开发者工具编译、真机网络/图片检查以及微信平台审核。
+已使用真实 AppID 在开发者工具打开工程，模拟器逐页打开 10 个页面并验证首页 API 数据；本地预检与 8 项逻辑测试通过。真机网络/图片检查、服务器域名白名单确认、微信审核与发布仍待完成。
