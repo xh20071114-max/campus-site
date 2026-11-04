@@ -1,0 +1,9 @@
+<view wx:if="{{visible}}" class="privacy-mask">
+  <view class="privacy-card">
+    <text class="privacy-title">隐私授权</text>
+    <text class="privacy-copy">选择照片或拍摄图片用于订单私聊、周榜收款码提交。图片会上传到 Aevon 校园交流网，并按隐私说明向订单当事人或具备相应权限的管理员展示。</text>
+    <button class="privacy-link" bindtap="openContract">查看微信隐私保护指引</button>
+    <button class="privacy-agree" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agree">同意并继续</button>
+    <button class="privacy-deny" bindtap="disagree">暂不同意</button>
+  </view>
+</view>

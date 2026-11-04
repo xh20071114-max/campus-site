@@ -108,10 +108,11 @@ Page({
   },
   chooseImage(){
     if(!this.data.canWrite)return wx.showToast({title:'当前订单不可发送消息',icon:'none'});
-    wx.chooseImage({count:1,sizeType:['compressed'],sourceType:['album','camera'],success:r=>{
-      const file=r.tempFiles[0];
+    wx.chooseMedia({count:1,mediaType:['image'],sizeType:['compressed'],sourceType:['album','camera'],success:r=>{
+      const file=r.tempFiles&&r.tempFiles[0];
+      if(!file||!file.tempFilePath)return wx.showToast({title:'没有获取到所选图片，请重试',icon:'none'});
       if(file.size>300*1024)return wx.showToast({title:'图片不能超过 300KB，请选择压缩图',icon:'none'});
-      wx.getFileSystemManager().readFile({filePath:file.path,success:async x=>{
+      wx.getFileSystemManager().readFile({filePath:file.tempFilePath,success:async x=>{
         const bytes=new Uint8Array(x.data),type=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':'';
         if(!type)return wx.showToast({title:'只支持 JPEG 或 PNG 图片',icon:'none'});
         try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type}});this.load(true)}

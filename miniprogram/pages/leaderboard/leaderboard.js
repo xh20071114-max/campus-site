@@ -3,8 +3,9 @@ const api=require('../../utils/api');
 const MAX_QR_SIZE=2*1024*1024;
 
 function chooseQrImage(){
-  return new Promise((resolve,reject)=>wx.chooseImage({
+  return new Promise((resolve,reject)=>wx.chooseMedia({
     count:1,
+    mediaType:['image'],
     sizeType:['compressed'],
     sourceType:['album','camera'],
     success:result=>resolve(result.tempFiles&&result.tempFiles[0]),
@@ -38,7 +39,8 @@ Page({
       const file=await chooseQrImage();
       if(!file)throw new Error('没有选择收款码图片');
       if(Number.isFinite(file.size)&&file.size>MAX_QR_SIZE)throw new Error('图片不能超过 2MB');
-      const data=await readImage(file.path),bytes=new Uint8Array(data);
+      if(!file.tempFilePath)throw new Error('没有获取到所选收款码图片，请重试');
+      const data=await readImage(file.tempFilePath),bytes=new Uint8Array(data);
       const png=bytes.length>=8&&bytes[0]===137&&bytes[1]===80&&bytes[2]===78&&bytes[3]===71&&bytes[4]===13&&bytes[5]===10&&bytes[6]===26&&bytes[7]===10;
       const jpeg=bytes.length>=3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
       if(!png&&!jpeg)throw new Error('只支持 PNG 或 JPEG 收款码图片');

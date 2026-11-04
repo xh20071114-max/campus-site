@@ -25,9 +25,22 @@ for(const page of config.pages){
     assert.equal(typeof object[method[1]],'function',page+' missing handler '+method[1]);
 }
 
+const privacyDir=path.join(root,'components/privacy-popup');
+for(const file of ['index.js','index.json','index.wxml','index.wxss'])assert.ok(fs.existsSync(path.join(privacyDir,file)),'missing privacy component asset '+file);
+assert.equal(JSON.parse(fs.readFileSync(path.join(privacyDir,'index.json'),'utf8')).component,true);
+for(const page of ['pages/trade/trade','pages/leaderboard/leaderboard']){
+  const pageJson=JSON.parse(fs.readFileSync(path.join(root,page+'.json'),'utf8'));
+  assert.equal(pageJson.usingComponents['privacy-popup'],'/components/privacy-popup/index',page+' must mount the privacy prompt');
+  assert.ok(fs.readFileSync(path.join(root,page+'.wxml'),'utf8').includes('<privacy-popup id="privacyPopup"/>'),page+' must include the privacy prompt');
+  assert.ok(fs.readFileSync(path.join(root,page+'.js'),'utf8').includes('wx.chooseMedia'),page+' must use the current image picker API');
+}
+const privacyWxml=fs.readFileSync(path.join(privacyDir,'index.wxml'),'utf8');
+assert.ok(privacyWxml.includes('open-type="agreePrivacyAuthorization"')&&privacyWxml.includes('bindagreeprivacyauthorization="agree"'),'privacy consent must use the WeChat agreement button');
+
 let app;
 vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),{App(value){app=value},wx:{getStorageSync(){return ''}},console});
 assert.match(app.globalData.apiBase,/^https:\/\//,'API must use HTTPS');
+assert.ok(fs.readFileSync(path.join(root,'app.js'),'utf8').includes('wx.onNeedPrivacyAuthorization'),'app must route native privacy authorization requests');
 assert.equal(config.pages.length,10);
 assert.ok(fs.readFileSync(path.join(root,'..','.dockerignore'),'utf8').split(/\r?\n/).includes('miniprogram'),'mini program source must stay out of the website image');
 assert.ok(pageObjects.get('pages/trade/trade').act,'trade actions must be wired');

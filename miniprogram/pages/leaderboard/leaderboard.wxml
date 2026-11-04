@@ -10,5 +10,5 @@
     <view wx:for="{{myRewards}}" wx:key="key" class="notice reward-due"><text>{{item.key}} · 第 {{item.rank}} 名 · ¥{{item.cash}}：{{item.qrSubmitted?'收款码已提交，等待管理员处理':'待提交收款码'}}</text><button class="btn small" data-period="{{item.key}}" disabled="{{uploading}}" loading="{{uploading}}" bindtap="uploadQr">{{uploading?'提交中…':(item.qrSubmitted?'更新收款码':'提交收款码')}}</button></view>
   </view>
   <view class="card empty" wx:if="{{!locked&&!live}}">排行榜暂时没有数据</view><view class="notice" wx:if="{{error}}">{{error}}</view>
-</view>
+<privacy-popup id="privacyPopup"/></view>
 

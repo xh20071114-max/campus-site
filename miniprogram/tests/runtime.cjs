@@ -12,7 +12,7 @@ function harness(relative,api,dataOverrides,wxOverrides){
     getStorageSync:key=>key==='token'?'token':'',
     showToast(){},showModal(options){wx.lastModal=options},
     navigateTo(options){wx.lastNavigation=options},redirectTo(options){wx.lastNavigation=options},
-    downloadFile(){},chooseImage(){},getFileSystemManager(){return {readFile(){}}}
+    downloadFile(){},chooseMedia(){},getFileSystemManager(){return {readFile(){}}}
   },wxOverrides||{});
   const filename=path.join(root,relative);
   const source=fs.readFileSync(filename,'utf8');
@@ -32,6 +32,48 @@ function apiStub(handlers){
   };
   return api;
 }
+
+function appHarness(pages,wxOverrides){
+  let definition;
+  const wx=Object.assign({getStorageSync(){return ''},setStorageSync(){},removeStorageSync(){}},wxOverrides||{});
+  vm.runInNewContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),{App(value){definition=value},wx,getCurrentPages(){return pages||[]},console});
+  definition.onLaunch();
+  return {app:definition,wx};
+}
+
+function privacyComponentHarness(){
+  let definition;
+  const wx={openPrivacyContract(options){if(options.success)options.success({})},showToast(){}};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'components/privacy-popup/index.js'),'utf8'),{Component(value){definition=value},wx,console});
+  const component=Object.assign({},definition,definition.methods,{data:Object.assign({},definition.data),setData(value){Object.assign(this.data,value)}});
+  return {component,wx};
+}
+
+test('native privacy requests are routed to the active page prompt and fail closed without one',()=>{
+  let listener,forwarded;
+  const page={selectComponent(selector){assert.equal(selector,'#privacyPopup');return {requestAuthorization(resolve){forwarded=resolve}}}};
+  appHarness([page],{onNeedPrivacyAuthorization(fn){listener=fn}});
+  const results=[];listener(result=>results.push(result));forwarded({event:'agree'});
+  assert.equal(results[0].event,'agree');
+  let missingListener;
+  appHarness([],{onNeedPrivacyAuthorization(fn){missingListener=fn}});
+  const missing=[];missingListener(result=>missing.push(result));
+  assert.equal(missing[0].event,'disagree');
+});
+
+test('privacy popup opens the platform contract and resolves only after an explicit choice',()=>{
+  const {component}=privacyComponentHarness(),results=[];
+  component.requestAuthorization(result=>results.push(result));
+  assert.equal(component.data.visible,true);
+  component.openContract();
+  component.agree({detail:{buttonId:'privacy-agree'}});
+  assert.equal(component.data.visible,false);
+  assert.equal(results[0].event,'agree');
+  assert.equal(results[0].buttonId,'privacy-agree');
+  component.requestAuthorization(result=>results.push(result));
+  component.disagree();
+  assert.equal(results[1].event,'disagree');
+});
 
 test('login requires explicit agreement before sending credentials',async()=>{
   const api=apiStub({post:async()=>{throw new Error('must not call')}});
@@ -180,7 +222,7 @@ test('weekly reward QR picker prevents duplicate taps and reports selection fail
   const toasts=[];
   const api=apiStub({request:async()=>({})});
   const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
-    chooseImage(options){chooseCalls++;picker=options},
+    chooseMedia(options){chooseCalls++;picker=options},
     showToast(options){toasts.push(options)}
   });
   const event={currentTarget:{dataset:{period:'2026-11-02'}}};
@@ -189,13 +231,13 @@ test('weekly reward QR picker prevents duplicate taps and reports selection fail
   assert.equal(chooseCalls,1);
   await page.uploadQr(event);
   assert.equal(chooseCalls,1);
-  picker.fail({errMsg:'chooseImage:fail cancel'});
+  picker.fail({errMsg:'chooseMedia:fail cancel'});
   await pending;
   assert.equal(page.data.uploading,false);
   assert.equal(toasts.length,0);
 
   const failed=page.uploadQr(event);
-  picker.fail({errMsg:'chooseImage:fail auth deny'});
+  picker.fail({errMsg:'chooseMedia:fail auth deny'});
   await failed;
   assert.equal(page.data.uploading,false);
   assert.equal(toasts.length,1);
@@ -207,7 +249,7 @@ test('weekly reward QR upload rejects unsupported image formats before sending',
   const toasts=[];
   const api=apiStub({request:async()=>{throw new Error('unsupported image must not be uploaded')}});
   const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
-    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:24}]})},
+    chooseMedia(options){options.success({tempFiles:[{tempFilePath:'selected-image',size:24}]})},
     getFileSystemManager(){return {readFile(options){options.success({data:new Uint8Array([1,2,3,4]).buffer})}}},
     showToast(options){toasts.push(options)}
   });
@@ -225,7 +267,7 @@ test('weekly reward QR upload sends PNG bytes with the correct content type',asy
     get:async()=>({live:null,locked:null,myRewards:[]})
   });
   const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
-    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:bytes.length}]})},
+    chooseMedia(options){options.success({tempFiles:[{tempFilePath:'selected-image',size:bytes.length}]})},
     getFileSystemManager(){return {readFile(options){options.success({data:bytes.buffer})}}},
     showToast(options){toasts.push(options)}
   });
@@ -243,7 +285,7 @@ test('weekly reward QR upload reports local file read failures and clears busy s
   const toasts=[];
   const api=apiStub({request:async()=>({})});
   const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
-    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:24}]})},
+    chooseMedia(options){options.success({tempFiles:[{tempFilePath:'selected-image',size:24}]})},
     getFileSystemManager(){return {readFile(options){options.fail(new Error('disk unavailable'))}}},
     showToast(options){toasts.push(options)}
   });
