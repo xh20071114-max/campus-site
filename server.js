@@ -29,7 +29,7 @@ const parseDB=t=>{const d=JSON.parse(t),object=x=>!!x&&typeof x==='object'&&!Arr
   check(object(d),'根对象');for(const k of ['users','messages'])check(Object.hasOwn(d,k)&&object(d[k]),k);
   for(const k of ['sessions','deletedTexts','settings','taskChats','chatRead','events','offers','imgDaily','savedTasks'])if(Object.hasOwn(d,k))check(object(d[k]),k);
   for(const k of ['ledger','recharges','feedback','reports','announcements','weeklyRewards'])if(Object.hasOwn(d,k))check(Array.isArray(d[k])&&d[k].every(object),k);
-  for(const k of ['weeklyRewardsStartedAt','weeklyProofStartAt'])if(Object.hasOwn(d,k))check(Number.isFinite(Date.parse(d[k])),k);
+  for(const k of ['weeklyRewardsStartedAt'])if(Object.hasOwn(d,k))check(Number.isFinite(Date.parse(d[k])),k);
   const rewardKeys=new Set();for(const p of d.weeklyRewards||[]){
     check(/^\d{4}-\d{2}-\d{2}$/.test(p.key)&&!rewardKeys.has(p.key)&&Number.isFinite(Date.parse(p.startAt))&&Date.parse(p.endAt)-Date.parse(p.startAt)===6*864e5&&Array.isArray(p.rows)&&p.rows.length<=10,'weeklyRewards 记录');rewardKeys.add(p.key);
     const ids=new Set(),ranks=new Set();for(const r of p.rows){
@@ -79,7 +79,7 @@ for(const k of ['ledger','recharges','feedback','reports','announcements']) if(A
 db.lastId=lastId;
 const newId=()=>{lastId=Math.max(Date.now()*1000,lastId+1);if(!Number.isSafeInteger(lastId))throw new Error('ID 超出安全整数范围');return db.lastId=lastId};
 for(const u of Object.values(db.users)) if(!u.id)u.id=crypto.randomUUID();
-for(const c of CHANNELS)for(const m of db.messages[c]){if(m.claimedBy&&!m.claimedById&&db.users[m.claimedBy])m.claimedById=db.users[m.claimedBy].id;if(m.task&&!m.posterId&&db.users[m.user])m.posterId=db.users[m.user].id}
+for(const c of CHANNELS)for(const m of db.messages[c])if(m.claimedBy&&!m.claimedById&&db.users[m.claimedBy])m.claimedById=db.users[m.claimedBy].id
 // 临时文件写入并 fsync 后再替换主库。接口成功响应前会刷新待写数据。
 // 写盘失败时停止接受操作并退出，避免在未保存的余额上继续交易。
 let persistTimer=null,storageError=null;
@@ -146,14 +146,12 @@ const mondayOne=(input=Date.now())=>{const shifted=new Date(input+SHANGHAI_OFFSE
   const localMonday=Date.UTC(shifted.getUTCFullYear(),shifted.getUTCMonth(),shifted.getUTCDate()-day,1)-SHANGHAI_OFFSET;
   return localMonday>input?localMonday-REWARD_ROUND_MS:localMonday};
 const periodKey=start=>new Date(start+SHANGHAI_OFFSET).toISOString().slice(0,10);
-if(!db.weeklyProofStartAt)db.weeklyProofStartAt=new Date(Date.now()).toISOString();
 if(!db.weeklyRewardsStartedAt){const now=Date.now(),current=mondayOne(now),first=current+(now>=current+REWARD_LOCK_MS?REWARD_ROUND_MS:0);
   db.weeklyRewardsStartedAt=new Date(db.weeklyRewards.length?Math.min(...db.weeklyRewards.map(p=>Date.parse(p.startAt))):first).toISOString()}
 for(const period of db.weeklyRewards)for(const row of period.rows)if(row.qrFile&&!row.qrVersion)row.qrVersion=crypto.randomUUID();
 const completedCounts=(start,end)=>{const counts=new Map(),seen=new Set();for(const c of CHANNELS)for(const m of db.messages[c]){
   if(!m.task||!m.done||!m.doneAt||!m.claimedBy||m.claimerDeleted||m.deleted||m.cancelled||m.closed||m.user===m.claimedBy||seen.has(String(m.id)))continue;
   const done=Date.parse(m.doneAt);if(!Number.isFinite(done)||done<start||done>=end)continue;
-  if(done>=Date.parse(db.weeklyProofStartAt)&&(!m.completionSubmittedAt||m.completionSubmittedById!==m.claimedById||!m.deliveryConfirmedAt||m.deliveryConfirmedById!==m.posterId))continue;
   const uid=m.claimedById;if(!uid||db.users[m.claimedBy]?.id!==uid)continue;seen.add(String(m.id));
   const row=counts.get(uid)||{userId:uid,username:m.claimedBy,count:0,lastDoneAt:0};row.count++;row.lastDoneAt=Math.max(row.lastDoneAt,done);counts.set(uid,row)}
   return [...counts.values()].sort((a,b)=>b.count-a.count||a.lastDoneAt-b.lastDoneAt||a.username.localeCompare(b.username,'zh-CN')).slice(0,10).map((x,i)=>({...x,rank:i+1}))};
@@ -248,8 +246,7 @@ const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOv
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
 const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
-  delete o.formerClaims;delete o.claimedById;delete o.posterId;
-  if(!full){delete o.completionNote;delete o.completionSubmittedById;delete o.deliveryConfirmedById}
+  delete o.formerClaims;delete o.claimedById;delete o.posterId;delete o.completionNote;delete o.completionSubmittedById;delete o.completionSubmittedAt;delete o.deliveryConfirmedAt;delete o.deliveryConfirmedById
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
 const alive=x=>!x.deleted&&!x.cancelled;
@@ -705,22 +702,19 @@ const handle=async(req,res)=>{
             if(cr){addPoints(msg.claimedBy,cr,'refund','任务超时被撤回，退还接单积分',msg.id);msg.claimRefunded=true}
             sysChat(msg,'任务超时，发布人撤回了任务'+(cr?'，已退还接单人 '+cr+' 积分':''))}
           msg.cancelled=true;msg.cancelledAt=now; if(msg.cost&&!msg.refunded){addPoints(msg.user,msg.cost,'refund','撤回任务退还',msg.id);msg.refunded=true}
-        } else if(act==='finish'||act==='paid'||act==='received'){ // 接单人提交交付说明 → 发布人验收并付款 → 接单人确认到账
+        } else if(act==='finish'||act==='paid'||act==='received'){ // 接单人完成 → 发布人确认交付并标记付款 → 接单人确认到账
           if(msg.done) return send(res,409,{error:'任务已完成'});
           const st=status(msg), need={finish:'claimed',paid:'finished',received:'paid'}[act], who=act==='paid'?msg.user:msg.claimedBy;
           if(!msg.claimedBy) return send(res,400,{error:'任务还没人接单'});
-          if(n!==who||(act!=='paid'&&msg.claimerDeleted)) return send(res,403,{error:act==='paid'?'只有发布人能点「我已付款」':'只有接单人能操作'});
+          if(n!==who||(act!=='paid'&&msg.claimerDeleted)) return send(res,403,{error:act==='paid'?'只有发布人能确认交付并标记付款':'只有接单人能操作'});
           if(st!==need) return send(res,409,{error:'当前状态不能这样操作',status:st});
-          if(act==='finish'){const b=await body(req),note=str(b.completionNote,300);if(note.length<10)return send(res,400,{error:'请填写至少 10 个字的交付说明，写明完成内容；照片可在任务私聊中补充'});
-            msg.completionNote=note;msg.completionSubmittedById=db.users[n].id;msg.completionSubmittedAt=now;msg.stage='finished';msg.finishedAt=now;sysChat(msg,n+' 提交了交付说明，等待发布人验收：'+note)}
-          else if(act==='paid'){if(!msg.completionSubmittedAt||msg.completionSubmittedById!==db.users[msg.claimedBy]?.id)return send(res,409,{error:'缺少接单人的交付说明，请刷新订单'});
-            msg.stage='paid';msg.paidAt=now;msg.deliveryConfirmedAt=now;msg.deliveryConfirmedById=db.users[n].id;sysChat(msg,'发布人已确认任务成果实际交付并标记付款，等待接单人确认到账')}
+          if(act==='finish'){msg.stage='finished';msg.finishedAt=now;sysChat(msg,n+' 已标记任务完成，等待发布人确认交付并付款')}
+          else if(act==='paid'){msg.stage='paid';msg.paidAt=now;sysChat(msg,'发布人已确认任务交付并标记付款，等待接单人确认到账')}
           else {finishTask(msg,now);sysChat(msg,n+' 已确认收款，任务完成')}
         } else if(['acceptfree','declinefree','withdrawfree'].includes(act)){
           if(status(msg)!=='free_pending')return send(res,409,{error:'当前没有等待确认的免付款申请'});
           if(act==='withdrawfree'?!isPoster(msg,n):!isClaimer(msg,n))return send(res,403,{error:act==='withdrawfree'?'只有发布人能撤回申请':'只有接单人能处理申请'});
-          if(act==='acceptfree'){const b=await body(req),note=str(b.completionNote,300);if(note.length<10)return send(res,400,{error:'请填写至少 10 个字的交付说明，写明收到的任务成果'});
-            msg.completionNote=note;msg.completionSubmittedById=db.users[n].id;msg.completionSubmittedAt=now;msg.deliveryConfirmedAt=now;msg.deliveryConfirmedById=db.users[msg.user].id;finishTask(msg,now);sysChat(msg,n+' 确认收到了任务成果，交付说明：'+note)}
+          if(act==='acceptfree'){finishTask(msg,now);sysChat(msg,n+' 确认收到任务成果，双方同意无需付款，任务完成')}
           else {delete msg.stage;sysChat(msg,act==='withdrawfree'?'发布人撤回了免付款申请':'接单人不同意免付款，任务继续进行')}
         } else { // 纯积分任务由发布人确认；其他任务需接单人同意无需付款
           if(msg.user!==n) return send(res,403,{error:"只有发布者能确认完成"});
@@ -1014,7 +1008,7 @@ const handle=async(req,res)=>{
         const b=await body(req); if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'消息不能为空'});
         for(const k of ['reward','place','deadline']) if(b[k]!=null&&typeof b[k]!=='string'&&typeof b[k]!=='number') return send(res,400,{error:k+' 格式不对'});
         if(!b.task&&!can(n,'postOfficial')) return send(res,403,{error:'频道里只能发布任务'});
-        const msg={id:newId(),user:n,posterId:db.users[n].id,text:String(b.text).slice(0,2000),task:!!b.task,time:new Date().toISOString()};
+        const msg={id:newId(),user:n,text:String(b.text).slice(0,2000),task:!!b.task,time:new Date().toISOString()};
         if(can(n,'postOfficial')) msg.official=true;
         if(msg.task){
           const reward=str(b.reward,20),place=str(b.place,50);
