@@ -148,3 +148,45 @@ test('home keeps channels and announcements visible when task loading fails',asy
   assert.equal(page.data.tasks.length,0);
   assert.match(page.data.loadError,/任务/);
 });
+
+test('weekly reward QR picker prevents duplicate taps and reports selection failures',async()=>{
+  let picker,chooseCalls=0;
+  const toasts=[];
+  const api=apiStub({request:async()=>({})});
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
+    chooseImage(options){chooseCalls++;picker=options},
+    showToast(options){toasts.push(options)}
+  });
+  const event={currentTarget:{dataset:{period:'2026-11-02'}}};
+  const pending=page.uploadQr(event);
+  assert.equal(page.data.uploading,true);
+  assert.equal(chooseCalls,1);
+  await page.uploadQr(event);
+  assert.equal(chooseCalls,1);
+  picker.fail({errMsg:'chooseImage:fail cancel'});
+  await pending;
+  assert.equal(page.data.uploading,false);
+  assert.equal(toasts.length,0);
+
+  const failed=page.uploadQr(event);
+  picker.fail({errMsg:'chooseImage:fail auth deny'});
+  await failed;
+  assert.equal(page.data.uploading,false);
+  assert.equal(toasts.length,1);
+  assert.match(toasts[0].title,/检查权限/);
+  assert.equal(api.calls.some(x=>x[0]==='request'),false);
+});
+
+test('weekly reward QR upload rejects unsupported image formats before sending',async()=>{
+  const toasts=[];
+  const api=apiStub({request:async()=>{throw new Error('unsupported image must not be uploaded')}});
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
+    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:24}]})},
+    getFileSystemManager(){return {readFile(options){options.success({data:new Uint8Array([1,2,3,4]).buffer})}}},
+    showToast(options){toasts.push(options)}
+  });
+  await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
+  assert.equal(page.data.uploading,false);
+  assert.equal(api.calls.some(x=>x[0]==='request'),false);
+  assert.match(toasts[0].title,/PNG 或 JPEG/);
+});

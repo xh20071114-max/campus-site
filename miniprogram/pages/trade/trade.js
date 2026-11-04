@@ -70,7 +70,7 @@ Page({
         try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type}});this.load(true)}
         catch(e){api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
       },fail:()=>wx.showToast({title:'读取图片失败',icon:'none'})});
-    }});
+    },fail:error=>{const detail=error&&error.errMsg||'';if(!/cancel/i.test(detail))wx.showToast({title:'选择图片失败，请检查权限后重试',icon:'none'})}});
   },
   previewImage(e){wx.previewImage({current:e.currentTarget.dataset.src,urls:[e.currentTarget.dataset.src]})},
   claim(){

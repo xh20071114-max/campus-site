@@ -32,6 +32,8 @@ assert.equal(config.pages.length,10);
 assert.ok(fs.readFileSync(path.join(root,'..','.dockerignore'),'utf8').split(/\r?\n/).includes('miniprogram'),'mini program source must stay out of the website image');
 assert.ok(pageObjects.get('pages/trade/trade').act,'trade actions must be wired');
 assert.ok(pageObjects.get('pages/channel/channel').publish,'task publishing must be wired');
+const leaderboardWxml=fs.readFileSync(path.join(root,'pages/leaderboard/leaderboard.wxml'),'utf8');
+assert.ok(leaderboardWxml.includes('disabled="{{uploading}}"')&&leaderboardWxml.includes('loading="{{uploading}}"'),'reward image upload buttons must block duplicate submissions');
 const ordersWxml=fs.readFileSync(path.join(root,'pages/orders/orders.wxml'),'utf8');
 assert.ok(ordersWxml.includes('!item.deleted&&!item.formerClaim'),'former claim history must not offer private chat');
 assert.ok(ordersWxml.includes('本记录不再开放原订单私聊'),'former claim history must explain why chat is unavailable');
