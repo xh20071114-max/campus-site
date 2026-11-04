@@ -40,6 +40,12 @@ test('mobile utility controls stay above the interactive content on recharge and
  }
 }));
 
+test('login utility controls remain below the form on a short mobile screen',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Alice',[],{viewport:{width:390,height:600},hasTouch:true});await page.goto(base+'/login.html');await page.locator('#quickActions #openTaskHall').waitFor();await page.locator('#quickActions #supportBtn').waitFor();await page.locator('#quickActions #fbBtn').waitFor();
+ const layout=await page.evaluate(()=>{const box=document.querySelector('.box'),actions=document.querySelector('#quickActions'),a=actions.getBoundingClientRect(),b=box.getBoundingClientRect();return {positions:['openTaskHall','supportBtn','fbBtn'].map(id=>getComputedStyle(document.getElementById(id)).position),inside:['openTaskHall','supportBtn','fbBtn'].every(id=>document.getElementById(id).parentElement===actions),boxBottom:b.bottom,actionsTop:a.top,actionsBottom:a.bottom,scrollWidth:document.documentElement.scrollWidth}});
+ assert.equal(layout.inside,true);assert.ok(layout.positions.every(x=>x==='static'),'login utility controls should stay in normal flow');assert.ok(layout.actionsTop>=layout.boxBottom,'utility controls must not cover the login form');assert.ok(layout.actionsBottom<=600,'utility controls should remain visible on the tested short viewport');assert.ok(layout.scrollWidth<=390,'login page should fit narrow mobile width');await page.screenshot({path:'.review/ui-login-short-mobile.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.review/ui-login-mobile.png'});
+}));
+
 test('payment status is presented as the publisher claim, not verified receipt',t=>fixture(async({base,task,act})=>{
  const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('待接单人核实到账',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人已标记付款，请核实实际到账后确认收款',{exact:false}).first().waitFor();await page.locator('#ordersOpen').click();await page.locator('#orderRows').getByText('待接单人核实到账',{exact:true}).first().waitFor();
 }));

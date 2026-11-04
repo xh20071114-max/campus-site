@@ -9,7 +9,11 @@ button,a{-webkit-tap-highlight-color:transparent}
 .ui-chat #notice{background:#fff1f2;border-color:#fecaca;color:#991b1b}.ui-chat #notice .nm,.ui-chat #notice #nMini{color:#b91c1c!important}.ui-chat #notice .na button{color:#b91c1c;border-color:#fecaca;background:#fff}
 .ui-chat .ev.u,.ui-me .ev li.u{background:#fff1f2;color:#991b1b;border-radius:9px}.ui-chat .ev.u{padding:10px}.ui-me .ev li.u{padding:10px}.ui-chat .ev.u small,.ui-me .ev li.u small{color:#9f4b4b}
 .ui-me .order-overview .t,.ui-me .stat,.ui-recharge .card{border:1px solid var(--ui-line)}
-.ui-login .box{max-width:calc(100vw - 32px);border-radius:20px}.ui-admin .tabs button.on{font-weight:700}
+.ui-login{min-height:100vh;min-height:100dvh;flex-direction:column;gap:12px;padding:16px}
+.ui-login .box{max-width:calc(100vw - 32px);border-radius:20px}
+.ui-login .site-quick-actions{width:min(340px,calc(100vw - 32px));max-width:340px;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:stretch;gap:6px}
+.ui-login .site-quick-actions #openTaskHall.inSlot,.ui-login .site-quick-actions #supportBtn.inSlot,.ui-login .site-quick-actions #fbBtn.inSlot{position:static;width:100%;min-width:0;min-height:42px;margin:0;padding:7px 2px;border-radius:10px;font-size:12px;line-height:1.2;text-align:center;white-space:nowrap;box-shadow:none}
+.ui-admin .tabs button.on{font-weight:700}
 .site-quick-actions{max-width:1100px;margin:10px auto 0;padding:0 20px;display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:8px}
 .ui-recharge .site-quick-actions{max-width:760px}
 .ui-chat .site-quick-actions{max-width:none;margin:6px 0;padding:0 14px;display:flex;justify-content:flex-end}
@@ -26,4 +30,5 @@ button,a{-webkit-tap-highlight-color:transparent}
  .site-quick-actions{margin:8px auto 0;padding:0 14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
  .site-quick-actions #openTaskHall.inSlot,.site-quick-actions #supportBtn.inSlot,.site-quick-actions #fbBtn.inSlot{width:100%;min-width:0;min-height:42px;margin:0;padding:8px 3px;border-radius:12px;font-size:12px;line-height:1.2;text-align:center;white-space:nowrap;box-shadow:none}
 }
+@media(max-height:640px){.ui-login{justify-content:flex-start}}
 .orders-summary .needs-action{background:#fff1f2;border-color:#fecaca;color:#991b1b}.orders-summary .needs-action b{color:#b91c1c}
