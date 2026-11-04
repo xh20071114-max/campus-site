@@ -27,6 +27,7 @@
 
 ```sh
 node miniprogram/tests/preflight.cjs
+node --test miniprogram/tests/runtime.cjs
 ```
 
 目前尚未在绑定真实 AppID 的开发者工具中编译，也未提交微信审核或发布。正式发布前还需完成开发者工具编译、真机网络/图片检查以及微信平台审核。
