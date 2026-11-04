@@ -23,6 +23,17 @@ test('site pages fit narrow mobile and order controls have separate space',t=>fi
  await page.setViewportSize({width:1280,height:900});await page.goto(base+'/chat.html');await page.locator('#ordersOpen').waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/ui-chat-desktop.png'});
 }));
 
+test('mobile utility controls stay above the interactive content on recharge and personal center',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Alice',[],{viewport:{width:390,height:844},hasTouch:true});
+ for(const path of ['/recharge.html','/me.html']){
+  await page.goto(base+path);await page.locator('#quickActions #openTaskHall').waitFor();await page.locator('#quickActions #supportBtn').waitFor();await page.locator('#quickActions #fbBtn').waitFor();
+  await page.locator(path==='/recharge.html'?'#main .card:first-child':'#main .hi').waitFor();
+  const layout=await page.evaluate(()=>{const actions=document.querySelector('#quickActions'),content=document.querySelector('#main .hi')||document.querySelector('#main .card'),a=actions.getBoundingClientRect(),c=content.getBoundingClientRect();return {inside:!!actions&&['openTaskHall','supportBtn','fbBtn'].every(id=>document.getElementById(id)?.parentElement===actions),positions:['openTaskHall','supportBtn','fbBtn'].map(id=>getComputedStyle(document.getElementById(id)).position),actionsBottom:a.bottom,contentTop:c.top}});
+  assert.equal(layout.inside,true,path+' should keep utility controls in the shared action row');assert.ok(layout.positions.every(x=>x==='static'),path+' utility actions must not float over content');assert.ok(layout.actionsBottom<=layout.contentTop,path+' action row should precede the main form/cards');
+  await page.screenshot({path:'.review/ui-'+(path==='/recharge.html'?'recharge':'me')+'-mobile.png',fullPage:true});
+ }
+}));
+
 test('payment status is presented as the publisher claim, not verified receipt',t=>fixture(async({base,task,act})=>{
  const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('待接单人核实到账',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人已标记付款，请核实实际到账后确认收款',{exact:false}).first().waitFor();await page.locator('#ordersOpen').click();await page.locator('#orderRows').getByText('待接单人核实到账',{exact:true}).first().waitFor();
 }));

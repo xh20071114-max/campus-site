@@ -17,7 +17,7 @@
   document.head.appendChild(css);
   var b=document.createElement('button');b.id='fbBtn';b.type='button';b.innerHTML='💡<span class="l"> 建议</span>';b.setAttribute('aria-label','给管理员提建议');b.title='给管理员提建议';
   var m=document.createElement('div');m.id='fbMask';m.innerHTML='<div id="fbBox"></div>';
-  var slot=document.getElementById('fbSlot');if(slot){b.className='inSlot';slot.appendChild(b)}else{document.body.appendChild(b);document.body.classList.add('fbPad')}document.body.appendChild(m);
+  var slot=document.getElementById('fbSlot')||document.getElementById('quickActions');if(slot){b.className='inSlot';slot.appendChild(b)}else{document.body.appendChild(b);document.body.classList.add('fbPad')}document.body.appendChild(m);
   var box=m.firstChild;
   function close(){m.classList.remove('on')}
   m.addEventListener('click',function(e){if(e.target===m)close()});
@@ -53,7 +53,7 @@
 // 独立联系入口：普通登录或仅用于申诉的短期凭证均可使用。
 (function(){
   var style=document.createElement('style');style.textContent='#supportBtn{position:fixed;right:18px;bottom:72px;z-index:49;background:#1e3a8a;color:white;border:0;border-radius:20px;padding:10px 14px;cursor:pointer;font:14px sans-serif}#supportBtn.inSlot{position:static;padding:5px 10px;margin-left:6px}#supportMask{position:fixed;inset:0;background:#0008;z-index:70;display:none;align-items:center;justify-content:center;padding:16px}#supportMask.on{display:flex}#supportBox{background:white;color:#1f2937;border-radius:14px;padding:18px;width:100%;max-width:520px;max-height:85vh;overflow:auto;font:14px/1.6 sans-serif}#supportBox textarea,#supportBox input{display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:10px;border:1px solid #d1d5db;border-radius:8px;font:inherit}#supportBox button,#supportBox a{cursor:pointer;padding:8px 12px;border:0;border-radius:8px}#supportBox article{background:#f5f7fb;border-radius:8px;padding:10px;margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere}#supportBox small{color:#6b7280}';document.head.append(style);
-  var button=document.createElement('button');button.id='supportBtn';button.type='button';button.textContent='联系管理员';var slot=document.getElementById('fbSlot');if(slot){button.className='inSlot';slot.append(button)}else document.body.append(button);
+  var button=document.createElement('button');button.id='supportBtn';button.type='button';button.textContent='联系管理员';var slot=document.getElementById('fbSlot')||document.getElementById('quickActions');if(slot){button.className='inSlot';slot.append(button)}else document.body.append(button);
   var mask=document.createElement('div');mask.id='supportMask';mask.innerHTML='<section id="supportBox" role="dialog" aria-label="联系管理员" aria-modal="true"></section>';document.body.append(mask);var box=mask.firstChild,seq=0,currentToken=null;
   var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
   var close=function(){seq++;mask.classList.remove('on');box.replaceChildren();currentToken=null};mask.onclick=function(e){if(e.target===mask)close()};document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});
