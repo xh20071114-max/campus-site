@@ -1,0 +1,41 @@
+<view class="page login">
+  <view class="card">
+    <text class="title">{{register?'创建校园账号':'欢迎回来'}}</text>
+    <view class="muted intro">Aevon 校园互助 · 账号与网站通用</view>
+    <view class="stack form">
+      <input class="input" placeholder="用户名（2–16 位）" maxlength="16" value="{{username}}" bindinput="onUser"/>
+      <input class="input" password placeholder="密码（至少 6 位）" value="{{password}}" bindinput="onPassword"/>
+      <input wx:if="{{register}}" class="input" password placeholder="再次输入密码" value="{{password2}}" bindinput="onPassword2"/>
+    </view>
+    <checkbox-group class="consent-group" bindchange="onAgreement">
+      <label class="consent">
+        <checkbox value="agree" checked="{{agreed}}" color="#173b8f"/>
+        <text>我已阅读并同意</text>
+        <text class="legal-link" catchtap="openLegal">《用户协议与隐私说明》</text>
+      </label>
+    </checkbox-group>
+    <view class="notice" wx:if="{{error}}">{{error}}</view>
+    <button class="btn" loading="{{busy}}" disabled="{{busy}}" bindtap="submit">{{busy?'请稍候…':(register?'注册并登录':'登录')}}</button>
+    <button class="link" bindtap="toggle">{{register?'已有账号？去登录':'没有账号？注册'}}</button>
+  </view>
+  <view class="card appeal" wx:if="{{appealToken}}">
+    <text class="section-title">联系管理员 / 封禁申诉</text>
+    <view class="muted" wx:if="{{banReason}}">封禁原因：{{banReason}}</view>
+    <view class="muted" wx:if="{{adminContact}}">管理员联系方式：{{adminContact}}</view>
+    <textarea class="input appeal-text" maxlength="1000" placeholder="说明遇到的问题，管理员会在站内回复" value="{{supportText}}" bindinput="onSupportText"/>
+    <input class="input" maxlength="100" placeholder="联系方式（选填）" value="{{supportContact}}" bindinput="onSupportContact"/>
+    <button class="btn" bindtap="submitAppeal">发送给管理员</button>
+    <view class="support-item" wx:for="{{supportMessages}}" wx:key="id">
+      <view class="muted">我的留言 · {{item.time}}</view>
+      <view>{{item.text}}</view>
+      <view class="reply" wx:for="{{item.replies}}" wx:for-item="reply" wx:key="id">
+        <text class="muted">管理员回复 · {{reply.time}}</text>
+        <text>{{reply.text}}</text>
+      </view>
+    </view>
+    <button class="link" bindtap="refreshSupport">刷新留言</button>
+    <view class="muted" wx:if="{{appealSent}}">留言和管理员回复显示在上方（验证凭证有效 15 分钟）。</view>
+  </view>
+  <view class="muted safety">请勿与他人分享登录密码。遇到封禁或账号问题，请通过网站联系管理员。</view>
+  <privacy-popup id="privacyPopup"/>
+</view>

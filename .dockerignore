@@ -3,6 +3,7 @@
 .env.*
 .review
 tests
+miniprogram
 data.json
 data.json.tmp
 data.corrupt-*.json

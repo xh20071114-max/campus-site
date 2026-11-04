@@ -1,0 +1,1 @@
+.hero{background:linear-gradient(135deg,#edf3ff,#fff)}.rank-row{padding:15rpx 0;border-bottom:1rpx solid #eef0f4;flex-wrap:wrap}.rank{font-size:30rpx;font-weight:700;color:#173b8f;width:48rpx}.name{font-weight:600;flex:1}.reward{color:#b4232e;font-weight:700}.small{font-size:22rpx;padding:8rpx 14rpx;margin:0}

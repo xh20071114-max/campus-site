@@ -79,6 +79,15 @@ async function pageFor(t,base,user='Bob',extraStorage=[],options={}){
  return page;
 }
 
+async function textOverlapsTaskHall(page){return page.evaluate(()=>{const hint=document.querySelector('#officialHint'),button=document.querySelector('#openTaskHall');if(!hint||hint.hidden||!button)return false;const bounds=button.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(hint);return Array.from(range.getClientRects()).some(r=>r.left<bounds.right&&r.right>bounds.left&&r.top<bounds.bottom&&r.bottom>bounds.top)})}
+test('mobile task hall button does not cover chat notices',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'AevonEcho',[],{viewport:{width:390,height:844},hasTouch:true});await page.locator('#officialHint').waitFor({state:'visible'});assert.equal(await textOverlapsTaskHall(page),false,'floating task hall button must not cover chat notices');
+}));
+test('mobile primary navigation wraps every visible action into view',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'AevonEcho',[],{viewport:{width:390,height:844},hasTouch:true});await page.goto(base+'/index.html');await page.locator('header nav a').first().waitFor();
+ const nav=await page.evaluate(()=>{const e=document.querySelector('header nav'),box=e.getBoundingClientRect(),links=Array.from(e.querySelectorAll('a')).filter(a=>getComputedStyle(a).display!=='none'),rects=links.map(a=>a.getBoundingClientRect());return {clipped:rects.some(r=>r.left<box.left-1||r.right>box.right+1||r.top<box.top-1||r.bottom>box.bottom+1),rows:new Set(rects.map(r=>Math.round(r.top))).size}});assert.equal(nav.clipped,false,'visible mobile navigation links must not be clipped');assert.ok(nav.rows<=2,'mobile primary navigation should fit within two rows');
+}));
+
 test('mobile permission checkboxes respond to taps and preserve drafts across account choice and refresh',t=>fixture(async({base,call})=>{
  const page=await pageFor(t,base,'AevonEcho',[],{hasTouch:true,viewport:{width:390,height:844}});await page.goto(base+'/admin.html');await page.locator('[data-t=roles]').tap();await page.locator('#roleQuery').fill('Bob');await page.locator('input[name=viewUsers]').tap();assert.equal(await page.locator('input[name=viewUsers]').isChecked(),true);
  await page.locator('#roleList [role=status]').filter({hasText:'已勾选 1 项'}).waitFor();await page.locator('#roleQuery').fill('');assert.equal(await page.locator('#roleList form').count(),1);

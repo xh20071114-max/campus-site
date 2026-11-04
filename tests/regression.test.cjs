@@ -4,6 +4,13 @@ const fs=require('node:fs/promises'),path=require('node:path'),vm=require('node:
 const {fixture,seed,password,pendingRequest,sleep,root}=require('./helpers.cjs');
 const ch='/api/channels/'+encodeURIComponent('校园跑')+'/messages';
 
+test('health reports a validated full release commit',()=>fixture(async({call})=>{
+ const health=await call('/api/health','');assert.equal(health.status,200);assert.equal(health.data.commit,'a'.repeat(40));
+},seed(),{appCommit:'A'.repeat(40)}));
+test('health does not expose malformed build metadata',()=>fixture(async({call})=>{
+ const health=await call('/api/health','');assert.equal(health.status,200);assert.equal(health.data.commit,'unknown');
+},seed(),{appCommit:'not-a-commit-or-secret'}));
+
 test('ordinary users cannot read admin data; admin name is case sensitive',()=>fixture(async({call})=>{
  assert.equal((await call('/api/admin/overview','Alice')).status,403);
  assert.equal((await call('/api/register','',{username:'aevonecho',password})).status,409);
