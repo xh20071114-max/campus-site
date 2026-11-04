@@ -153,7 +153,6 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
     <label class="fld" title="报酬"><span aria-hidden="true">💰</span><input id="xReward" aria-label="任务报酬" maxlength="20" placeholder="报酬，如 5元"></label>
     <label class="fld" title="地点"><span aria-hidden="true">📍</span><input id="xPlace" aria-label="任务地点" maxlength="50" placeholder="地点，如 三食堂"></label>
     <label class="fld" title="截止时间"><span aria-hidden="true">⏳</span><input id="xDeadline" aria-label="任务截止时间" type="datetime-local"></label>
-    <label class="fld bonus" id="bonusF" title="奖励积分（仅管理员）" style="display:none"><span>🎁</span><input id="xBonus" type="number" min="0" step="1" placeholder="奖励积分"></label>
   </div></div>
   <div id="postBar"><button type="button" id="postBtn">＋ 发布任务</button><small id="postHint"></small></div>
   <p id="officialHint" hidden style="padding:8px 14px;background:#fffbeb;color:#92400e;font-size:13px">管理员可发布频道文字；取消勾选“发任务”即可发布。</p><form id="f">
@@ -266,7 +265,6 @@ function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const req
     if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;if(d.eventUnread!=null)setBell(+d.eventUnread);renderPts();renderMsgs()}).catch(()=>{})}
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
 function renderPts(){bal.innerHTML=me&&points!=null?`${isSuperAdmin?'👑 总管理员 · ':isAdmin?'🛡 管理员 · ':''}💎 余额 <b>${points}</b> 分${can('freeTasks')?' · 任务免扣分':''}`:'';
-  bonusF.style.display=can('publishBonus')?'flex':'none';
   send.textContent=isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):can('postOfficial')?'发布频道文字':'发送';applyMode()}
 let composing=false,posting=false;
 function applyMode(){const admin=!!(me&&can('postOfficial'));
@@ -567,13 +565,12 @@ window.onhashchange=()=>go(dec(location.hash.slice(1)));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   if(posting)return;
   if(isTask.checked&&!can('freeTasks')&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
-  const bonus=can('publishBonus')&&isTask.checked&&xBonus.value?Math.floor(+xBonus.value):0;
   posting=true;[...f.elements].forEach(x=>x.disabled=true);
   try{
-  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined},bonus>0?{bonusPoints:bonus}:{}):{}))});
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined}):{}))});
   if(r.status===401){expired();return}
   if(!r.ok){await failed(r);return}
-  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value=xBonus.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
+  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
   }catch{alert('网络连接失败，请稍后重试')}finally{posting=false;[...f.elements].forEach(x=>x.disabled=isBanned||online===false)}};
 const taskExamples={'校园跑':'写清路线、时长和时间要求（如陪跑 3 公里）','校园配送':'写清门店、商品和送达地点','代取快递':'写清取件点、包裹情况和送达地点','代课':'写清课程、教室、时间和需要协助的内容','代做作业':'写清科目、具体需求和截止时间'};
 function updateTaskPrompt(){text.placeholder=isTask.checked?(taskExamples[cur]||'任务内容：写清要做什么、地点和时间要求'):(touch?'发消息':'发消息，回车发送')}

@@ -117,12 +117,12 @@ test('message viewer cannot delete or intervene and dispute handler cannot open 
  await setPermissions(call,'Bob',['manageDisputes']);await page.reload();await page.locator('#dsb tr').waitFor();assert.equal(await page.locator('#dsb [data-chat]').count(),0);assert.ok(await page.locator('#dsb [data-force]').count()>0);
 }));
 
-test('bonus-only administrator pays normal fees and gets no official message composer',t=>fixture(async({base,call})=>{
- await setPermissions(call,'Bob',['publishBonus']);const page=await pageFor(t,base,'Bob');assert.equal(await page.locator('#f').isVisible(),false);await page.locator('#postBtn').click();assert.equal(await page.locator('#xBonus').isVisible(),true);assert.equal(await page.locator('#isTaskL').isVisible(),false);
- await page.locator('#text').fill('delegated bonus task');await page.locator('#xBonus').fill('2');await page.locator('#send').click();await page.waitForFunction(()=>points===99);
- const d=(await call('/api/my/tasks','Bob')).data.posted[0];assert.equal(d.bonusPoints,2);assert.equal(d.official,undefined);assert.equal(d.cost,1);
+test('task composer no longer exposes points reward input',t=>fixture(async({base,call})=>{
+ await setPermissions(call,'Bob',['publishBonus']);const page=await pageFor(t,base,'Bob');await page.locator('#postBtn').click();
+ assert.equal(await page.locator('#bonusF,#xBonus').count(),0);
+ for(const id of ['xReward','xPlace','xDeadline'])assert.equal(await page.locator('#'+id).count(),1);
+ await page.locator('#isTaskL').waitFor({state:'hidden'});
 }));
-
 test('permission editor fits desktop and mobile and keeps super administrator immutable',t=>fixture(async({base})=>{
  const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('[data-t=roles]').click();await page.locator('#roleQuery').fill('Bob');await page.locator('#roleList form').waitFor();
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:'.review/permissions-desktop.jpg'});
@@ -210,6 +210,15 @@ test('admin observing other users offers is shown the actual parties and remains
  assert.equal(await page.locator('#pop').getByText('轮到你回复',{exact:true}).count(),0);assert.equal(await page.locator('#pop').getByText('等发布人回复',{exact:true}).count(),1);
  assert.equal(await page.getByRole('button',{name:'同意 15 元',exact:true}).count(),0);assert.ok(!(await page.locator('#pop .ofH').textContent()).includes('claimer'));
 }));
+test('participants can load private chat images and open the preview',t=>fixture(async({base,task,act,call})=>{
+ const m=await task();await act(m,'Bob','claim');
+ const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII=';
+ assert.equal((await call('/api/tasks/'+m.id+'/chat/image','Alice',{data:image})).status,200);
+ const page=await pageFor(t,base,'Bob');await page.goto(base+'/chat.html?task='+m.id+'#'+encodeURIComponent('校园跑'));
+ const img=page.locator('#tcList img.img');await img.waitFor();await page.waitForFunction(()=>{const i=document.querySelector('#tcList img.img');return i&&i.complete&&i.naturalWidth>0});
+ await img.click();await page.locator('#lb.show img').waitFor();
+ assert.ok(await page.locator('#lb img').evaluate(i=>i.naturalWidth>0));
+}));
 test('admin chat releases image object URLs when its dialog closes',t=>fixture(async({base,task,act,call})=>{
  const m=await task();await act(m,'Bob','claim');await call('/api/tasks/'+m.id+'/chat/image','Bob',{data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII='});
  const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('#ub').waitFor();
@@ -241,7 +250,7 @@ test('task hall exposes all pages, filters channels and opens a claimed order on
  const data=seed(),id=1234567890200000;data.messages['校园跑']=Array.from({length:21},(_,i)=>({id:id+i,user:'Alice',task:true,text:'hall task '+i,time:new Date().toISOString()}));data.messages['代取快递']=[{id:id+30,user:'Alice',task:true,text:'hall parcel',time:new Date().toISOString()}];
  await fixture(async({base})=>{
  const page=await pageFor(t,base,'Bob',[],{viewport:{width:390,height:844},hasTouch:true});
- await page.goto(base+'/index.html');assert.ok(await page.locator('#openTaskHall').evaluate(el=>el.closest('.hero-tools')&&getComputedStyle(el).position==='static'));assert.ok(await page.locator('#fbBtn,#supportBtn').evaluateAll(es=>es.length===2&&es.every(e=>e.closest('.hero-tools')&&getComputedStyle(e).position==='static')));assert.equal(await page.locator('header a[href="tasks.html"]').count(),0);await page.getByRole('link',{name:'📋 未接订单'}).click();await page.getByText('共 22 个待接任务 · 每页 20 条',{exact:true}).waitFor();
+ await page.goto(base+'/index.html');assert.ok(await page.locator('#openTaskHall').evaluate(el=>el.closest('.hero-tools')&&getComputedStyle(el).position==='static'));assert.ok(await page.locator('#fbBtn,#supportBtn').evaluateAll(es=>es.length===2&&es.every(e=>e.closest('.hero-tools')&&getComputedStyle(e).position==='static')));assert.equal(await page.locator('header a[href="tasks.html"]').count(),1);await page.getByRole('link',{name:'📋 未接订单'}).click();await page.getByText('共 22 个待接任务 · 每页 20 条',{exact:true}).waitFor();
  assert.equal(await page.locator('.card').count(),20);await page.getByRole('button',{name:'下一页'}).click();await page.getByText('2 / 2',{exact:true}).waitFor();assert.equal(await page.locator('.card').count(),2);
  await page.locator('#channel').selectOption('代取快递');await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall parcel',exact:true}).waitFor();
  await page.locator('#channel').selectOption('');await page.locator('#query').fill('hall task 0');await page.getByRole('button',{name:'查找',exact:true}).click();await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall task 0',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -255,6 +264,18 @@ test('campus delivery purpose copy and legacy channel bookmark use the new name'
  await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='校园配送'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 校园配送');
 }));
 
+test('home navigation is ordered for common actions and leaderboard has clear exits',async t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Bob');await page.goto(base+'/index.html');
+ const labels=await page.locator('header nav a').evaluateAll(xs=>xs.map(x=>x.textContent.trim().replace(/\s*\d+$/,'')));
+ assert.deepEqual(labels.slice(0,4),['项目频道','未接订单','接单排行榜','我的订单 / 个人中心']);
+ await page.goto(base+'/leaderboard.html');
+ await page.getByRole('link',{name:'返回首页',exact:true}).waitFor();
+ await page.getByRole('link',{name:'未接订单',exact:true}).waitFor();
+ await page.getByRole('link',{name:'我的订单 / 个人中心',exact:true}).waitFor();
+ await page.goto(base+'/chat.html#'+encodeURIComponent('校园跑'));
+ await page.waitForFunction(()=>online===true);
+ assert.equal(await page.locator('#bonusF').count(),0);
+}));
 test('home announcements show two by default and keep explicit expansion across refresh',async t=>{
  const data=seed();data.announcements=Array.from({length:4},(_,i)=>({id:1234567890600000+i,user:'AevonEcho',title:'Notice '+i,text:'Body '+i,time:new Date(Date.now()+i*1000).toISOString()}));
  await fixture(async({base,call})=>{
