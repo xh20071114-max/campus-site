@@ -5,7 +5,12 @@ Page({
   onUser(e){this.setData({username:e.detail.value})},
   onPassword(e){this.setData({password:e.detail.value})},
   onPassword2(e){this.setData({password2:e.detail.value})},
-  onAgreement(e){this.setData({agreed:!!(e.detail.value||[]).length})},
+  onAgreement(e){
+    const detail=e&&e.detail||{},values=Array.isArray(detail.value)?detail.value:[];
+    const agreed=values.includes('agree')||detail.value==='agree'||detail.checked===true;
+    const error=agreed&&this.data.error==='请先阅读并同意用户协议与隐私说明'?'':this.data.error;
+    this.setData({agreed,error});
+  },
   onSupportText(e){this.setData({supportText:e.detail.value})},
   onSupportContact(e){this.setData({supportContact:e.detail.value})},
   toggle(){this.setData({register:!this.data.register,error:'',appealToken:''})},
