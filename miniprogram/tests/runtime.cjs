@@ -78,6 +78,20 @@ test('task detail can show a public open order without requesting private chat',
   assert.deepEqual(api.calls.map(x=>x[1]),['/api/tasks/77','/api/channels/%E6%A0%A1%E5%9B%AD%E8%B7%91/messages?before=78']);
 });
 
+test('former claimer orders belong to history and do not offer private chat',async()=>{
+  const api=apiStub({get:async path=>{
+    if(path==='/api/my/tasks?includeHistory=1')return {posted:[],claimed:[{id:81,channel:'校园跑',task:true,user:'poster',claimedBy:'student',text:'代跑',status:'former',formerClaim:true,formerStatus:'released'}]};
+    throw new Error('former claim must not fetch an order chat');
+  }});
+  const {page}=harness('pages/orders/orders.js',api,{}, {getStorageSync:key=>key==='token'?'token':'student'});
+  await page.load();
+  assert.equal(page.data.active.length,0);
+  assert.equal(page.data.history.length,1);
+  assert.equal(page.data.history[0].statusText,'已结束（历史接单）');
+  assert.match(page.data.history[0].roleText,/订单已重新分配/);
+  assert.equal(api.calls.filter(x=>x[0]==='get').length,1);
+});
+
 test('paid state exposes receipt confirmation only to the claimer',async()=>{
   const makeApi=()=>apiStub({get:async path=>path==='/api/tasks/9'?{id:9,channel:'代取快递',user:'poster',claimedBy:'worker',status:'paid',text:'取件'}:{task:{canWrite:true},messages:[]}});
   const {page:worker}=harness('pages/trade/trade.js',makeApi(),{id:'9',channel:'代取快递',messages:[]},{getStorageSync:key=>key==='token'?'token':'worker'});
