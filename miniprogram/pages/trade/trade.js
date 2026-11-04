@@ -5,11 +5,18 @@ Page({
   data:{id:'',channel:'',task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false},
   onLoad(q){
     this.loadedImages=new Set();
+    this.unloaded=false;
+    this.sessionToken=wx.getStorageSync('token')||'';
     this.setData({id:q.id||'',channel:q.channel?decodeURIComponent(q.channel):'',username:wx.getStorageSync('username')||''});
     this.load();
-    this.timer=setInterval(()=>this.load(true),5000);
   },
-  onUnload(){if(this.timer)clearInterval(this.timer)},
+  onShow(){
+    this.unloaded=false;
+    this.load(true);
+    if(!this.timer)this.timer=setInterval(()=>this.load(true),5000);
+  },
+  onHide(){if(this.timer){clearInterval(this.timer);this.timer=null}},
+  onUnload(){this.unloaded=true;if(this.timer)clearInterval(this.timer)},
   async publicTask(){
     if(!this.data.channel)throw new Error('缺少订单频道，请从任务列表重新打开');
     const rows=await api.get('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages?before='+(Number(this.data.id)+1));
@@ -19,37 +26,67 @@ Page({
   },
   async load(silent){
     if(this.loading)return;this.loading=true;
+    const token=wx.getStorageSync('token')||'';
+    if(token!==this.sessionToken){
+      this.sessionToken=token;
+      this.loadedImages=new Set();
+      this.setData({task:null,messages:[],draft:'',error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+    }
     try{
       const name=wx.getStorageSync('username')||'';
       let task;
       try{task=await api.get('/api/tasks/'+this.data.id)}
       catch(e){if(e.statusCode===401||e.statusCode===403)task=await this.publicTask();else throw e}
+      if(token!==(wx.getStorageSync('token')||''))return;
       const poster=task.user===name,claimer=task.claimedBy===name;
       let chat={task:{canWrite:false},messages:[]};
       if(task.status!=='open'||poster)chat=await api.get('/api/tasks/'+this.data.id+'/chat');
-      const old=new Map(this.data.messages.map(x=>[String(x.id),x.localImage||'']));
-      const messages=(chat.messages||[]).map(x=>({...x,timeText:fmt.date(x.time),localImage:old.get(String(x.id))||''}));
+      if(token!==(wx.getStorageSync('token')||''))return;
+      const old=new Map(this.data.messages.map(x=>[String(x.id),x]));
+      const messages=(chat.messages||[]).map(x=>{
+        const cached=old.get(String(x.id)),sameImage=cached&&cached.image===x.image;
+        return {...x,timeText:fmt.date(x.time),localImage:sameImage?cached.localImage||'':'',imageStatus:x.image?(sameImage?cached.imageStatus||'loading':'loading'):''};
+      });
       this.setData({task,channel:task.channel||this.data.channel,statusText:fmt.status(task.status),messages,username:name,
         canClaim:task.status==='open'&&!poster,canCancel:poster&&task.status==='open',
         canWrite:!!chat.task.canWrite,
         canFinish:claimer&&task.status==='claimed',canPay:poster&&task.status==='finished',
         canReceive:claimer&&task.status==='paid',canFreeDecision:claimer&&task.status==='free_pending',
         canWithdrawFree:poster&&task.status==='free_pending',canUnclaim:claimer&&task.status==='claimed',error:''});
-      this.loadImages(messages);
+      this.loadImages(messages,wx.getStorageSync('token')||'');
     }catch(e){if(!silent)this.setData({error:e.message});api.handleAuthError(e)}
     finally{this.loading=false}
   },
-  loadImages(messages){
-    const app=getApp(),token=wx.getStorageSync('token');
-    messages.forEach((m,index)=>{
-      if(!m.image||m.localImage||this.loadedImages.has(String(m.id)))return;
-      this.loadedImages.add(String(m.id));
-      wx.downloadFile({url:app.globalData.apiBase+m.image,header:{Authorization:'Bearer '+token},success:r=>{
-        if(r.statusCode!==200)return;
-        const next=this.data.messages.slice();
-        if(next[index]&&String(next[index].id)===String(m.id)){next[index].localImage=r.tempFilePath;this.setData({messages:next})}
-      },fail:()=>this.loadedImages.delete(String(m.id))});
+  loadImages(messages,token){
+    if(!this.loadedImages)this.loadedImages=new Set();
+    const app=getApp(),session=token===undefined?(wx.getStorageSync('token')||''):token;
+    messages.forEach(m=>{
+      const id=String(m.id);
+      if(!m.image||m.localImage||m.imageStatus==='failed'||this.loadedImages.has(id))return;
+      this.loadedImages.add(id);
+      wx.downloadFile({url:app.globalData.apiBase+m.image,header:{Authorization:'Bearer '+session},success:r=>{
+        if(this.unloaded||(wx.getStorageSync('token')||'')!==session){this.loadedImages.delete(id);return}
+        if(r.statusCode!==200||!r.tempFilePath)return this.markImageFailed(id);
+        this.setImageState(id,{localImage:r.tempFilePath,imageStatus:'loaded'});
+      },fail:()=>this.markImageFailed(id)});
     });
+  },
+  setImageState(id,values){
+    if(this.unloaded)return;
+    const next=this.data.messages.slice(),index=next.findIndex(x=>String(x.id)===String(id));
+    if(index<0)return;
+    next[index]=Object.assign({},next[index],values);
+    this.setData({messages:next});
+  },
+  markImageFailed(id){
+    if(this.loadedImages)this.loadedImages.delete(String(id));
+    this.setImageState(id,{localImage:'',imageStatus:'failed'});
+  },
+  retryImage(e){
+    const id=String(e.currentTarget.dataset.id),message=this.data.messages.find(x=>String(x.id)===id);
+    if(!message||!message.image||this.loadedImages&&this.loadedImages.has(id))return;
+    this.setImageState(id,{imageStatus:'loading'});
+    this.loadImages([{...message,imageStatus:'loading'}]);
   },
   onDraft(e){this.setData({draft:e.detail.value})},
   async send(){

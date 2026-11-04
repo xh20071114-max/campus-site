@@ -226,3 +226,56 @@ test('weekly reward QR upload reports local file read failures and clears busy s
   assert.equal(api.calls.some(x=>x[0]==='request'),false);
   assert.match(toasts[0].title,/读取收款码失败/);
 });
+
+test('private chat image failures show a retry control and non-200 downloads can recover',async()=>{
+  const downloads=[];
+  const api=apiStub({get:async path=>{
+    if(path==='/api/tasks/77')return {id:77,channel:'代取快递',user:'poster',claimedBy:'student',status:'claimed',text:'取件'};
+    if(path==='/api/tasks/77/chat')return {task:{canWrite:true},messages:[{id:'img-1',user:'poster',image:'/api/tasks/77/chat/images/img-1',text:'商品照片'}]};
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page}=harness('pages/trade/trade.js',api,{id:'77',channel:'代取快递',messages:[]},{
+    getStorageSync:key=>key==='token'?'session-a':'student',
+    downloadFile(options){downloads.push(options)}
+  });
+  page.loadedImages=new Set();
+  page.sessionToken='session-a';
+  await page.load();
+  assert.equal(downloads.length,1);
+  assert.equal(page.data.messages[0].imageStatus,'loading');
+  downloads[0].success({statusCode:503});
+  assert.equal(page.data.messages[0].imageStatus,'failed');
+  page.retryImage({currentTarget:{dataset:{id:'img-1'}}});
+  assert.equal(downloads.length,2);
+  downloads[1].success({statusCode:200,tempFilePath:'/tmp/private-chat-image.jpg'});
+  assert.equal(page.data.messages[0].localImage,'/tmp/private-chat-image.jpg');
+  assert.equal(page.data.messages[0].imageStatus,'loaded');
+});
+
+test('account change clears private chat and ignores an old image response',async()=>{
+  let token='session-a',username='poster';
+  const downloads=[];
+  const task={id:77,channel:'代取快递',user:'poster',claimedBy:'student',status:'claimed',text:'取件'};
+  const forbidden=()=>{const e=new Error('not a participant');e.statusCode=403;throw e};
+  const api=apiStub({get:async path=>{
+    if(path==='/api/tasks/77')return token==='session-a'?task:forbidden();
+    if(path.startsWith('/api/channels/'))return [task];
+    if(path==='/api/tasks/77/chat')return token==='session-a'?{task:{canWrite:true},messages:[{id:'img-1',user:'poster',image:'/api/tasks/77/chat/images/img-1',text:'仅参与者可见'}]}:forbidden();
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page}=harness('pages/trade/trade.js',api,{id:'77',channel:'代取快递',messages:[]},{
+    getStorageSync:key=>key==='token'?token:username,
+    downloadFile(options){downloads.push(options)}
+  });
+  page.loadedImages=new Set();
+  page.sessionToken='session-a';
+  await page.load();
+  assert.equal(page.data.messages[0].text,'仅参与者可见');
+
+  token='session-b';username='visitor';
+  await page.load();
+  assert.equal(page.data.messages.length,0);
+  downloads[0].success({statusCode:200,tempFilePath:'/tmp/old-account-image.jpg'});
+  assert.equal(page.data.messages.length,0);
+  assert.equal(page.data.task,null);
+});
