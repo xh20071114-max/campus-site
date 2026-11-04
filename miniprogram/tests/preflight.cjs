@@ -6,7 +6,8 @@ const assert=require('node:assert/strict');
 
 const root=path.resolve(__dirname,'..');
 const config=JSON.parse(fs.readFileSync(path.join(root,'app.json'),'utf8'));
-JSON.parse(fs.readFileSync(path.join(root,'project.config.json'),'utf8'));
+const projectConfig=JSON.parse(fs.readFileSync(path.join(root,'project.config.json'),'utf8'));
+assert.equal(projectConfig.appid,'wx312deec0abd7330f','project must use the configured mini program AppID');
 JSON.parse(fs.readFileSync(path.join(root,'sitemap.json'),'utf8'));
 global.getApp=()=>({globalData:{apiBase:'https://plgslzlexpmy.sealoshzh.site'}});
 global.wx={getStorageSync(){return ''},request(){}};

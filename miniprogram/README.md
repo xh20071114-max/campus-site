@@ -16,12 +16,10 @@
 ## 微信开发者工具
 
 1. 用微信开发者工具打开本目录。
-2. 将 `project.config.json` 的 `touristappid` 替换成小程序账号的 AppID；正式上传必须使用已注册主体的 AppID。
-3. 在小程序后台的服务器域名设置中，将 `plgslzlexpmy.sealoshzh.site` 加入 `request` 和 `downloadFile` 合法域名。当前图片上传通过 `wx.request` 发送原始图片字节，不使用 `uploadFile`。
-4. 开发者工具保持“校验合法域名”开启，逐页检查布局、登录态和 API。`app.js` 中的 API 地址指向现有正式服务。
-5. 小程序的名称、服务类目、隐私保护指引、用户数据处理说明和审核发布需在真实主体账号中完成。
-
-Before real-device testing or release, add https://plgslzlexpmy.sealoshzh.site as a request legal domain in WeChat MP Admin (Development Management > Development Settings > Server Domains). urlCheck:false only supports local DevTools debugging and does not replace the platform allowlist.
+2. `project.config.json` 已配置当前小程序 AppID：`wx312deec0abd7330f`，无需再替换占位 AppID。
+3. 在小程序后台“开发管理 → 开发设置 → 服务器域名”中，将 `plgslzlexpmy.sealoshzh.site` 加入 `request` 和 `downloadFile` 合法域名。私聊图片使用 `wx.downloadFile` 下载；图片上传使用 `wx.request` 发送原始图片字节，不使用 `uploadFile`。
+4. 工程里的 `urlCheck:false` 仅供本机开发者工具模拟器调试，不能代替平台域名白名单，也不能证明真机或正式版请求可用。配置完白名单后，打开合法域名校验并逐页检查布局、登录态和 API。`app.js` 默认连接现有正式服务，调试时不要创建真实订单或提交真实充值。
+5. 小程序名称、服务类目、隐私保护指引、用户数据处理说明和审核发布需在真实主体账号中完成。
 
 ## 本地预检
 
@@ -32,4 +30,4 @@ node miniprogram/tests/preflight.cjs
 node --test miniprogram/tests/runtime.cjs
 ```
 
-已使用真实 AppID 在开发者工具打开工程，模拟器逐页打开 10 个页面并验证首页 API 数据；本地预检与 8 项逻辑测试通过。真机网络/图片检查、服务器域名白名单确认、微信审核与发布仍待完成。
+已使用上述 AppID 在开发者工具打开工程，模拟器逐页打开 10 个页面并验证首页 API 数据；本地预检与小程序逻辑测试已通过。真机网络/图片检查、服务器域名白名单确认、微信审核与发布仍待完成。
