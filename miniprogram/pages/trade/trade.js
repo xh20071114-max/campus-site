@@ -25,13 +25,14 @@ Page({
     return task;
   },
   async load(silent){
-    if(this.loading)return;this.loading=true;
     const token=wx.getStorageSync('token')||'';
     if(token!==this.sessionToken){
       this.sessionToken=token;
       this.loadedImages=new Set();
       this.setData({task:null,messages:[],draft:'',error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+      if(this.loading)this.reloadAfterLoad=true;
     }
+    if(this.loading)return;this.loading=true;
     try{
       const name=wx.getStorageSync('username')||'';
       let task;
@@ -55,7 +56,13 @@ Page({
         canWithdrawFree:poster&&task.status==='free_pending',canUnclaim:claimer&&task.status==='claimed',error:''});
       this.loadImages(messages,wx.getStorageSync('token')||'');
     }catch(e){if(!silent)this.setData({error:e.message});api.handleAuthError(e)}
-    finally{this.loading=false}
+    finally{
+      this.loading=false;
+      if(this.reloadAfterLoad||(wx.getStorageSync('token')||'')!==this.sessionToken){
+        this.reloadAfterLoad=false;
+        this.load(true);
+      }
+    }
   },
   loadImages(messages,token){
     if(!this.loadedImages)this.loadedImages=new Set();

@@ -279,3 +279,38 @@ test('account change clears private chat and ignores an old image response',asyn
   assert.equal(page.data.messages.length,0);
   assert.equal(page.data.task,null);
 });
+
+test('account change clears chat while a private task request is still pending',async()=>{
+  let token='session-a',username='poster',calls=0,resolveOldTask;
+  const task={id:77,channel:'代取快递',user:'poster',claimedBy:'student',status:'claimed',text:'旧账号订单'};
+  const forbidden=()=>{const e=new Error('not a participant');e.statusCode=403;throw e};
+  const api=apiStub({get:async path=>{
+    if(path==='/api/tasks/77'){
+      calls++;
+      if(calls===1)return new Promise(resolve=>{resolveOldTask=resolve});
+      return forbidden();
+    }
+    if(path.startsWith('/api/channels/'))return [task];
+    if(path==='/api/tasks/77/chat')return forbidden();
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page}=harness('pages/trade/trade.js',api,{id:'77',channel:'代取快递',messages:[{id:'old',text:'旧私聊'}]},{
+    getStorageSync:key=>key==='token'?token:username
+  });
+  page.sessionToken='session-a';
+  const pending=page.load(true);
+  assert.equal(page.loading,true);
+
+  token='session-b';username='visitor';
+  await page.load(true);
+  assert.equal(page.data.messages.length,0);
+  assert.equal(page.data.task,null);
+  resolveOldTask(task);
+  await pending;
+  await new Promise(resolve=>setImmediate(resolve));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2);
+  assert.equal(page.data.messages.length,0);
+  assert.equal(page.data.task,null);
+  assert.equal(page.loading,false);
+});
