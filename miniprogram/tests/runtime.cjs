@@ -133,3 +133,18 @@ test('banned-account appeal uses its temporary credential and loads the admin re
   const appeal=api.calls.find(x=>x[0]==='post'&&x[1]==='/api/support');
   assert.equal(appeal[3].header.Authorization,'Bearer appeal-only');
 });
+
+test('home keeps channels and announcements visible when task loading fails',async()=>{
+  const api=apiStub({get:async path=>{
+    if(path==='/api/channels')return [{name:'校园跑',count:2}];
+    if(path==='/api/announcements')return [{id:'1',title:'公告',text:'通知'}];
+    if(path==='/api/tasks?limit=6')throw new Error('network unavailable');
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page}=harness('pages/index/index.js',api);
+  await page.load();
+  assert.equal(page.data.channels.length,1);
+  assert.equal(page.data.announcements.length,1);
+  assert.equal(page.data.tasks.length,0);
+  assert.match(page.data.loadError,/任务/);
+});
