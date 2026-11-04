@@ -636,13 +636,14 @@ const handle=async(req,res)=>{
       const prevClaimer=msg.claimedBy, act=am2[3]==='kick'?'release':am2[3],now=new Date().toISOString();
       if(act==='restore'){
         if(!msg.task)return send(res,400,{error:'只能恢复任务订单'});
+        if(!msg.deleted&&isPoster(msg,n))return send(res,409,{error:'当前订单不能恢复'});
         const ownerRestore=msg.user===n&&!msg.userDeleted&&msg.deletedBy===n&&!msg.claimedBy;
         if(!ownerRestore&&!can(n,'deleteMessages'))return send(res,403,{error:'只能恢复你自己删除的未接订单'});
         if(!msg.deleted||msg.cancelled||msg.done||msg.closed)return send(res,409,{error:'当前订单不能恢复'});
         const original=db.deletedTexts[msg.id];if(typeof original!=='string'||!original.trim())return send(res,409,{error:'订单原文已不存在，无法恢复'});
         if(ownerRestore&&msg.refunded&&msg.cost){if(pts(n)<msg.cost)return send(res,402,{error:'恢复订单需要 '+msg.cost+' 积分，当前只有 '+pts(n)+' 积分'});
           addPoints(n,-msg.cost,'restore','恢复已删除任务，撤销发布积分退款',msg.id);msg.refunded=false}
-        msg.text=original;delete db.deletedTexts[msg.id];msg.deleted=false;msg.restoredBy=n;msg.restoredAt=now;delete msg.deletedBy;delete msg.deletedAt;recalc(msg);msg.rev=nextRev();persist();return send(res,200,out(msg,ix.ch,true));
+        msg.text=original;delete db.deletedTexts[msg.id];msg.deleted=false;msg.restoredBy=n;msg.restoredAt=now;delete msg.deletedBy;delete msg.deletedAt;recalc(msg);msg.rev=nextRev();persist();return send(res,200,out(msg,ix.ch,n));
       }
       if(act==='delete'){ // 管理员可删任何消息；普通用户可删自己没人接的消息
         if(!can(n,'deleteMessages')&&!(msg.user===n&&!msg.claimedBy)) return send(res,403,{error:'没有权限删除这条消息'});
@@ -900,7 +901,8 @@ const handle=async(req,res)=>{
       const list=db.taskChats[m.id]=db.taskChats[m.id]||[]; if(list.length>=TASK_CHAT_MAX) return send(res,409,{error:'这个任务的私聊消息太多了'});
       const x={id:newId(),user:n,text:cap,time:new Date().toISOString(),claimer:m.claimedBy,...(!isPoster(m,n)&&!isClaimer(m,n)?{moderator:true}:{}),imageExt:ext,imageSize:buf.length,...(kind?{kind}:{})};
       x.image='/api/tasks/'+m.id+'/chat/image/'+x.id;
-      try{fs.mkdirSync(path.join(UPLOADS,String(m.id)),{recursive:true});fs.writeFileSync(path.join(UPLOADS,String(m.id),x.id+'.'+ext),buf)}catch(e){console.error('存图失败',e.message);return send(res,500,{error:'图片保存失败'})}
+      const imageFile=path.join(UPLOADS,String(m.id),x.id+'.'+ext);
+      try{fs.mkdirSync(path.dirname(imageFile),{recursive:true});fs.writeFileSync(imageFile,buf)}catch(e){try{fs.unlinkSync(imageFile)}catch(cleanup){if(cleanup.code!=='ENOENT')console.error('失败图片清理失败',cleanup.message)}uploadBytes=duSize(UPLOADS);console.error('存图失败',e.message);return send(res,500,{error:'图片保存失败'})}
       uploadBytes+=buf.length; UB.set(n,(UB.get(n)||0)+buf.length); db.imgDaily[n]={day,count:dc+1};
       list.push(x); (db.chatRead[m.id]=db.chatRead[m.id]||Object.create(null))[n]=x.id; recalc(m); m.rev=nextRev(); persist(); return send(res,200,x);
     }

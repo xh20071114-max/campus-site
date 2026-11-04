@@ -157,7 +157,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   </div></div>
   <div id="postBar"><button type="button" id="postBtn">＋ 发布任务</button><small id="postHint"></small></div>
   <p id="officialHint" hidden style="padding:8px 14px;background:#fffbeb;color:#92400e;font-size:13px">管理员可发布频道文字；取消勾选“发任务”即可发布。</p><form id="f">
-    <textarea id="text" rows="1" placeholder="发消息，回车发送" required></textarea>
+    <textarea id="text" rows="1" maxlength="2000" placeholder="发消息，回车发送（最多 2000 字）" required></textarea>
     <label id="isTaskL"><input type="checkbox" id="isTask">发任务</label>
     <span id="bal"></span>
     <button type="button" id="fCancel" style="display:none">取消</button>
@@ -165,7 +165,8 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   </form>
 </main>
 <div id="tc" role="dialog" aria-label="任务私聊"><div class="h"><div><b>💬 任务私聊</b><small id="tcSub"></small></div><button id="tcRep" type="button" title="举报这单">🚩</button><button id="tcX" title="关闭">×</button></div>
-  <div id="tcFlow">💡 交易流程：接单人完成任务 → 发送收款码 → 发布人核对并付款 → 接单人确认到账</div><div id="tcP"></div><div id="tcList"></div><div id="tcNote"></div>
+  <div id="tcFlow">💡 交易流程：接单人完成任务后发送收款码 → 发布人核实后线下付款并标记「我已付款」→ 接单人核对到账后点「确认收款」。网站不托管款项，也不能验证转账；请勿仅凭截图确认到账。</div><div id="tcP"></div><div id="tcList"></div><div id="tcNote"></div>
+
   <form id="tcF"><button type="button" id="tcI" title="发图片">📷</button><input type="file" id="tcFile" accept="image/*" hidden><textarea id="tcT" rows="1" maxlength="500" placeholder="和对方说点什么，回车发送"></textarea><button id="tcS">发送</button></form></div>
 <div id="pop"><div class="box"><div class="h"><span id="popT"></span><button type="button" id="popX">×</button></div><div class="bd" id="popB"></div></div></div>
 <div id="lb"><img alt="大图"></div>
@@ -536,7 +537,7 @@ function renderProg(){const c=tc;if(!c)return;const m=c.task,s=tstat(m),idx={cla
   tcP.innerHTML=`<div class="st">${st}</div><div class="ac">${ac}</div>`;tcP.style.display='block';
   tcP.querySelectorAll('button').forEach(x=>x.onclick=()=>x.dataset.a==='qr'?pickImg(true):x.dataset.a==='rate'?rate(c.id):x.dataset.a==='dispute'?dispute():step(x.dataset.a,x.dataset.c,x))}
 async function step(a,cf,el){const c=tc;if(!c||(cf&&!confirm(cf)))return;el.disabled=true;
-  try{const r=await api('/api/channels/'+encodeURIComponent(c.ch)+'/messages/'+encodeURIComponent(c.id)+'/'+a,{method:'POST',body:JSON.stringify(body)});
+  try{const r=await api('/api/channels/'+encodeURIComponent(c.ch)+'/messages/'+encodeURIComponent(c.id)+'/'+a,{method:'POST',body:JSON.stringify({})});
     if(r.status===401)return expired();if(!r.ok){const d=await r.json().catch(()=>({}));if(r.status===402){lowPts(d.error);return}if(d.status)c.task.status=d.status;tcNote(d.error||'操作失败，请稍后再试');if(c===tc){renderProg();pullChat()}refresh();return}
     tcNote('');const d=await r.json().catch(()=>({}));const t=d.task||d.message||d;if(t&&t.status)c.task.status=t.status;if(t&&t.status)c.task.done=t.status==='done'
     if(c===tc){renderProg();await pullChat()}loadMe();refresh()}

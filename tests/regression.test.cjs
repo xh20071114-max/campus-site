@@ -179,6 +179,10 @@ test('failed image deletion retains quota and retries pending cleanup after rest
  assert.equal((await call('/api/admin/overview?summary=1','AevonEcho')).data.disk.uploads,bytes);
  await restart();await assert.rejects(fs.access(file));const removed=(await call('/api/tasks/'+m.id+'/chat','AevonEcho')).data.messages.find(x=>x.id===image.data.id);assert.equal(removed.imageRemoved,true);assert.equal(removed.image,undefined);assert.equal((await call('/api/admin/overview?summary=1','AevonEcho')).data.disk.uploads,0);
 },seed(),{blockImageDeletion:true}));
+test('failed partial image upload removes the orphan and keeps disk quota accurate',()=>fixture(async({call,task,act,tmp})=>{
+ const m=await task();await act(m,'Bob','claim');const result=await call('/api/tasks/'+m.id+'/chat/image','Bob',{data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII='});assert.equal(result.status,500);
+ const dir=path.join(tmp,'uploads',String(m.id));assert.deepEqual(await fs.readdir(dir),[]);assert.equal((await call('/api/admin/overview?summary=1','AevonEcho')).data.disk.uploads,0);assert.equal((await call('/api/tasks/'+m.id+'/chat','AevonEcho')).data.messages.some(x=>x.image),false);
+},seed(),{partialImageWrite:true}));
 test('admin message pagination covers all rows, searches deleted originals and validates filters',async()=>{
  const data=seed(),id=Date.now()*1000;data.messages['校园跑']=Array.from({length:121},(_,i)=>({id:id+i,user:'Alice',text:i===0?'':'message '+i,task:true,time:new Date().toISOString(),...(i===0?{deleted:true}:{})}));data.deletedTexts={[id]:'deleted unique original'};
  await fixture(async({call})=>{const collected=[];for(let page=1;page<=5;page++){const result=await call('/api/admin/messages?page='+page+'&limit=25','AevonEcho');assert.equal(result.status,200);assert.equal(result.data.page,page);assert.equal(result.data.total,121);assert.equal(result.data.pages,5);collected.push(...result.data.messages.map(x=>x.id))}assert.equal(new Set(collected).size,121);assert.equal(collected.at(-1),id);

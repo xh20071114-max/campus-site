@@ -10,6 +10,7 @@ nav a{margin-left:22px;opacity:.9}nav a:hover{opacity:1;text-decoration:underlin
 .hero{background:linear-gradient(135deg,#2563eb,#1e3a8a);color:#fff;text-align:center;padding:80px 20px}
 .hero h1{font-size:40px;margin-bottom:12px}.hero p{font-size:18px;opacity:.9}
 .btn{display:inline-block;margin-top:24px;background:#fff;color:#1e3a8a;padding:12px 28px;border-radius:999px;font-weight:bold}
+.hero-tools{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin:12px auto 0}.hero-tools a,.hero-tools button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:8px 13px;border:1px solid #ffffff80;border-radius:22px;background:#ffffff1a;color:#fff;font:600 14px/1.4 -apple-system,"Microsoft YaHei",sans-serif;cursor:pointer}.hero-tools #openTaskHall{position:static;right:auto;bottom:auto;z-index:auto;box-shadow:none;text-decoration:none}.hero-tools #openTaskHall:hover{background:#ffffff30}.hero-tools #fbBtn.inSlot,.hero-tools #supportBtn.inSlot{position:static;margin:0;padding:8px 13px;border:1px solid #ffffff80;border-radius:22px;background:#ffffff1a;color:#fff;font:600 14px/1.4 -apple-system,"Microsoft YaHei",sans-serif;box-shadow:none}.hero-tools #fbBtn.inSlot:hover,.hero-tools #supportBtn.inSlot:hover{background:#ffffff30}
 section{max-width:1100px;margin:0 auto;padding:56px 20px}
 h2{font-size:26px;margin-bottom:24px;text-align:center}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px}
@@ -21,7 +22,7 @@ h2{font-size:26px;margin-bottom:24px;text-align:center}
 .news span{color:#9ca3af;font-size:13px}
 .about{background:#fff}.about p{max-width:760px;margin:0 auto;line-height:1.9;text-align:center;color:#4b5563}
 footer{background:#111827;color:#9ca3af;text-align:center;padding:24px;font-size:14px}
-@media(max-width:640px){nav a{margin-left:12px;font-size:14px}.hero h1{font-size:28px}}
+@media(max-width:640px){nav a{margin-left:12px;font-size:14px}.hero{padding:54px 16px}.hero h1{font-size:28px}.hero-tools{gap:7px}.hero-tools a,.hero-tools button,.hero-tools #fbBtn.inSlot,.hero-tools #supportBtn.inSlot{min-height:44px;padding:8px 11px;font-size:13px}}
 #login{position:fixed;inset:0;background:rgba(17,24,39,.6);display:flex;align-items:center;justify-content:center;z-index:9}
 #login .box{background:#fff;border-radius:14px;padding:26px;width:300px;display:grid;gap:12px}
 #login h3{margin:0}#login .row{display:flex;gap:8px}#login .row button{flex:1;padding:10px}
@@ -37,7 +38,7 @@ nav a{white-space:nowrap}
 <header><div class="bar"><a class="logo" href="index.html">🎓 Aevon校园交流网</a>
 <nav><a href="#home">首页</a><a href="#news">公告</a><a href="#channels">项目频道</a><a href="leaderboard.html">接单排行榜</a><a href="#about">关于</a><a href="me.html">个人中心<span class="dot" id="meDot" hidden></span></a><a href="admin.html" id="adminLink" style="display:none">管理后台</a><a id="me" href="chat.html">登录</a></nav></div></header>
 <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button type="button" onclick="location.reload()" style="margin-left:8px;border:1px solid #d97706;background:#fff;color:#92400e;border-radius:6px;padding:2px 12px;cursor:pointer">重试</button></div>
-<div class="hero" id="home"><h1>同学帮同学，<span style="white-space:nowrap">校园生活更轻松</span></h1><p>校园跑、校园配送、快递代取、代课、代做作业，发布任务找人帮忙，也可以接单帮别人</p><a class="btn" href="chat.html">去发布或接任务 →</a></div>
+<div class="hero" id="home"><h1>同学帮同学，<span style="white-space:nowrap">校园生活更轻松</span></h1><p>校园跑、校园配送、快递代取、代课、代做作业，发布任务找人帮忙，也可以接单帮别人</p><a class="btn" href="chat.html">去发布或接任务 →</a><div class="hero-tools" aria-label="快捷入口"><span id="taskHallSlot"></span><span id="fbSlot"></span></div></div>
 <section id="news"><h2>最新公告</h2>
 <form id="annForm" style="display:none;background:#fff;padding:16px;border-radius:10px;margin-bottom:12px;gap:8px;flex-direction:column">
 <b style="font-size:14px;color:#1e3a8a">📢 发布公告（管理员）</b>
