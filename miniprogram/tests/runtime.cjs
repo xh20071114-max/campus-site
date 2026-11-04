@@ -190,3 +190,39 @@ test('weekly reward QR upload rejects unsupported image formats before sending',
   assert.equal(api.calls.some(x=>x[0]==='request'),false);
   assert.match(toasts[0].title,/PNG 或 JPEG/);
 });
+
+test('weekly reward QR upload sends PNG bytes with the correct content type',async()=>{
+  const toasts=[];
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
+  const api=apiStub({
+    request:async()=>({}),
+    get:async()=>({live:null,locked:null,myRewards:[]})
+  });
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
+    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:bytes.length}]})},
+    getFileSystemManager(){return {readFile(options){options.success({data:bytes.buffer})}}},
+    showToast(options){toasts.push(options)}
+  });
+  await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
+  const upload=api.calls.find(x=>x[0]==='request');
+  assert.equal(upload[1],'/api/my/weekly-reward/qr?period=2026-11-02');
+  assert.equal(upload[2].header['Content-Type'],'image/png');
+  assert.equal(upload[2].data,bytes.buffer);
+  assert.equal(page.data.uploading,false);
+  assert.equal(page.data.error,'');
+  assert.equal(toasts[0].title,'收款码已私密提交');
+});
+
+test('weekly reward QR upload reports local file read failures and clears busy state',async()=>{
+  const toasts=[];
+  const api=apiStub({request:async()=>({})});
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
+    chooseImage(options){options.success({tempFiles:[{path:'selected-image',size:24}]})},
+    getFileSystemManager(){return {readFile(options){options.fail(new Error('disk unavailable'))}}},
+    showToast(options){toasts.push(options)}
+  });
+  await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
+  assert.equal(page.data.uploading,false);
+  assert.equal(api.calls.some(x=>x[0]==='request'),false);
+  assert.match(toasts[0].title,/读取收款码失败/);
+});
