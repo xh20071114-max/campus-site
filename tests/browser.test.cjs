@@ -23,6 +23,12 @@ test('site pages fit narrow mobile and order controls have separate space',t=>fi
  await page.setViewportSize({width:1280,height:900});await page.goto(base+'/chat.html');await page.locator('#ordersOpen').waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'.review/ui-chat-desktop.png'});
 }));
 
+test('chat task hall entry stays in the toolbar flow on mobile',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Alice',[],{viewport:{width:390,height:844},hasTouch:true});await page.locator('#quickActions #openTaskHall').waitFor();
+ const layout=await page.evaluate(()=>{const row=document.querySelector('#quickActions'),link=document.querySelector('#openTaskHall'),messages=document.querySelector('#msgs');return {inside:link?.parentElement===row,position:link&&getComputedStyle(link).position,rowBottom:row.getBoundingClientRect().bottom,messagesTop:messages.getBoundingClientRect().top}});
+ assert.equal(layout.inside,true,'chat page should place the order hall link in its own row');assert.equal(layout.position,'static','chat order hall link must not float over the message list or composer');assert.ok(layout.rowBottom<=layout.messagesTop,'chat order entry should come before message results');await page.screenshot({path:'.review/ui-chat-mobile.png'});
+}));
+
 test('mobile utility controls stay above the interactive content on recharge and personal center',t=>fixture(async({base})=>{
  const page=await pageFor(t,base,'Alice',[],{viewport:{width:390,height:844},hasTouch:true});
  for(const path of ['/recharge.html','/me.html']){

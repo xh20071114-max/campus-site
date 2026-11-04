@@ -12,6 +12,8 @@ button,a{-webkit-tap-highlight-color:transparent}
 .ui-login .box{max-width:calc(100vw - 32px);border-radius:20px}.ui-admin .tabs button.on{font-weight:700}
 .site-quick-actions{max-width:1100px;margin:10px auto 0;padding:0 20px;display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:8px}
 .ui-recharge .site-quick-actions{max-width:760px}
+.ui-chat .site-quick-actions{max-width:none;margin:6px 0;padding:0 14px;display:flex;justify-content:flex-end}
+.ui-chat .site-quick-actions #openTaskHall.inSlot{width:auto;min-height:38px;padding:6px 12px;border-radius:20px;font-size:13px}
 #openTaskHall.inSlot{position:static;right:auto;bottom:auto;z-index:auto;min-height:40px;padding:8px 12px;box-shadow:none}
 .site-quick-actions #supportBtn{order:2}.site-quick-actions #fbBtn{order:3}
 @media(max-width:640px){
