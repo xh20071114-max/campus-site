@@ -1,13 +1,16 @@
 const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 
+function decodeRouteValue(value){try{return decodeURIComponent(value)}catch{return null}}
+
 Page({
   data:{id:'',channel:'',task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false},
   onLoad(q){
     this.loadedImages=new Set();
     this.unloaded=false;
     this.sessionToken=wx.getStorageSync('token')||'';
-    this.setData({id:q.id||'',channel:q.channel?decodeURIComponent(q.channel):'',username:wx.getStorageSync('username')||''});
+    const channel=q.channel?decodeRouteValue(q.channel):'';
+    this.setData({id:q.id||'',channel:channel===null?'':channel,username:wx.getStorageSync('username')||'',error:channel===null?'订单链接无效，请从任务列表重新打开':''});
     this.load();
   },
   onShow(){

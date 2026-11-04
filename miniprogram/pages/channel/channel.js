@@ -1,19 +1,25 @@
 const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 
+function decodeRouteValue(value){try{return decodeURIComponent(value)}catch{return null}}
+
 Page({
   data:{name:'',messages:[],username:'',showForm:false,text:'',reward:'',place:'',date:'',time:'',postCost:0,posting:false,error:''},
   onLoad(q){
-    this.setData({name:q.name?decodeURIComponent(q.name):'校园跑',username:wx.getStorageSync('username')||''});
+    const name=q.name?decodeRouteValue(q.name):'校园跑';
+    if(name===null){this.invalidRoute=true;this.setData({name:'',username:wx.getStorageSync('username')||'',error:'频道链接无效，请从首页重新打开'});return}
+    this.setData({name,username:wx.getStorageSync('username')||''});
     this.load();
   },
   onShow(){
     this.setData({username:wx.getStorageSync('username')||''});
+    if(this.invalidRoute)return;
     if(!this.timer)this.timer=setInterval(()=>this.load(true),8000);
   },
   onHide(){if(this.timer){clearInterval(this.timer);this.timer=null}},
   onUnload(){if(this.timer)clearInterval(this.timer)},
   async load(silent){
+    if(this.invalidRoute||!this.data.name)return;
     if(this.loading)return;this.loading=true;
     try{
       const first=!this.rev;

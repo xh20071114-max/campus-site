@@ -78,6 +78,32 @@ test('task detail can show a public open order without requesting private chat',
   assert.deepEqual(api.calls.map(x=>x[1]),['/api/tasks/77','/api/channels/%E6%A0%A1%E5%9B%AD%E8%B7%91/messages?before=78']);
 });
 
+test('malformed channel deep link shows a recovery message without crashing or polling',async()=>{
+  const api=apiStub({request:async()=>{throw new Error('invalid route must not make a request')}});
+  const {page}=harness('pages/channel/channel.js',api);
+  assert.doesNotThrow(()=>page.onLoad({name:'%'}));
+  page.onShow();
+  await page.load();
+  assert.equal(page.data.name,'');
+  assert.match(page.data.error,/频道链接无效/);
+  assert.equal(page.timer,undefined);
+  assert.equal(api.calls.length,0);
+});
+
+test('malformed trade channel deep link returns a controlled order error',async()=>{
+  const api=apiStub({get:async path=>{
+    if(path==='/api/tasks/77'){const e=new Error('not a participant');e.statusCode=403;throw e}
+    throw new Error('malformed channel must not request a public feed');
+  }});
+  const {page}=harness('pages/trade/trade.js',api);
+  assert.doesNotThrow(()=>page.onLoad({id:'77',channel:'%'}));
+  await new Promise(resolve=>setImmediate(resolve));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(page.data.channel,'');
+  assert.match(page.data.error,/频道|订单链接/);
+  assert.deepEqual(api.calls.map(x=>x[1]),['/api/tasks/77']);
+});
+
 test('former claimer orders belong to history and do not offer private chat',async()=>{
   const api=apiStub({get:async path=>{
     if(path==='/api/my/tasks?includeHistory=1')return {posted:[],claimed:[{id:81,channel:'校园跑',task:true,user:'poster',claimedBy:'student',text:'代跑',status:'former',formerClaim:true,formerStatus:'released'}]};
