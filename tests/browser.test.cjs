@@ -46,6 +46,11 @@ test('login utility controls remain below the form on a short mobile screen',t=>
  assert.equal(layout.inside,true);assert.ok(layout.positions.every(x=>x==='static'),'login utility controls should stay in normal flow');assert.ok(layout.actionsTop>=layout.boxBottom,'utility controls must not cover the login form');assert.ok(layout.actionsBottom<=600,'utility controls should remain visible on the tested short viewport');assert.ok(layout.scrollWidth<=390,'login page should fit narrow mobile width');await page.screenshot({path:'.review/ui-login-short-mobile.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.review/ui-login-mobile.png'});
 }));
 
+test('leaderboard has a visible home exit and fits the narrow mobile viewport',t=>fixture(async({base})=>{
+ const page=await pageFor(t,base,'Alice',[],{viewport:{width:320,height:720},hasTouch:true});await page.goto(base+'/leaderboard.html');await page.getByRole('heading',{name:/接单排行榜/}).waitFor();
+ await page.getByRole('link',{name:'返回首页',exact:true}).waitFor();await page.getByRole('link',{name:'未接订单',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'leaderboard navigation must not overflow a 320px viewport');await page.screenshot({path:'.review/ui-leaderboard-mobile.png',fullPage:true});
+}));
+
 test('payment status is presented as the publisher claim, not verified receipt',t=>fixture(async({base,task,act})=>{
  const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('待接单人核实到账',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人已标记付款，请核实实际到账后确认收款',{exact:false}).first().waitFor();await page.locator('#ordersOpen').click();await page.locator('#orderRows').getByText('待接单人核实到账',{exact:true}).first().waitFor();
 }));
