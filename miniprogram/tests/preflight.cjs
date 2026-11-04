@@ -45,6 +45,8 @@ const api=require(apiFile);
   assert.equal(call.header.Authorization,'Bearer appeal-only','appeal credential must override a stale session');
   await api.request('/preflight');
   assert.equal(call.header.Authorization,'Bearer stored-session','normal requests must use the saved session');
+  global.wx.request=options=>options.fail({errMsg:'request:fail url not in domain list'});
+  await assert.rejects(api.request('/preflight'),/合法域名/,'request-domain failures should explain the required platform setting');
   const trade=fs.readFileSync(path.join(root,'pages/trade/trade.js'),'utf8');
   const tasks=fs.readFileSync(path.join(root,'pages/tasks/tasks.js'),'utf8');
   const channel=fs.readFileSync(path.join(root,'pages/channel/channel.js'),'utf8');
