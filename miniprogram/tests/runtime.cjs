@@ -84,6 +84,14 @@ test('login requires explicit agreement before sending credentials',async()=>{
   assert.equal(api.calls.length,0);
 });
 
+test('accepting the login agreement clears the stale consent error',()=>{
+  const {page}=harness('pages/login/login.js',apiStub({}));
+  page.setData({error:'请先阅读并同意用户协议与隐私说明'});
+  page.onAgreement({detail:{value:['agree']}});
+  assert.equal(page.data.agreed,true);
+  assert.equal(page.data.error,'');
+});
+
 test('task hall hides claim availability when fee rules cannot be read',async()=>{
   const api=apiStub({get:async path=>{
     if(path.startsWith('/api/tasks?'))return {tasks:[],total:0,pages:1};
