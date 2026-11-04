@@ -1,0 +1,14 @@
+<view class="page">
+  <view class="card hero"><text class="title">接单排行榜</text><view class="muted">北京时间每周一 01:00 开始、周日 01:00 锁定；只统计最终完成的任务。</view></view>
+  <view class="card" wx:if="{{live}}"><view class="row"><text class="section-title">本周进行中</text><text class="pill">{{live.key}}</text></view>
+    <view class="row rank-row" wx:for="{{live.rows}}" wx:key="username"><text class="rank">{{item.rank}}</text><text class="name">{{item.username}}{{item.mine?'（我）':''}}</text><text class="muted">完成 {{item.count}} 单</text><text class="reward">{{item.rank<=3?(item.eligible?'¥'+item.cash:'未达20单'):(item.rank<=10?'5积分':'')}}</text></view>
+    <view class="empty" wx:if="{{!live.rows.length}}">本周还没有完成任务</view>
+  </view>
+  <view class="card" wx:if="{{locked}}"><view class="row"><text class="section-title">最近已锁定</text><text class="pill">{{locked.key}}</text></view>
+    <view class="muted">前三名现金奖励由总管理员人工打款；第 4–10 名积分自动发放。提交收款码时请上传收款软件内保存的原始图片。</view>
+    <view class="row rank-row" wx:for="{{locked.rows}}" wx:key="username"><text class="rank">{{item.rank}}</text><text class="name">{{item.username}}{{item.mine?'（我）':''}}</text><text class="muted">完成 {{item.count}} 单</text><text class="reward">{{item.rank<=3?(item.eligible?'¥'+item.cash:'未达20单'):(item.rank<=10?'5积分':'')}}</text><button wx:if="{{item.mine&&item.rank<=3&&item.eligible&&item.rewardStatus!=='paid'}}" class="btn small" data-period="{{locked.key}}" bindtap="uploadQr">{{item.qrSubmitted?'更新收款码':'提交收款码'}}</button></view>
+    <view wx:for="{{myRewards}}" wx:key="key" class="notice reward-due"><text>{{item.key}} · 第 {{item.rank}} 名 · ¥{{item.cash}}：{{item.qrSubmitted?'收款码已提交，等待管理员处理':'待提交收款码'}}</text><button class="btn small" data-period="{{item.key}}" bindtap="uploadQr">{{item.qrSubmitted?'更新收款码':'提交收款码'}}</button></view>
+  </view>
+  <view class="card empty" wx:if="{{!locked&&!live}}">排行榜暂时没有数据</view><view class="notice" wx:if="{{error}}">{{error}}</view>
+</view>
+

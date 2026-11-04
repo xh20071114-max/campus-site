@@ -1,0 +1,6 @@
+{
+  "pages": ["pages/index/index", "pages/login/login", "pages/legal/legal", "pages/tasks/tasks", "pages/channel/channel", "pages/orders/orders", "pages/trade/trade", "pages/leaderboard/leaderboard", "pages/me/me", "pages/recharge/recharge"],
+  "window": {"navigationBarTitleText":"Aevon校园","navigationBarBackgroundColor":"#173b8f","navigationBarTextStyle":"white","backgroundColor":"#f4f6fb","backgroundTextStyle":"light"},
+  "tabBar": {"color":"#667085","selectedColor":"#173b8f","backgroundColor":"#ffffff","borderStyle":"white","list":[{"pagePath":"pages/index/index","text":"首页"},{"pagePath":"pages/tasks/tasks","text":"接任务"},{"pagePath":"pages/me/me","text":"我的"}]},
+  "style":"v2","sitemapLocation":"sitemap.json","lazyCodeLoading":"requiredComponents"
+}
