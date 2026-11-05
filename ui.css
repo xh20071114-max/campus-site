@@ -21,7 +21,7 @@ button,a{-webkit-tap-highlight-color:transparent}
 #openTaskHall.inSlot{position:static;right:auto;bottom:auto;z-index:auto;min-height:40px;padding:8px 12px;box-shadow:none}
 .site-quick-actions #supportBtn{order:2}.site-quick-actions #fbBtn{order:3}
 @media(max-width:640px){
- .ui-site header .bar{padding:12px 14px;gap:8px}.ui-site header nav{width:100%;gap:6px;overflow-x:auto;scrollbar-width:none}.ui-site header nav a{flex:none;margin:0;padding:4px 9px;background:#ffffff12}
+ .ui-site header .bar{padding:12px 14px;gap:8px}.ui-site header nav{width:100%;gap:6px;overflow:visible;flex-wrap:wrap}.ui-site header nav a{flex:none;margin:0;padding:4px 9px;background:#ffffff12}.ui-home header nav a[href="#news"],.ui-home header nav a[href="#about"]{display:none}
  .ui-chat .top{display:grid!important;grid-template-columns:minmax(0,1fr);gap:10px!important;padding:12px 14px}.ui-chat .topR{width:100%;justify-content:flex-start;gap:8px}.ui-chat .topR .orders-button{padding:8px 12px}.ui-chat #fbSlot #fbBtn{padding:8px 12px}.ui-chat #bell{min-width:38px;min-height:36px}
  .ui-chat #notice{flex-wrap:wrap}.ui-chat #notice .nb{flex-basis:100%}.ui-chat #notice .na{margin-left:auto}
  .ui-admin .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.ui-admin .tabs button{min-height:40px;white-space:normal;overflow:visible;text-overflow:clip}

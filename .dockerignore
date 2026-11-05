@@ -3,6 +3,7 @@
 .env.*
 .review
 tests
+miniprogram
 data.json
 data.json.tmp
 data.corrupt-*.json
@@ -13,4 +14,3 @@ pay-alipay.png
 pay-wechat.png
 server.log
 node_modules
-miniprogram

@@ -16,6 +16,7 @@
 - `ADMIN_PASSWORD`：设置后，启动时会直接建好管理员账号，别人就没法抢注了。账号已经存在时这一项不起作用，登录后可以在个人中心改密码。
 - `TRUST_PROXY`：默认 1，部署在网关或反向代理后面时，按 `X-Forwarded-For` 最右边的 IP 做频率限制；直接对外、前面没有代理时设成 0。
 - `ALLOW_ORIGINS`：允许跨域调用接口的前端地址，逗号分隔，默认 `https://plgslzlexpmy.sealoshzh.site`（前后端同域时用不到）
+- `APP_COMMIT`：部署镜像对应的完整 40 位 Git SHA；`GET /api/health` 会返回该版本，未设置或格式不正确时显示 `unknown`。
 
 ## 部署
 - 前后端一起部署：把整个目录放到服务器上运行 `./run.sh`，`config.js` 里 `API_BASE` 留空。
@@ -100,7 +101,7 @@ nohup ./run.sh &
 - `ALLOW_ORIGINS`：只有跨域访问时才需要。
 
 **部署后检查**
-部署时把 `RELEASE_SHA` 环境变量设为实际部署的 40 位 Git commit SHA。打开 `http://服务器地址/api/health`，确认 `ok` 为 `true` 且 `commit` 与部署 SHA 完全一致；这同时验证服务健康和运行版本。
+部署时优先把 `APP_COMMIT` 环境变量设为实际部署的 40 位 Git commit SHA；旧部署也兼容 `RELEASE_SHA`。打开 `http://服务器地址/api/health`，确认 `ok` 为 `true` 且 `commit` 与部署 SHA 完全一致；这同时验证服务健康和运行版本。
 如果没设 `ADMIN_PASSWORD`，部署完要马上用 `AevonEcho` 注册，免得被别人抢先注册。
 
 ## 积分
@@ -238,7 +239,7 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - 普通 JSON POST 请求先读完请求体再检查权限和状态，最大 100000 字节；非法 JSON 返回 400，超限返回 413。图片使用独立的大小限制，读完上传内容后复核会话、封禁状态和双方身份。
 - 静态服务只允许 PUBLIC_FILES 中的明确资源。添加新的公开资源时需要更新白名单；测试、源代码、备份及运维文件不自动公开。.dockerignore 排除运行数据和测试，.gitignore 排除本地数据与审查产物。
 - 本地运行回归测试：`node --test tests/regression.test.cjs`。测试启动独立临时数据目录和随机端口，验证账号隔离、慢请求竞态、议价、管理员历史聊天和图片、积分幂等、数据落盘、写盘故障、重启、静态访问与前端逻辑；不访问正式站。前端逻辑测试不替代真实浏览器验收。
-- 真实浏览器回归：开发机执行 `npm ci` 后运行 `npm run test:all`。Windows 默认使用已安装的 Edge；其他平台先执行 `npx playwright install chromium`。可通过 BROWSER_CHANNEL 选择其他已安装浏览器。Playwright 仅用于测试，正式站仍直接执行 `node server.js`，不需要安装开发依赖。
+- 完整回归：开发机执行 `npm ci` 后运行 `npm run test:all`，包括后端、真实浏览器和小程序预检/逻辑测试。Windows 默认使用已安装的 Edge；其他平台先执行 `npx playwright install chromium`。可通过 BROWSER_CHANNEL 选择其他已安装浏览器。Playwright 仅用于测试，正式站仍直接执行 `node server.js`，不需要安装开发依赖。
 - 登录、退出及账号跨标签页变更后会重载当前页面，释放旧账号的私聊、议价和评价缓存；保留当前频道地址。session.js 也会在页面从历史记录恢复或重新可见时检查会话变化。频道已读标记按账号分别保存，损坏的本地标记不会阻止页面启动。
 - 频道刷新和后台栏目加载忽略迟到的旧请求，防止新状态被旧响应覆盖。发任务和登录表单提交期间禁用重复提交；合法的两位小数报价不使用浮点精确相等判断。
 - `GET /api/admin/overview?summary=1` 只返回未处理数量及存储信息，保留原 overview 全量接口兼容性。后台按当前栏目加载 users、messages、announcements 等列表；查看设置、充值、建议等栏目不再下载全部消息。用户列表的发帖计数直接扫描原消息，避免创建全量消息副本。
@@ -257,3 +258,11 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 `GET /api/tasks?status=open&page=1&limit=20&channel=&q=&sort=new` 返回 `{tasks,total,page,pages}`；不传 `page` 时保留原有数组响应，旧版首页继续兼容。
 
 界面约定：新增或修改按钮时必须提供可见的中文名称，图标可辅助说明；手机端也保留名称，不缩成仅有图标的按钮。
+
+## 微信小程序
+
+原生微信小程序工程位于 `miniprogram/`，登录网站账号并复用同一后端 API。项目 AppID、隐私授权、合法服务器域名、真机检查和提审准备见 `miniprogram/README.md`。小程序源码不会打入网站 Docker 镜像。
+
+## 发布版本核对
+
+构建镜像时将目标完整 SHA 传入 `APP_COMMIT`，例如 `docker build --build-arg APP_COMMIT=<完整提交SHA> ...`。部署后 `/api/health` 的 `commit` 必须与该 SHA 一致；`unknown` 表示运行配置没有提供有效版本号。

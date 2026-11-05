@@ -4,5 +4,3 @@
 <view class="section-title">平台公告</view><view class="card" wx:for="{{announcements}}" wx:key="id"><view class="row"><text class="announcement-title">{{item.title}}</text><text class="muted">{{item.date}}</text></view><text class="announcement-text">{{item.text}}</text></view><button wx:if="{{allAnnouncements.length>2}}" class="expand" bindtap="toggleAnnouncements">展开 / 收起公告</button><view class="card empty" wx:if="{{!announcements.length}}">暂时没有公告</view>
 <view class="row section-head"><text class="section-title">最新可接任务</text><text class="more" bindtap="openTasks">更多 →</text></view><view class="card" wx:for="{{tasks}}" wx:key="id" data-id="{{item.id}}" data-channel="{{item.channel}}" bindtap="openTask"><view class="row"><text class="pill">{{item.channel}}</text><text class="muted">{{item.timeText}}</text></view><view class="task-text">{{item.text}}</view><view class="muted">报酬：{{item.reward||'未填写'}} · {{item.place||'地点待沟通'}}</view></view><view class="card empty" wx:if="{{!tasks.length}}">现在没有待接任务</view>
 <view class="foot row"><text bindtap="openMe">{{username?username+' · 个人中心':'登录 / 注册'}}</text><text bindtap="openLeaderboard">接单排行榜</text></view></view>
-
-

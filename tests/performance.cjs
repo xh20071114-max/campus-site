@@ -7,7 +7,7 @@ async function measure(count,backupDue){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'aevon-perf-')),data=seed(),now=Date.now();
  data.rev=count;data.messages['校园跑']=Array.from({length:count},(_,i)=>({id:now*1000+i,user:'Alice',text:'x'.repeat(500),task:true,reward:'10元',time:new Date(now).toISOString(),rev:i+1}));
  const json=JSON.stringify(data);await fs.writeFile(path.join(dir,'data.json'),json);await fs.mkdir(path.join(dir,'backups'));
- for(let i=1;i<=7;i++){const file=path.join(dir,'backups','data-2000-01-0'+i+'.json');await fs.writeFile(file,json);if(backupDue)await fs.utimes(file,new Date('2000-01-01'),new Date('2000-01-01'))}
+ for(let i=1;i<=7;i++){const file=path.join(dir,'backups','data-2000-01-0'+i+'T00-00-00-000Z.json');await fs.writeFile(file,json);if(backupDue)await fs.utimes(file,new Date('2000-01-01'),new Date('2000-01-01'))}
  const preload=path.join(dir,'telemetry.cjs');await fs.writeFile(preload,"const http=require('node:http'),listen=http.Server.prototype.listen;http.Server.prototype.listen=function(...args){if(typeof args[1]==='function')args.splice(1,0,'127.0.0.1');return listen.apply(this,args)};process.on('message',m=>{if(m==='memory')process.send({memory:process.memoryUsage(),maxRSS:process.resourceUsage().maxRSS})});");
  const child=spawn(process.execPath,['--require',preload,entry],{cwd:root,env:{...process.env,PORT:'0',BIND_HOST:'127.0.0.1',DATA_DIR:dir,ADMIN:'AevonEcho',ADMIN_PASSWORD:'',TRUST_PROXY:'0'},stdio:['ignore','pipe','pipe','ipc'],windowsHide:true});
  let logs='';child.stdout.on('data',b=>logs+=b);child.stderr.on('data',b=>logs+=b);

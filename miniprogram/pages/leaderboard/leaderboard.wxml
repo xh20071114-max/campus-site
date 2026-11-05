@@ -11,4 +11,3 @@
   </view>
   <view class="card empty" wx:if="{{!locked&&!live}}">排行榜暂时没有数据</view><view class="notice" wx:if="{{error}}">{{error}}</view>
 <privacy-popup id="privacyPopup"/></view>
-

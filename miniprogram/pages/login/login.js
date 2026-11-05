@@ -5,14 +5,20 @@ Page({
   onUser(e){this.setData({username:e.detail.value})},
   onPassword(e){this.setData({password:e.detail.value})},
   onPassword2(e){this.setData({password2:e.detail.value})},
-  onAgreement(e){this.setData({agreed:!!(e.detail.value||[]).length})},
+  onAgreement(e){
+    const detail=e&&e.detail||{},values=Array.isArray(detail.value)?detail.value:[];
+    const agreed=values.includes('agree')||detail.value==='agree'||detail.checked===true;
+    const previousError=String(this.data.error||'');
+    const error=agreed&&previousError.startsWith('请先')&&/用户协议/.test(previousError)&&/(同意|勾选)/.test(previousError)?'':this.data.error;
+    this.setData({agreed,error});
+  },
   onSupportText(e){this.setData({supportText:e.detail.value})},
   onSupportContact(e){this.setData({supportContact:e.detail.value})},
   toggle(){this.setData({register:!this.data.register,error:'',appealToken:''})},
   openLegal(){wx.navigateTo({url:'/pages/legal/legal'})},
   async submit(){
     if(this.data.busy)return;
-    if(!this.data.agreed)return this.setData({error:'请先阅读并同意用户协议与隐私说明'});
+    if(!this.data.agreed)return this.setData({error:'请先确认用户协议：勾选复选框，或在说明页点击“我已阅读并同意”'});
     const username=this.data.username.trim(),password=this.data.password;
     if(!username||!password)return this.setData({error:'请填写用户名和密码'});
     if(this.data.register&&password.length<6)return this.setData({error:'密码至少 6 位'});

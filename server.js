@@ -1,6 +1,8 @@
 // Aevon校园交流网 后端：静态文件 + 登录 + 频道消息 + 公告（数据存 data.json，每日备份到 backups/）
-const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib');
-const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups'), RELEASE_SHA=/^[0-9a-f]{40}$/i.test(process.env.RELEASE_SHA||'')?process.env.RELEASE_SHA.toLowerCase():null;
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib'),{Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
+const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
+const APP_COMMIT_VALUE=String(process.env.APP_COMMIT||process.env.RELEASE_SHA||'').trim();
+const APP_COMMIT=/^[a-f0-9]{40}$/i.test(APP_COMMIT_VALUE)?APP_COMMIT_VALUE.toLowerCase():'unknown';
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
 const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
 // 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
@@ -90,6 +92,14 @@ function* jsonChunks(value,depth=0){if(Array.isArray(value)){yield '[';for(let i
   else if(value&&typeof value==='object'&&depth<2&&typeof value.toJSON!=='function'){yield '{';let separator='';for(const [k,v] of Object.entries(value)){if(['undefined','function','symbol'].includes(typeof v))continue;yield separator+JSON.stringify(k)+':';separator=',';yield*jsonChunks(v,depth+1)}yield '}'}
   else yield JSON.stringify(value)}
 const writeJSON=(fd,value)=>{let parts=[],size=0;const flush=()=>{if(!size)return;const b=Buffer.from(parts.join(''));for(let offset=0;offset<b.length;){const n=fs.writeSync(fd,b,offset,b.length-offset);if(!n)throw new Error('数据写入没有进展');offset+=n}parts=[];size=0};for(const chunk of jsonChunks(value)){parts.push(chunk);size+=chunk.length;if(size>=65536)flush()}flush()};
+// 管理员导出整库时逐项写入响应，避免同时构造完整 JSON 字符串和 UTF-8 缓冲区。
+function* adminBackupJSON(){
+  yield '{"users":{';let separator='';
+  for(const name in db.users)if(Object.hasOwn(db.users,name)){const {ips,...user}=db.users[name];yield separator+JSON.stringify(name)+':'+JSON.stringify(user);separator=','}
+  yield '}';
+  for(const key in db)if(Object.hasOwn(db,key)&&key!=='users'&&key!=='sessions'){yield ','+JSON.stringify(key)+':';yield*jsonChunks(db[key])}
+  yield '}';
+}
 const persistNow=()=>{if(storageError)throw storageError;if(persistTimer){clearTimeout(persistTimer);persistTimer=null}atomicWrite(DB,fd=>writeJSON(fd,db))};
 const persist=(ms=200)=>{if(!persistTimer&&!storageError)persistTimer=setTimeout(()=>{persistTimer=null;try{persistNow()}catch(e){failStorage(e)}},ms)};
 process.on('exit',()=>{if(persistTimer)try{persistNow()}catch{}});
@@ -284,15 +294,32 @@ function remindPayments(){expireDue();const now=Date.now();let ch=false;
     m.paymentReminderAt=new Date().toISOString();sysChat(m,'发布人标记付款已超过 48 小时，请接单人核实到账后确认；如未到账可申请平台介入');
     ev(m.user,'payment_reminder',m,'标记付款已超过 48 小时，仍在等待接单人核实到账',null);ev(m.claimedBy,'payment_reminder',m,'请核实到账后确认收款；如未到账可申请平台介入',null);m.rev=nextRev();ch=true}
   if(ch) persist()}
-// 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份
+// 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份。
+// 旧快照由本服务校验后原子写入；这里避免逐份重新解析大型 JSON，恢复时仍会完整校验。
 function backup(){try{
   if(!fs.existsSync(DB))return;
   fs.mkdirSync(BAK,{recursive:true});
-  const files=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).sort();
-  const valid=[];let last=0;for(const f of files.slice().reverse()){try{parseDB(fs.readFileSync(path.join(BAK,f),'utf8'));valid.push(f);last=Math.max(last,fs.statSync(path.join(BAK,f)).mtimeMs);if(files.length<=7&&Date.now()-last<24*3600e3)return}catch(e){console.error('忽略无效备份，保留原文件：'+f,e.message)}}
-  const text=fs.readFileSync(DB,'utf8');try{parseDB(text)}catch(e){console.error('data.json 解析失败，跳过这次备份',e.message);return}
-  if(Date.now()-last>=24*3600e3){const name='data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';atomicWrite(path.join(BAK,name),text);valid.push(name);valid.sort()}
-  valid.sort().slice(0,Math.max(0,valid.length-7)).forEach(f=>fs.unlinkSync(path.join(BAK,f)));
+  const now=Date.now(),day=24*3600e3;
+  const snapshots=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).map(name=>({name,mtime:fs.statSync(path.join(BAK,name)).mtimeMs}));
+  // 旧的非标准文件名可能是手工放入的恢复点；不解析也不删除它们。
+  const old=snapshots.filter(x=>/^data-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/.test(x.name)&&now-x.mtime>=day),recent=snapshots.filter(x=>now-x.mtime<day).sort((a,b)=>b.mtime-a.mtime||b.name.localeCompare(a.name));
+  let latestRecent=null;
+  for(let i=0;i<recent.length;i++){
+    const item=recent[i];
+    try{parseDB(fs.readFileSync(path.join(BAK,item.name),'utf8'));latestRecent=item;break}
+    catch(e){console.error('忽略无效备份，保留原文件：'+item.name,e.message)}
+  }
+  const valid=old.concat(latestRecent?[latestRecent]:[]);
+  if(now-(latestRecent?.mtime||0)>=day){
+    // 先刷入可能尚未落盘的启动迁移，再从主库复制，避免额外构造整库字符串。
+    persistNow();
+    const name='data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json',target=path.join(BAK,name),tmp=target+'.tmp';let fd;
+    try{fs.copyFileSync(DB,tmp);fd=fs.openSync(tmp,'r+');fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(tmp,target);valid.push({name,mtime:Date.now()})}
+    catch(e){if(fd!==undefined)try{fs.closeSync(fd)}catch{}try{fs.unlinkSync(tmp)}catch{}throw e}
+  }
+  const keep=new Set(valid.sort((a,b)=>a.mtime-b.mtime||a.name.localeCompare(b.name)).slice(-7).map(x=>x.name));
+  for(const item of valid)if(!keep.has(item.name))fs.unlinkSync(path.join(BAK,item.name));
+  // 非标准文件名、近期无效和未检查的快照不在 valid 集合中，先保留以免清理掉恢复点。
 }catch(e){console.error('备份失败',e.message)}}
 // 设置了 ADMIN_PASSWORD 时，启动时直接建好管理员账号，避免部署后被别人抢先注册（已存在就不动）
 if(ADMIN&&process.env.ADMIN_PASSWORD&&!db.users[ADMIN]){db.users[ADMIN]={id:crypto.randomUUID(),pw:hash(String(process.env.ADMIN_PASSWORD)),created:Date.now()};console.log('已创建管理员账号',ADMIN)}
@@ -623,7 +650,7 @@ const handle=async(req,res)=>{
         storage={ok:true,dataBytes,freeBytes:stat.bavail*stat.bsize};
       }catch{}
       const ok=storage.ok&&!storageError;
-      return send(res,ok?200:503,{ok,commit:RELEASE_SHA,uptime:Math.round(process.uptime()),storage});
+      return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),commit:APP_COMMIT,storage});
     }
     if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive);return{name:c,count:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
@@ -840,7 +867,7 @@ const handle=async(req,res)=>{
     }
     if(p==='/api/admin/reports'||p.startsWith('/api/admin/reports/')||p==='/api/admin/backup'||p==='/api/admin/disputes'){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
-      if(p==='/api/admin/backup'&&GET){const {sessions,users,...rest}=db; const us=Object.create(null); for(const [k,v] of Object.entries(users)){const {ips,...o}=v; us[k]=o} const d=JSON.stringify({users:us,...rest}); res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); return res.end(d)}
+      if(p==='/api/admin/backup'&&GET){res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); await pipeline(Readable.from(adminBackupJSON()),res); return}
       if(p==='/api/admin/disputes'&&GET){const o=[]; for(const c of CHANNELS) for(const x of db.messages[c]) if(x.task&&x.dispute&&!x.deleted) o.push({...out(x,c,true),chatCount:(db.taskChats[x.id]||[]).length,ipOverlap:!!((x.ratings&&Object.values(x.ratings).some(v=>v.ipOverlap))||((db.users[x.user]||{}).ips||[]).some(i=>((db.users[x.claimedBy]||{}).ips||[]).includes(i))),resolved:x.stage!=='disputed'}); return send(res,200,o.sort((a,b)=>(a.resolved-b.resolved)||b.dispute.time.localeCompare(a.dispute.time)))}
       if(p==='/api/admin/reports'&&GET) return send(res,200,db.reports.slice().reverse().map(x=>{const t=x.target==='task'?findTask(x.targetId):null; return {...x,targetText:t?(t.msg.deleted?db.deletedTexts[t.msg.id]:t.msg.text):null,targetChannel:t?t.ch:null,targetExists:x.target==='user'?!!db.users[x.targetId]:!!t}}));
       const rm2=p.match(/^\/api\/admin\/reports\/([^/]+)\/(resolve|delete)$/);

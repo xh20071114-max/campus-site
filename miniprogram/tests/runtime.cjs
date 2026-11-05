@@ -84,6 +84,21 @@ test('login requires explicit agreement before sending credentials',async()=>{
   assert.equal(api.calls.length,0);
 });
 
+test('accepting the login agreement clears the stale consent error',()=>{
+  const {page}=harness('pages/login/login.js',apiStub({}));
+  for(const error of ['请先阅读并同意用户协议与隐私说明','请先确认用户协议：勾选复选框']){
+    page.setData({agreed:false,error});page.onAgreement({detail:{value:['agree']}});
+    assert.equal(page.data.agreed,true);assert.equal(page.data.error,'');
+  }
+});
+
+test('explicit consent at the end of the legal page returns to login with agreement saved',()=>{
+  const login={route:'pages/login/login',data:{agreed:false,error:'请先确认用户协议'},setData(value){Object.assign(this.data,value)}};let definition,returned;
+  vm.runInNewContext(fs.readFileSync(path.join(root,'pages/legal/legal.js'),'utf8'),{Page(value){definition=value},require(){return apiStub({})},getCurrentPages(){return [login,{}]},wx:{navigateBack(value){returned=value}}});
+  const page=Object.assign({},definition,{data:Object.assign({},definition.data),setData(value){Object.assign(this.data,value)}});page.agreeAndReturn();
+  assert.equal(login.data.agreed,true);assert.equal(login.data.error,'');assert.equal(returned.delta,1);
+});
+
 test('task hall hides claim availability when fee rules cannot be read',async()=>{
   const api=apiStub({get:async path=>{
     if(path.startsWith('/api/tasks?'))return {tasks:[],total:0,pages:1};
