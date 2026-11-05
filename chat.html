@@ -138,6 +138,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 @media(max-width:640px){.m .txt{max-width:100%;display:block}}
 .who .tm{white-space:nowrap}
 #tcFlow{font-size:12px;line-height:1.5;color:#92400e;background:#fffbeb;border-bottom:1px solid #fde68a;padding:6px 12px}
+.pin-board{margin:10px 14px 4px;padding:12px 14px;border:1px solid #fecaca;border-left:4px solid #ef4444;border-radius:12px;background:#fff7f7}.pin-board h3{margin:0 0 8px;color:#b91c1c;font-size:14px}.pin-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #fee2e2}.pin-row:first-of-type{border-top:0}.pin-row>div{flex:1;min-width:0}.pin-row small{display:block;color:#64748b}.pin-row .pin-text{white-space:pre-wrap;overflow-wrap:anywhere}.pin-toggle{border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:8px;padding:5px 9px;font-size:12px;white-space:nowrap}.pin-toggle:disabled{opacity:.45;cursor:default}
 </style>
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><script src="pwa.js" defer></script>
 <link rel="stylesheet" href="ui.css"></head>
@@ -225,7 +226,7 @@ async function auth(kind){lerr.textContent='';
 let lmode='login';function setLMode(k){lmode=k;bLogin.classList.toggle('on',k==='login');bReg.classList.toggle('on',k==='register');bGo.textContent=k==='login'?'登录':'注册';lhint.style.display=k==='login'?'none':'block';lp.autocomplete=k==='login'?'current-password':'new-password';lp2.style.display=k==='login'?'none':'';lp2.required=k!=='login';lp2.value='';lerr.textContent=''}
 bLogin.onclick=()=>setLMode('login');bReg.onclick=()=>setLMode('register');
 bGo.onclick=()=>lf.reportValidity()&&auth(lmode);
-const revs={};let online=null,refreshSeq=0,refreshInFlight=false,refreshPending=false;
+const revs={},pinnedByChannel={};let online=null,refreshSeq=0,refreshInFlight=false,refreshPending=false;
 function setOnline(v){if(v===online)return;online=v;offline.style.display=v?'none':'block';
   [...f.elements].forEach(x=>x.disabled=!v||isBanned||posting);applyMode();
   if(!v){showLogin(false);if(!title.textContent)title.textContent='# 频道'}else if(!token&&!browsing)showLogin(true)}
@@ -243,6 +244,7 @@ async function refresh(){
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
     const more=await r.json();if(seq!==refreshSeq)return;if(!r.ok||!Array.isArray(more))throw new Error('消息加载失败');revs[ch]=Math.max(revs[ch]||0,+(r.headers.get('X-Rev')||0));if(first)hasMore[ch]=more.length>=50;
+    try{const pr=await api('/api/channels/'+encodeURIComponent(ch)+'/pins');pinnedByChannel[ch]=pr.ok?await pr.json():[]}catch{pinnedByChannel[ch]=[]}
     const list=cache[ch]||[];
     more.forEach(m=>{const i=list.findIndex(x=>x.id===m.id);if(i>=0)list[i]=m;else list.push(m)});
     list.sort((a,b)=>a.id-b.id);cache[ch]=list;
@@ -322,12 +324,13 @@ function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return 
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
   const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!S||match(m));
+  const pinItems=(pinnedByChannel[cur]||[]).filter(m=>!m.deleted&&!m.cancelled),pinBoard=pinItems.length?`<section class="pin-board" aria-label="管理员置顶"><h3>📌 管理员置顶 · ${pinItems.length}/3</h3>${pinItems.map(m=>`<div class="pin-row"><div><small>${m.task?'任务 · '+esc(m.taskType||'其他'):'聊天消息'} · ${esc(m.user||'')}</small><div class="pin-text">${esc(m.text||'')}</div></div>${can('pinMessages')?`<button type="button" class="pin-toggle" data-pin="${esc(m.id)}" data-channel="${esc(cur)}" data-pin-action="unpin">取消置顶</button>`:''}</div>`).join('')}</section>`:'';
   sInfo_(S,list.length);
   const top=S?'<div id="sInfo"></div>':flt==='saved'?'':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
-  msgs.innerHTML=top+list.map(m=>{
-    const canDel=can('deleteMessages')||(m.user===me&&!m.claimedBy);
-    const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'',save=m.task?`<button class="saveB" type="button" data-save="${m.id}" aria-label="${savedTaskIds.has(String(m.id))?'取消收藏':'收藏任务'}">${savedTaskIds.has(String(m.id))?'⭐ 已收藏':'☆ 收藏'}</button>`:'';
-    const ops=acts||del||rep_||chat||save?`<div class="ops">${acts}${del}<span class="sp"></span>${rep_}${chat}${save}</div>`:'';
+  msgs.innerHTML=pinBoard+top+list.map(m=>{
+    const canDel=can('deleteMessages')||(!m.task&&m.user===me&&!m.claimedBy);
+    const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',pin=can('pinMessages')?`<button type="button" class="pin-toggle" data-pin="${esc(m.id)}" data-channel="${esc(m._ch||cur)}" data-pin-action="${m.pinned?'unpin':'pin'}" ${!m.pinned&&pinItems.length>=3?'disabled title="本频道最多置顶 3 条，请先取消一条"':''}>${m.pinned?'取消置顶':'📌 置顶'}</button>`:'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'',save=m.task?`<button class="saveB" type="button" data-save="${m.id}" aria-label="${savedTaskIds.has(String(m.id))?'取消收藏':'收藏任务'}">${savedTaskIds.has(String(m.id))?'⭐ 已收藏':'☆ 收藏'}</button>`:'';
+    const ops=acts||del||pin||rep_||chat||save?`<div class="ops">${acts}${del}${pin}<span class="sp"></span>${rep_}${chat}${save}</div>`:'';
     return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who">${flt==='saved'?`<span class="tag blue">${m.task?'# '+esc(m.taskType||'其他'):'# '+esc(m.channel||'')}</span>`:''}<b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.task?`<span class="tag violet">${esc(m.taskType||'其他')}</span>`:''}${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':flt==='saved'?'<p style="color:#9ca3af">还没有收藏任务，点任务下方的「收藏」就能稍后再看。</p>':'<p style="color:#9ca3af">这里还没有消息</p>');
   const mo=document.getElementById('more');if(mo&&hasMore[cur])mo.onclick=loadOlder;
   msgs.querySelectorAll('.cbtn').forEach(b=>b.onclick=()=>openChat(b.dataset.chat));
@@ -341,6 +344,7 @@ function renderMsgs(){
     const task=findTask(b.dataset.id),ch=task&&task._ch||cur;
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages/'+b.dataset.id+'/'+b.dataset.act,{method:'POST'});
     if(r.status===401)return expired();if(!r.ok)await failed(r);else loadMe();refresh()});
+  msgs.querySelectorAll('.pin-toggle').forEach(b=>b.onclick=async()=>{if(!token)return showLogin(true);if(b.disabled)return;b.disabled=true;try{const r=await api('/api/channels/'+encodeURIComponent(b.dataset.channel)+'/messages/'+encodeURIComponent(b.dataset.pin)+'/'+b.dataset.pinAction,{method:'POST'}),d=await r.json().catch(()=>({}));if(r.status===401)return expired();if(!r.ok){alert(d.error||'置顶操作失败');return}await refresh()}catch{alert('网络异常，置顶操作失败')}finally{b.disabled=false}});
   if(S){if(forceTop)msgs.scrollTop=0;forceTop=false;sInfo_(S,list.length)}else if(!keepScroll&&(atBottom||forceBottom))msgs.scrollTop=msgs.scrollHeight;forceBottom=false;keepScroll=false;
 }
 const canChat=m=>m.task&&me&&m.claimedBy&&!m.deleted&&(m.user===me||m.claimedBy===me||can('viewChats')||can('joinChats'));

@@ -5,7 +5,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs tests/trade.test.cjs tests/rewards.test.cjs",
+    "test": "node --test tests/regression.test.cjs tests/permissions.test.cjs tests/support.test.cjs tests/trade.test.cjs tests/rewards.test.cjs tests/pins.test.cjs",
     "test:browser": "node --test tests/browser.test.cjs",
     "test:miniprogram": "node miniprogram/tests/preflight.cjs && node --test miniprogram/tests/runtime.cjs",
     "test:all": "npm test && npm run test:browser && npm run test:miniprogram",

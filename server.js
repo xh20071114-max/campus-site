@@ -17,6 +17,7 @@ const PERMISSIONS=[
   ['managePoints','用户管理','调整用户积分','含查看用户；仅调整普通用户积分'],
   ['viewMessages','内容管理','查看消息与议价','查看全部频道消息、已删除原文和议价历史'],
   ['deleteMessages','内容管理','删除消息与任务','含查看消息；可选择退还任务积分'],
+  ['pinMessages','内容管理','置顶公开消息与任务','可置顶或取消置顶任一公开频道消息和任务；每个频道最多 3 条'],
   ['viewChats','内容管理','查看任务私聊','只读查看全部任务私聊、议价历史及图片'],
   ['joinChats','内容管理','参与任务私聊','含查看私聊；可用管理员身份在进行中的订单发言及发送图片'],
   ['manageAnnouncements','内容管理','管理全站公告','发布与删除全站公告'],
@@ -269,9 +270,9 @@ const status=x=>!x.task?undefined:x.closed?'closed':x.cancelled?'cancelled':x.do
 const rememberFormerClaim=(m,reason,now)=>{const user=db.users[m.claimedBy];if(!user)return;const history=m.formerClaims||(m.formerClaims={});history[user.id]={reason,time:now,reward:m.reward||'',bonusPoints:m.bonusPoints||0}};
 const pubRatings=rs=>{if(!rs)return rs;const o={};for(const k in rs){const {ipOverlap,...v}=rs[k];o[k]=v}return o};
 // v：查看人。true=管理员接口；纠纷原因、发起人、关闭原因只给管理员和双方，其他人只知道「有过纠纷」
-const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
+const out=(x,c,v)=>{const full=v===true||(!!v&&(canInspect(v)||isPoster(x,v)||isClaimer(x,v))), oc=x.task&&db.offers[x.id]?pendingOffers(x).length:0, ot=x.task&&(v===true||canInspect(v))&&db.offers[x.id]?db.offers[x.id].length:0, mo=x.task&&typeof v==='string'&&db.offers[x.id]?[...db.offers[x.id]].reverse().find(y=>ownsOffer(y,v)):null, o={...x,...(oc?{offerCount:oc}:{}),...(ot?{offerTotal:ot}:{}),...(mo?{myOffer:(({id,price,counter,status,round,myTurn,canCounter})=>({id,price,counter,status,round,myTurn,canCounter}))(offerView(mo,x,v))}:{}),...(x.ratings?{ratings:pubRatings(x.ratings)}:{}),pinned:!!x.pinned,status:status(x),...(c?{channel:c}:{}),expired:expired(x),overdue:overdue(x)};
   if(x.dispute){if(full) Object.assign(o,{disputeReason:x.dispute.reason,disputeBy:x.dispute.by||'系统',disputedAt:x.dispute.time}); else {const {from,time,resolution,resolvedAt}=x.dispute; o.dispute={from,time,...(resolution?{resolution,resolvedAt}:{})}}}
-  delete o.formerClaims;delete o.claimedById;delete o.posterId;delete o.completionNote;delete o.completionSubmittedById;delete o.completionSubmittedAt;delete o.deliveryConfirmedAt;delete o.deliveryConfirmedById
+  delete o.formerClaims;delete o.claimedById;delete o.posterId;delete o.completionNote;delete o.completionSubmittedById;delete o.completionSubmittedAt;delete o.deliveryConfirmedAt;delete o.deliveryConfirmedById;delete o.pinnedAt;delete o.pinnedBy
   if(!full){delete o.closeReason;delete o.closeRefund;delete o.deleteRefund}
   return o};
 const alive=x=>!x.deleted&&!x.cancelled;
@@ -669,8 +670,8 @@ const handle=async(req,res)=>{
       return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),commit:APP_COMMIT,storage});
     }
     if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive),tasks=l.filter(x=>x.task);return{name:c,count:c===TASK_CHANNEL?tasks.length:l.length,taskCount:tasks.length,messageCount:l.length,lastId:l.length?l[l.length-1].id:0,...(c===TASK_CHANNEL?{taskTypes:TASK_TYPES}:{})}})}; return send(res,200,chCache.data)}
-    // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
-    const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|restore|dispute)$/);
+    // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete|pin|unpin>
+    const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|restore|dispute|pin|unpin)$/);
     if(am2&&POST){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(banned(n)) return send(res,403,BANNED);
       if(limited('task:'+n,60))return send(res,429,{error:'任务操作太频繁，请一分钟后再试'});
@@ -688,6 +689,19 @@ const handle=async(req,res)=>{
           addPoints(n,-msg.cost,'restore','恢复已删除任务，撤销发布积分退款',msg.id);msg.refunded=false}
         msg.text=original;delete db.deletedTexts[msg.id];msg.deleted=false;msg.restoredBy=n;msg.restoredAt=now;delete msg.deletedBy;delete msg.deletedAt;recalc(msg);msg.rev=nextRev();persist();return send(res,200,out(msg,ix.ch,n));
       }
+      if(act==='pin'||act==='unpin'){
+        if(!can(n,'pinMessages'))return send(res,403,{error:'没有置顶权限'});
+        if(msg.deleted||msg.cancelled)return send(res,404,{error:'公开内容不存在或已撤回'});
+        if(act==='pin'){
+          if(!msg.pinned&&list.filter(x=>x.pinned&&!x.deleted&&!x.cancelled).length>=3)return send(res,409,{error:'本频道最多置顶 3 条内容，请先取消一条'});
+          if(msg.pinned)return send(res,200,out(msg,ix.ch,n));
+          msg.pinned=true;msg.pinnedAt=now;msg.pinnedBy=n;
+        }else{
+          if(!msg.pinned)return send(res,200,out(msg,ix.ch,n));
+          delete msg.pinned;delete msg.pinnedAt;delete msg.pinnedBy;
+        }
+        msg.rev=nextRev();persist();return send(res,200,out(msg,ix.ch,n));
+      }
       if(act==='delete'){ // 管理员可删任何消息；普通用户可删自己没人接的消息
         if(!can(n,'deleteMessages')&&!(msg.user===n&&!msg.claimedBy)) return send(res,403,{error:'没有权限删除这条消息'});
         if(can(n,'deleteMessages')&&msg.task){ // 管理员删任务：不自动退分，只退勾选的 refundPost / refundClaim（已退过、已注销的跳过）
@@ -698,7 +712,7 @@ const handle=async(req,res)=>{
           msg.deleteRefund={post:rp,claim:rc};
           if(msg.claimedBy) sysChat(msg,'管理员删除了任务（'+([rp?'退还发布人 '+rp+' 积分':'',rc?'退还接单人 '+rc+' 积分':''].filter(Boolean).join('，')||'不退积分')+'）');
         } else if(msg.task&&msg.cost&&!msg.refunded&&!msg.cancelled&&!msg.claimedBy&&!msg.done){addPoints(msg.user,msg.cost,'refund','删除未接任务退还',msg.id);msg.refunded=true} // 发布人自己删没人接的任务：照常退
-        db.deletedTexts[msg.id]=msg.text;msg.deleted=true;msg.text='';msg.deletedBy=n;msg.deletedAt=now;
+        db.deletedTexts[msg.id]=msg.text;msg.deleted=true;msg.text='';msg.deletedBy=n;msg.deletedAt=now;delete msg.pinned;delete msg.pinnedAt;delete msg.pinnedBy;
       } else {
         if(!msg.task) return send(res,404,{error:'任务不存在'});
         if(msg.cancelled) return send(res,409,{error:'任务已撤销'});
@@ -745,7 +759,7 @@ const handle=async(req,res)=>{
             const cr=msg.claimCost&&!msg.claimRefunded&&!msg.claimerDeleted&&db.users[msg.claimedBy]?msg.claimCost:0;
             if(cr){addPoints(msg.claimedBy,cr,'refund','任务超时被撤回，退还接单积分',msg.id);msg.claimRefunded=true}
             sysChat(msg,'任务超时，发布人撤回了任务'+(cr?'，已退还接单人 '+cr+' 积分':''))}
-          msg.cancelled=true;msg.cancelledAt=now; if(msg.cost&&!msg.refunded){addPoints(msg.user,msg.cost,'refund','撤回任务退还',msg.id);msg.refunded=true}
+          msg.cancelled=true;msg.cancelledAt=now;delete msg.pinned;delete msg.pinnedAt;delete msg.pinnedBy; if(msg.cost&&!msg.refunded){addPoints(msg.user,msg.cost,'refund','撤回任务退还',msg.id);msg.refunded=true}
         } else if(act==='finish'||act==='paid'||act==='received'){ // 接单人完成 → 发布人确认交付并标记付款 → 接单人确认到账
           if(msg.done) return send(res,409,{error:'任务已完成'});
           const st=status(msg), need={finish:'claimed',paid:'finished',received:'paid'}[act], who=act==='paid'?msg.user:msg.claimedBy;
@@ -1030,6 +1044,9 @@ const handle=async(req,res)=>{
       const pages=Math.max(1,Math.ceil(all.length/lim)),current=Math.min(page||1,pages),start=paged?(current-1)*lim:0,tasks=all.slice(start,start+lim).map(x=>withUnread(out(x.msg,x.ch,me),me));
       return send(res,200,paged?{tasks,total:all.length,page:current,pages}:tasks);
     }
+    // GET /api/channels/:name/pins  公开频道置顶内容
+    const pn=p.match(/^\/api\/channels\/([^/]+)\/pins$/);
+    if(pn&&GET){const ch=pn[1],me=userOf(req);if(!db.messages[ch])return send(res,404,{error:'频道不存在'});const pins=db.messages[ch].filter(x=>x.pinned&&!x.deleted&&!x.cancelled).sort((a,b)=>String(b.pinnedAt||'').localeCompare(String(a.pinnedAt||''))||b.id-a.id).slice(0,3);return send(res,200,pins.map(x=>withUnread(out(x,ch,me),me)))}
     // GET /api/channels/:name/notices?limit=50  置顶公告：全站公告 + 管理员在这个频道发的普通消息，按时间倒序
     const nm=p.match(/^\/api\/channels\/([^/]+)\/notices$/);
     if(nm&&GET){const ch=nm[1]; if(!db.messages[ch]) return send(res,404,{error:'频道不存在'}); const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100);

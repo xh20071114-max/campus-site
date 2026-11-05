@@ -51,6 +51,14 @@ test('leaderboard has a visible home exit and fits the narrow mobile viewport',t
  await page.getByRole('link',{name:'返回首页',exact:true}).waitFor();await page.getByRole('link',{name:'可接任务',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'leaderboard navigation must not overflow a 320px viewport');await page.screenshot({path:'.review/ui-leaderboard-mobile.png',fullPage:true});
 }));
 
+test('task cards separate withdrawal from recoverable hiding and admins can pin public tasks and chat',t=>fixture(async({base,task,call})=>{
+ const m=await task('Alice',{text:'Recoverable task action'}),cardPath='/api/channels/'+encodeURIComponent(m.channel||'任务大厅')+'/messages/'+m.id;
+ const owner=await pageFor(t,base,'Alice');const taskCard=owner.locator('.m').filter({hasText:'Recoverable task action'});await taskCard.waitFor();await taskCard.locator('[data-act="cancel"]').waitFor();assert.equal(await taskCard.locator('[data-act="delete"]').count(),0,'public card should show withdrawal only for its owner');
+ owner.on('dialog',d=>d.accept());await owner.goto(base+'/me.html');await owner.locator('#ordersOpen').click();let order=owner.locator('#orderRows .order-card').filter({hasText:'Recoverable task action'});await order.locator('[data-hide]').waitFor();await order.locator('[data-hide]').click();await owner.locator('#orderRows [data-restore]').waitFor();assert.equal((await call('/api/my/points','Alice')).data.points,100,'hide refunds the posting fee');await owner.locator('#orderRows [data-restore]').click();await owner.locator('[data-view="active"]').click();await order.locator('[data-hide]').waitFor();assert.equal((await call('/api/my/points','Alice')).data.points,99,'restore charges the posting fee again');
+ await setPermissions(call,'Bob',['pinMessages']);const moderator=await pageFor(t,base,'Bob');await moderator.waitForFunction(()=>can('pinMessages'));const target=moderator.locator('.m').filter({hasText:'Recoverable task action'});await target.locator('[data-pin-action="pin"]').click();await moderator.locator('.pin-board').filter({hasText:'Recoverable task action'}).waitFor();await moderator.goto(base+'/tasks.html');await moderator.locator('#pinnedTasks').getByText('Recoverable task action',{exact:true}).waitFor();
+ const publicChat=await call('/api/channels/'+encodeURIComponent('校园聊天')+'/messages','Alice',{text:'Pinned public chat message'});assert.equal(publicChat.status,200);await moderator.goto(base+'/chat.html#'+encodeURIComponent('校园聊天'));await moderator.waitForFunction(()=>can('pinMessages'));const chatCard=moderator.locator('.m').filter({hasText:'Pinned public chat message'});await chatCard.locator('[data-pin-action="pin"]').click();await moderator.locator('.pin-board').filter({hasText:'Pinned public chat message'}).waitFor();
+}));
+
 test('payment status is presented as the publisher claim, not verified receipt',t=>fixture(async({base,task,act})=>{
  const m=await task('Alice',{text:'Payment label test'});await act(m,'Bob','claim');await act(m,'Bob','finish');await act(m,'Alice','paid');const page=await pageFor(t,base,'Bob');await page.locator('.m').filter({hasText:'Payment label test'}).getByText('待接单人核实到账',{exact:false}).waitFor();await page.goto(base+'/me.html');await page.getByText('发布人已标记付款，请核实实际到账后确认收款',{exact:false}).first().waitFor();await page.locator('#ordersOpen').click();await page.locator('#orderRows').getByText('待接单人核实到账',{exact:true}).first().waitFor();
 }));
@@ -133,7 +141,7 @@ test('banned login offers contact and administrator replies are visible without 
 
 test('super administrator grants selected permissions through checkboxes; delegate sees only granted controls',t=>fixture(async({base,call})=>{
  const root=await pageFor(t,base,'AevonEcho');await root.goto(base+'/admin.html');await root.locator('[data-t="roles"]').click();await root.locator('#roleQuery').fill('Bob');
- const list=root.locator('#roleList');assert.equal(await list.locator('input[type=checkbox]').count(),17);
+ const list=root.locator('#roleList');assert.equal(await list.locator('input[type=checkbox]').count(),18);
  await list.locator('input[name=viewUsers]').check();await list.getByRole('button',{name:'保存权限',exact:true}).click();await list.getByRole('status').filter({hasText:'已保存'}).waitFor();
  assert.deepEqual((await call('/api/me','Bob')).data.permissions,['viewUsers']);
  const delegate=await pageFor(t,base,'Bob');await delegate.goto(base+'/admin.html');await delegate.locator('#ub').waitFor();assert.equal(await delegate.locator('[data-t=roles]').count(),0);assert.equal(await delegate.locator('[data-t=msgs]').count(),0);assert.equal(await delegate.locator('#bkBtn').count(),0);assert.equal(await delegate.locator('#ub button').count(),0);

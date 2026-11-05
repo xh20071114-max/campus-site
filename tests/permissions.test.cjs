@@ -5,7 +5,7 @@ async function grant(call,name,permissions){const d=await call('/api/admin/roles
 
 test('only the exact super administrator can grant permissions; role editing is versioned and bound to account ID',()=>fixture(async({call,restart})=>{
  const {data:d}=await call('/api/admin/roles','AevonEcho'),u=d.users.find(x=>x.username==='Bob'),body={permissions:['viewUsers'],userId:u.userId,version:0};
- assert.equal(d.catalog.length,17);assert.equal((await call('/api/admin/roles','Alice')).status,403);
+ assert.equal(d.catalog.length,18);assert.equal((await call('/api/admin/roles','Alice')).status,403);
  assert.equal((await call('/api/admin/users/Bob/permissions','Bob',body)).status,403);
  assert.equal((await call('/api/admin/users/Bob/permissions','AevonEcho',{...body,permissions:['grantAdmin']})).status,400);
  assert.equal((await call('/api/admin/users/Bob/permissions','AevonEcho',{...body,permissions:['viewUsers','viewUsers']})).status,400);
@@ -37,7 +37,8 @@ const cases={
  manageReports:async c=>assert.equal((await c.call('/api/admin/reports','Bob')).status,200),
  manageDisputes:async c=>{assert.equal((await c.call('/api/admin/disputes','Bob')).status,200);assert.equal((await c.call('/api/tasks/'+c.m.id+'/chat','Bob')).status,403);assert.equal((await c.call('/api/admin/tasks/'+c.m.id+'/force','Bob',{action:'done',reason:'verified'})).status,200)},
  postOfficial:async c=>{const r=await c.call(ch,'Bob',{text:'official notice'});assert.equal(r.status,200);assert.equal(r.data.official,true)},
- freeTasks:async c=>{assert.equal((await c.call(ch,'Bob',{text:'free task',task:true})).status,200);const m=await c.task('Alice');assert.equal((await c.act(m,'Bob','claim')).status,200);assert.equal((await c.call('/api/me','Bob')).data.points,100)}
+ freeTasks:async c=>{assert.equal((await c.call(ch,'Bob',{text:'free task',task:true})).status,200);const m=await c.task('Alice');assert.equal((await c.act(m,'Bob','claim')).status,200);assert.equal((await c.call('/api/me','Bob')).data.points,100)},
+ pinMessages:async c=>{const base='/api/channels/'+encodeURIComponent(c.m.channel||'任务大厅')+'/messages/'+c.m.id;assert.equal((await c.call(base+'/pin','Alice',{})).status,403);assert.equal((await c.call(base+'/pin','Bob',{})).status,200);const pub=(await c.call('/api/channels/'+encodeURIComponent(c.m.channel||'任务大厅')+'/messages?rev=0','')).data.find(x=>x.id===c.m.id);assert.equal(pub.pinned,true);assert.equal('pinnedBy' in pub,false);assert.equal('pinnedAt' in pub,false)}
 };
 for(const [key,check] of Object.entries(cases))test('delegated permission works without inheriting other privileges: '+key,()=>fixture(async c=>{
  c.m=await c.task('Alice');await c.act(c.m,'Carol','claim');await c.call('/api/tasks/'+c.m.id+'/chat','Alice',{text:'private evidence'});
