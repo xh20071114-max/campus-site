@@ -9,6 +9,7 @@ Page({
     this.loadedImages=new Set();
     this.unloaded=false;
     this.sessionToken=wx.getStorageSync('token')||'';
+    this.sessionUsername=wx.getStorageSync('username')||'';
     const channel=q.channel?decodeRouteValue(q.channel):'';
     this.setData({id:q.id||'',channel:channel===null?'':channel,username:wx.getStorageSync('username')||'',error:channel===null?'订单链接无效，请从任务列表重新打开':''});
     this.load();
@@ -20,8 +21,20 @@ Page({
   },
   onHide(){if(this.timer){clearInterval(this.timer);this.timer=null}},
   onUnload(){this.unloaded=true;if(this.timer)clearInterval(this.timer)},
-  sameSession(token,username){return !!token&&token===(wx.getStorageSync('token')||'')&&username===(wx.getStorageSync('username')||'')&&token===this.sessionToken&&username===this.data.username},
+  sameSession(token,username){return !!token&&token===(wx.getStorageSync('token')||'')&&username===(wx.getStorageSync('username')||'')&&token===this.sessionToken&&username===this.sessionUsername&&username===this.data.username},
   staleAction(){wx.showToast({title:'账号已切换，请刷新订单后重试',icon:'none'});if(!this.unloaded)this.load(true)},
+  clearExpiredSession(){
+    this.sessionToken='';
+    this.sessionUsername='';
+    this.sendRequestId=(this.sendRequestId||0)+1;
+    this.loadedImages=new Set();
+    this.setData({task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+  },
+  handleActionAuthError(error){
+    if(!api.handleAuthError(error))return false;
+    this.clearExpiredSession();
+    return true;
+  },
   async publicTask(){
     if(!this.data.channel)throw new Error('缺少订单频道，请从任务列表重新打开');
     const rows=await api.get('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages?before='+(Number(this.data.id)+1));
@@ -30,9 +43,10 @@ Page({
     return task;
   },
   async load(silent){
-    const token=wx.getStorageSync('token')||'';
-    if(token!==this.sessionToken){
+    const token=wx.getStorageSync('token')||'',name=wx.getStorageSync('username')||'';
+    if(token!==this.sessionToken||name!==this.sessionUsername){
       this.sessionToken=token;
+      this.sessionUsername=name;
       this.loadedImages=new Set();
       this.sendRequestId=(this.sendRequestId||0)+1;
       this.setData({task:null,messages:[],draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
@@ -40,15 +54,14 @@ Page({
     }
     if(this.loading)return;this.loading=true;
     try{
-      const name=wx.getStorageSync('username')||'';
       let task;
       try{task=await api.get('/api/tasks/'+this.data.id)}
       catch(e){if(e.statusCode===401||e.statusCode===403)task=await this.publicTask();else throw e}
-      if(token!==(wx.getStorageSync('token')||''))return;
+      if(token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
       const poster=task.user===name,claimer=task.claimedBy===name;
       let chat={task:{canWrite:false},messages:[]};
       if(task.status!=='open'||poster)chat=await api.get('/api/tasks/'+this.data.id+'/chat');
-      if(token!==(wx.getStorageSync('token')||''))return;
+      if(token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
       const old=new Map(this.data.messages.map(x=>[String(x.id),x]));
       const messages=(chat.messages||[]).map(x=>{
         const cached=old.get(String(x.id)),sameImage=cached&&cached.image===x.image;
@@ -60,8 +73,11 @@ Page({
         canFinish:claimer&&task.status==='claimed',canPay:poster&&task.status==='finished',
         canReceive:claimer&&task.status==='paid',canFreeDecision:claimer&&task.status==='free_pending',
         canWithdrawFree:poster&&task.status==='free_pending',canUnclaim:claimer&&task.status==='claimed',error:''});
-      this.loadImages(messages,wx.getStorageSync('token')||'');
-    }catch(e){if(!silent)this.setData({error:e.message});api.handleAuthError(e)}
+      this.loadImages(messages,token,name);
+    }catch(e){
+      if(this.handleActionAuthError(e))return;
+      if(!silent)this.setData({error:e.message});
+    }
     finally{
       this.loading=false;
       if(this.reloadAfterLoad||(wx.getStorageSync('token')||'')!==this.sessionToken){
@@ -70,15 +86,15 @@ Page({
       }
     }
   },
-  loadImages(messages,token){
+  loadImages(messages,token,username){
     if(!this.loadedImages)this.loadedImages=new Set();
-    const app=getApp(),session=token===undefined?(wx.getStorageSync('token')||''):token;
+    const app=getApp(),session=token===undefined?(wx.getStorageSync('token')||''):token,sessionUser=username===undefined?(wx.getStorageSync('username')||''):username;
     messages.forEach(m=>{
       const id=String(m.id);
       if(!m.image||m.localImage||m.imageStatus==='failed'||this.loadedImages.has(id))return;
       this.loadedImages.add(id);
       wx.downloadFile({url:app.globalData.apiBase+m.image,header:{Authorization:'Bearer '+session},success:r=>{
-        if(this.unloaded||(wx.getStorageSync('token')||'')!==session){this.loadedImages.delete(id);return}
+        if(this.unloaded||(wx.getStorageSync('token')||'')!==session||(wx.getStorageSync('username')||'')!==sessionUser){this.loadedImages.delete(id);return}
         if(r.statusCode!==200||!r.tempFilePath)return this.markImageFailed(id);
         this.setImageState(id,{localImage:r.tempFilePath,imageStatus:'loaded'});
       },fail:()=>this.markImageFailed(id)});
@@ -96,10 +112,12 @@ Page({
     this.setImageState(id,{localImage:'',imageStatus:'failed'});
   },
   retryImage(e){
+    const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'';
+    if(!this.sameSession(token,username)){this.staleAction();return}
     const id=String(e.currentTarget.dataset.id),message=this.data.messages.find(x=>String(x.id)===id);
     if(!message||!message.image||this.loadedImages&&this.loadedImages.has(id))return;
     this.setImageState(id,{imageStatus:'loading'});
-    this.loadImages([{...message,imageStatus:'loading'}]);
+    this.loadImages([{...message,imageStatus:'loading'}],token,username);
   },
   onDraft(e){this.setData({draft:e.detail.value})},
   async send(){
@@ -111,7 +129,7 @@ Page({
     const requestId=(this.sendRequestId||0)+1;this.sendRequestId=requestId;
     this.setData({sending:true});
     try{await api.post('/api/tasks/'+this.data.id+'/chat',{text},{header:{Authorization:'Bearer '+token}});if(!this.sameSession(token,username))return;this.setData({draft:''});this.load(true)}
-    catch(e){if(!this.sameSession(token,username)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+    catch(e){if(!this.sameSession(token,username)){this.staleAction();return}if(this.handleActionAuthError(e))return;wx.showToast({title:e.message,icon:'none'})}
     finally{if(requestId===this.sendRequestId)this.setData({sending:false})}
   },
   chooseImage(){
@@ -129,11 +147,11 @@ Page({
         const bytes=new Uint8Array(x.data),type=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':'';
         if(!type)return wx.showToast({title:'只支持 JPEG 或 PNG 图片',icon:'none'});
         try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type,Authorization:'Bearer '+sessionToken}});if(this.sameSession(sessionToken,sessionUsername))this.load(true)}
-        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(this.handleActionAuthError(e))return;wx.showToast({title:e.message,icon:'none'})}
       },fail:()=>wx.showToast({title:'读取图片失败',icon:'none'})});
     },fail:error=>{const detail=error&&error.errMsg||'';if(!/cancel/i.test(detail))wx.showToast({title:'选择图片失败，请检查权限后重试',icon:'none'})}});
   },
-  previewImage(e){wx.previewImage({current:e.currentTarget.dataset.src,urls:[e.currentTarget.dataset.src]})},
+  previewImage(e){const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'';if(!this.sameSession(token,username)){this.staleAction();return}wx.previewImage({current:e.currentTarget.dataset.src,urls:[e.currentTarget.dataset.src]})},
   claim(){
     if(!api.requireLogin())return;
     const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
@@ -146,9 +164,9 @@ Page({
         if(!r.confirm)return;
         if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
         try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/claim',{}, {header:{Authorization:'Bearer '+sessionToken}});if(!this.sameSession(sessionToken,sessionUsername))return;wx.showToast({title:'接单成功'});this.load()}
-        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(e.statusCode===402)wx.showModal({title:'积分不足',content:e.message,confirmText:'去充值',success:x=>{if(x.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});else api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(e.statusCode===402)wx.showModal({title:'积分不足',content:e.message,confirmText:'去充值',success:x=>{if(x.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});else if(this.handleActionAuthError(e))return;else wx.showToast({title:e.message,icon:'none'})}
       }});
-    }).catch(e=>{if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})});
+    }).catch(e=>{if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(this.handleActionAuthError(e))return;wx.showToast({title:e.message,icon:'none'})});
   },
   act(e){
     const action=e.currentTarget.dataset.action;
@@ -160,7 +178,7 @@ Page({
       if(!r.confirm)return;
       if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
       try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/'+action,{}, {header:{Authorization:'Bearer '+sessionToken}});if(!this.sameSession(sessionToken,sessionUsername))return;wx.showToast({title:'订单状态已更新'});this.load()}
-      catch(err){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
+      catch(err){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(this.handleActionAuthError(err))return;wx.showToast({title:err.message,icon:'none'})}
     }});
   }
 });

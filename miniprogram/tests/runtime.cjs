@@ -433,7 +433,7 @@ test('paid state exposes receipt confirmation only to the claimer',async()=>{
 test('claimer receipt action is sent only after the confirmation prompt',async()=>{
   const api=apiStub({post:async()=>({})});
   const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?'token':'worker'});
-  page.sessionToken='token';
+  page.sessionToken='token';page.sessionUsername='worker';
   page.act({currentTarget:{dataset:{action:'received'}}});
   assert.equal(api.calls.length,0);
   assert.match(wx.lastModal.content,/实际到账/);
@@ -445,7 +445,7 @@ test('trade confirmation cannot run under a different account after the dialog o
   let token='session-a',username='worker';
   const api=apiStub({post:async()=>({})});
   const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
-  page.sessionToken=token;
+  page.sessionToken=token;page.sessionUsername=username;
   page.act({currentTarget:{dataset:{action:'received'}}});
   assert.match(wx.lastModal.content,/实际到账/);
   token='session-b';username='poster';
@@ -458,7 +458,7 @@ test('trade claim confirmation is bound to the account whose balance was checked
   let token='session-a',username='worker';
   const api=apiStub({get:async()=>({claimCost:1,points:10}),post:async()=>({})});
   const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
-  page.sessionToken=token;
+  page.sessionToken=token;page.sessionUsername=username;
   page.claim();
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(wx.lastModal.content,/接单将扣除 1 积分/);
@@ -477,13 +477,33 @@ test('private image selection cannot upload after the account changes',async()=>
     chooseMedia(options){picker=options},
     getFileSystemManager(){return {readFile(options){reader=options}}}
   });
-  page.sessionToken=token;
+  page.sessionToken=token;page.sessionUsername=username;
   page.chooseImage();
   picker.success({tempFiles:[{tempFilePath:'/tmp/picture.png',size:4}]});
   token='session-b';username='other';
   await reader.success({data:new Uint8Array([137,80,78,71]).buffer});
   assert.equal(api.calls.filter(x=>x[0]==='request').length,0);
   assert.match(wx.lastToast.title,/账号已切换/);
+});
+
+test('expired private chat session clears messages immediately',async()=>{
+  let token='session-a',username='worker';
+  const unauthorized=Object.assign(new Error('expired'),{statusCode:401});
+  const api=apiStub({
+    post:async()=>{throw unauthorized},
+    handleAuthError(){token='';username='';return true}
+  });
+  const {page}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',draft:'私聊内容',messages:[{id:'m1',text:'仅参与者可见'}],canWrite:true},{
+    getStorageSync:key=>key==='token'?token:username,
+    removeStorageSync:key=>{if(key==='token')token='';if(key==='username')username=''}
+  });
+  page.sessionToken=token;page.sessionUsername=username;
+  await page.send();
+  assert.equal(page.data.messages.length,0);
+  assert.equal(page.data.task,null);
+  assert.equal(page.data.draft,'');
+  assert.equal(page.data.username,'');
+  assert.equal(page.sessionToken,'');
 });
 
 test('banned-account appeal uses its temporary credential and loads the admin reply',async()=>{
