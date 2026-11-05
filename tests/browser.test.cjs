@@ -284,21 +284,21 @@ test('admin message rows retain access to withdrawn offer history',t=>fixture(as
  const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('#ub').waitFor();await page.locator('[data-t="msgs"]').click();await page.locator('[data-off="'+m.id+'"]').click();await page.locator('.cm .ci').waitFor();assert.ok((await page.locator('.cm .cl').textContent()).includes('history note'));
 }));
 
-test('task hall exposes all pages, filters task types and opens a claimed order on mobile',async t=>{
+test('task hall exposes all task types without type filters and opens a claimed order on mobile',async t=>{
  const data=seed(),id=1234567890200000;data.messages['校园跑']=Array.from({length:21},(_,i)=>({id:id+i,user:'Alice',task:true,text:'hall task '+i,time:new Date().toISOString()}));data.messages['代取快递']=[{id:id+30,user:'Alice',task:true,text:'hall parcel',time:new Date().toISOString()}];
  await fixture(async({base})=>{
  const page=await pageFor(t,base,'Bob',[],{viewport:{width:390,height:844},hasTouch:true});
  await page.goto(base+'/index.html');assert.ok(await page.locator('#openTaskHall').evaluate(el=>el.closest('.hero-tools')&&getComputedStyle(el).position==='static'));assert.ok(await page.locator('#fbBtn,#supportBtn').evaluateAll(es=>es.length===2&&es.every(e=>e.closest('.hero-tools')&&getComputedStyle(e).position==='static')));assert.equal(await page.locator('header a[href="chat.html#任务大厅"]').count(),1);await page.locator('#openTaskHall').click();await page.getByText('共 22 个待接任务 · 每页 20 条',{exact:true}).waitFor();
  assert.equal(await page.locator('.card').count(),20);await page.getByRole('button',{name:'下一页'}).click();await page.getByText('2 / 2',{exact:true}).waitFor();assert.equal(await page.locator('.card').count(),2);
- await page.locator('#channel').selectOption('代取快递');await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall parcel',exact:true}).waitFor();
- await page.locator('#channel').selectOption('');await page.locator('#query').fill('hall task 0');await page.getByRole('button',{name:'查找',exact:true}).click();await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall task 0',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.locator('#prev').click();await page.getByText('1 / 2',{exact:true}).waitFor();assert.equal(await page.locator('#channel').count(),0);await page.getByRole('heading',{name:'hall parcel',exact:true}).waitFor();
+ await page.locator('#query').fill('hall task 0');await page.getByRole('button',{name:'查找',exact:true}).click();await page.getByText('共 1 个待接任务 · 每页 20 条',{exact:true}).waitFor();await page.getByRole('heading',{name:'hall task 0',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'接单（扣 1 积分）',exact:true}).click();await page.waitForURL(/chat\.html\?task=/);await page.locator('#tc.show').waitFor();
  },data);
 });
 
 test('unified task hall, free chat and legacy channel bookmark',t=>fixture(async({base,call})=>{
  const page=await pageFor(t,base,'Bob');await page.goto(base+'/index.html');await page.getByRole('heading',{name:'任务大厅',exact:true}).waitFor();await page.getByRole('heading',{name:'校园聊天',exact:true}).waitFor();assert.equal(await page.locator('#channels .card').count(),2);
- await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='任务大厅'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 任务大厅');assert.equal(await page.locator('#taskFilter').inputValue(),'校园配送');
+ await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='任务大厅'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 任务大厅');assert.equal(await page.locator('#taskFilter').count(),0);assert.equal(await page.locator('#xType').inputValue(),'校园配送');
  await page.goto(base+'/chat.html#'+encodeURIComponent('校园聊天'));await page.waitForFunction(()=>cur==='校园聊天'&&online===true);await page.locator('#chatHint').waitFor({state:'visible'});assert.equal(await page.locator('#sbar').isVisible(),false);assert.equal((await page.locator('#bal').innerText()).trim(),'');const points=(await call('/api/my/points','Bob')).data.points;await page.locator('#text').fill('campus chat is free');await page.locator('#send').click();await page.locator('.m').filter({hasText:'campus chat is free'}).waitFor();assert.equal((await call('/api/my/points','Bob')).data.points,points);
 }));
 

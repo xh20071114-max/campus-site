@@ -2,7 +2,7 @@ const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 
 Page({
-  data:{tasks:[],claimCost:null,feeReady:false,total:0,page:1,pages:1,error:'',taskTypes:['全部类型','校园跑','校园配送','代取快递','代课','代做作业','其他'],taskTypeIndex:0},
+  data:{tasks:[],claimCost:null,feeReady:false,total:0,page:1,pages:1,error:''},
   onShow(){this.load()},
   async load(){
     const page=this.data.page,token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'',requestId=(this.loadRequestId||0)+1;
@@ -10,8 +10,8 @@ Page({
     if(this.sessionToken!==token||this.sessionUsername!==username){this.sessionToken=token;this.sessionUsername=username;this.setData({claimCost:null,feeReady:false,error:''})}
     const isCurrent=()=>requestId===this.loadRequestId&&page===this.data.page&&token===(wx.getStorageSync('token')||'')&&username===(wx.getStorageSync('username')||'');
     try{
-      const filter=this.data.taskTypeIndex?'&taskType='+encodeURIComponent(this.data.taskTypes[this.data.taskTypeIndex]):'';
-      const [d,s]=await Promise.all([api.get('/api/tasks?status=open&limit=10&page='+page+filter),api.get('/api/settings')]);
+
+      const [d,s]=await Promise.all([api.get('/api/tasks?status=open&limit=10&page='+page),api.get('/api/settings')]);
       if(!isCurrent())return;
       const feeReady=typeof s.claimCost==='number'&&Number.isFinite(s.claimCost);
       let cost=feeReady?s.claimCost:null;
@@ -43,7 +43,7 @@ Page({
     }catch(err){if(!this.sameSession(token,username)){this.staleClaim();return}api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
   },
   detail(e){wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(e.currentTarget.dataset.channel)})},
-  onTypeChange(e){const taskTypeIndex=Number(e.detail.value)||0;this.setData({taskTypeIndex,page:1},()=>this.load())},
+
   prev(){if(this.data.page>1){this.setData({page:this.data.page-1});this.load()}},
   next(){if(this.data.page<this.data.pages){this.setData({page:this.data.page+1});this.load()}},
   onPullDownRefresh(){this.load().finally(()=>wx.stopPullDownRefresh())}

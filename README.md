@@ -35,7 +35,7 @@
 | POST | /api/channels/校园聊天/messages | `{text,task:false}` 发送免费聊天消息 |
 | POST | /api/channels/任务大厅/messages/<id>/claim | 接单（不能接自己的） |
 | POST | /api/channels/<频道>/messages/<id>/complete | 发布者确认完成（需已接单） |
-| GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 任务大厅；可用 `taskType` 筛选任务类型 |
+| GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 网页和小程序默认展示全部类型；API 仍接受可选 `taskType` 参数供接口客户端筛选 |
 | GET | /api/my/tasks | `{posted,claimed}` |
 | GET | /api/my/saved | 当前账号收藏的任务 |
 | POST | /api/my/saved/<任务ID> | `{saved:true\|false}` 收藏或取消收藏；每个账号最多 200 个 |

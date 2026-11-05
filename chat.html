@@ -148,7 +148,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>
   <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
   <div class="filters" id="flt"><span class="on" data-f="all">全部任务</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我的任务</span><span data-f="saved">⭐ 我的收藏</span></div>
-  <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务内容"><select id="taskFilter" title="按任务类型筛选"><option value="">全部类型</option></select><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
+  <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务内容"><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
   <div id="chatHint">💬 校园聊天：所有登录用户都可以发言，聊天不消耗积分。请文明交流，不要发布个人敏感信息。</div>
   <div class="site-quick-actions" id="quickActions" aria-label="快捷入口"></div>
   <div id="msgs"></div>
@@ -205,7 +205,7 @@ const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
 const api=(p,o={})=>fetch(API_BASE+p,{cache:'no-store',...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
-const taskCategory=document.getElementById('xType'),taskFilter=document.getElementById('taskFilter');
+const taskCategory=document.getElementById('xType');
 const filtersEl=document.getElementById('flt'),searchBarEl=document.getElementById('sbar'),quickActionsEl=document.getElementById('quickActions'),chatHintEl=document.getElementById('chatHint');
 const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
 function expired(){localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');location.reload()}
@@ -238,7 +238,7 @@ async function refresh(){
   try{
     const channels=await (await api('/api/channels')).json();if(seq!==refreshSeq)return;CHANNELS=channels;
     const typeList=channels.find(c=>c.name===TASK_CHANNEL)?.taskTypes||['校园跑','校园配送','代取快递','代课','代做作业','其他'];
-    if(taskCategory.options.length===0){for(const type of typeList){const pub=document.createElement('option');pub.value=pub.textContent=type;taskCategory.append(pub);const fil=document.createElement('option');fil.value=fil.textContent=type;taskFilter.append(fil)}taskCategory.value=pendingInitialType||'其他';if(pendingInitialType)taskFilter.value=pendingInitialType;pendingInitialType='';updateTaskPrompt()}
+    if(taskCategory.options.length===0){for(const type of typeList){const pub=document.createElement('option');pub.value=pub.textContent=type;taskCategory.append(pub)}taskCategory.value=pendingInitialType||'其他';pendingInitialType='';updateTaskPrompt()}
     if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;applyMode();updateTaskPrompt();
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
@@ -261,7 +261,7 @@ async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]|
   catch(e){}finally{loadingOld=false;more_(false)}}
 function more_(on){const d=document.getElementById('more');if(d)d.textContent=on?'加载中…':(hasMore[cur]?'上滑加载更早的消息':'没有更早的消息了')}
 msgs.addEventListener('scroll',()=>{if(msgs.scrollTop<80)loadOlder()});
-function go(c){const oldType=oldTaskType(c);cur=dec(c);if(oldType)taskCategory.value=taskFilter.value=oldType;else taskFilter.value='';qI.value='';sortI.value='new';flt='all';document.querySelectorAll('#flt span').forEach(x=>x.classList.toggle('on',x.dataset.f==='all'));composing=false;isTask.checked=false;text.value='';xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');sres={};forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(cur));renderPts();updateTaskPrompt();renderMsgs();refresh()}
+function go(c){const oldType=oldTaskType(c);cur=dec(c);if(oldType)taskCategory.value=oldType;qI.value='';sortI.value='new';flt='all';document.querySelectorAll('#flt span').forEach(x=>x.classList.toggle('on',x.dataset.f==='all'));composing=false;isTask.checked=false;text.value='';xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');sres={};forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(cur));renderPts();updateTaskPrompt();renderMsgs();refresh()}
 function renderSide(){
   chs.innerHTML=CHANNELS.map(c=>{const last=c.lastId||0,r=seen[c.name]||0;let n='';
     if(c.name!==cur&&last>r){const l=cache[c.name];n=r?(l?l.filter(m=>m.id>r&&!m.deleted).length||'新':'新'):'新';if(n>99)n='99+'}
@@ -321,7 +321,7 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!m.task||!taskFilter.value||m.taskType===taskFilter.value).filter(m=>!S||match(m));
+  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!S||match(m));
   sInfo_(S,list.length);
   const top=S?'<div id="sInfo"></div>':flt==='saved'?'':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
   msgs.innerHTML=top+list.map(m=>{
@@ -395,7 +395,7 @@ tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!
 tcT.onkeydown=e=>enterSend(e,tcF);
 /* ---- 搜索排序 ---- */
 let sres={},forceTop=false,sT=null,sSeq=0;const qI=document.getElementById('q'),sortI=document.getElementById('sort');
-const searching=()=>!!(qI.value.trim()||sortI.value!=='new'||taskFilter.value);
+const searching=()=>!!(qI.value.trim()||sortI.value!=='new');
 const kw=()=>qI.value.trim().toLowerCase();
 const match=m=>{const k=kw();if(!k)return true;return [m.title,m.text,m.place,m.reward].some(v=>v&&String(v).toLowerCase().includes(k))};
 const money=m=>{const x=String(m.reward||'').match(/\d+(\.\d+)?/);return x?+x[0]:-1};
@@ -406,11 +406,11 @@ function sorted(l){l=l.slice();const s=sortI.value;
 function sInfo_(S,n){const e=document.getElementById('sInfo');if(e&&S)e.textContent=(kw()?`搜索「${qI.value.trim()}」：`:'')+`共 ${n} 条`+(sortI.value==='reward'?'，按报酬从高到低':sortI.value==='deadline'?'，按截止时间从近到远':'，按最新发布')+'，已结束的任务不显示'}
 async function runSearch(quiet){const ch=cur,seq=++sSeq;if(!ch)return;if(!searching()){sres={};forceBottom=true;renderMsgs();return}
   if(!quiet)forceTop=true;
-  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?limit=100&sort='+encodeURIComponent(sortI.value)+(kw()?'&q='+encodeURIComponent(qI.value.trim()):'')+(taskFilter.value?'&taskType='+encodeURIComponent(taskFilter.value):''));
+  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?limit=100&sort='+encodeURIComponent(sortI.value)+(kw()?'&q='+encodeURIComponent(qI.value.trim()):''));
     if(!r.ok)return;const d=await r.json();if(seq!==sSeq||ch!==cur)return;const l=(Array.isArray(d)?d:(d.messages||[])).filter(m=>m.task);
     const c=cache[ch]||[];l.forEach(m=>{const i=c.findIndex(x=>x.id===m.id);if(i>=0)c[i]=m});
     sres[ch]=l;renderMsgs()}catch(e){}}
-qI.oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>runSearch(),300)};sortI.onchange=()=>runSearch();taskFilter.onchange=()=>runSearch();
+qI.oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>runSearch(),300)};sortI.onchange=()=>runSearch();
 /* ---- 通用弹窗 ---- */
 const pop=document.getElementById('pop'),popB=document.getElementById('popB');
 function openPop(title){document.getElementById('popT').textContent=title;popB.replaceChildren();pop.classList.add('show');return popB}
