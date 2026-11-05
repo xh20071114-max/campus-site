@@ -115,6 +115,19 @@ async function pageFor(t,base,user='Bob',extraStorage=[],options={}){
  return page;
 }
 
+test('task takers can privately consult the publisher before claiming, and the winning inquiry joins order chat',t=>fixture(async({base,call,task,act})=>{
+ const m=await task('Alice',{text:'Private seller inquiry flow'}),before=(await call('/api/my/points','Bob')).data.points;
+ const buyer=await pageFor(t,base,'Bob');await buyer.goto(base+'/tasks.html');const card=buyer.locator('.card').filter({hasText:m.text});await card.getByRole('link',{name:'💬 咨询发布者'}).click();
+ await buyer.locator('#tcTitle').getByText('任务咨询').waitFor();await buyer.locator('#tcT').fill('Can you meet at the library?');await buyer.locator('#tcS').click();await buyer.locator('#tcList').getByText('Can you meet at the library?',{exact:true}).waitFor();
+ assert.equal((await call('/api/my/points','Bob')).data.points,before);assert.ok((await call('/api/tasks?status=open','')).data.some(x=>x.id===m.id));
+ const seller=await pageFor(t,base,'Alice');await seller.goto(base+'/chat.html#'+encodeURIComponent('任务大厅'));const taskCard=seller.locator('.m').filter({hasText:m.text});await taskCard.locator('.inquiryB').waitFor();await taskCard.locator('.inquiryB').click();
+ const thread=seller.locator('.inquiry-thread');await thread.getByText('Bob',{exact:false}).waitFor();await thread.click();await seller.locator('#tcList').getByText('Can you meet at the library?',{exact:true}).waitFor();
+ await seller.locator('#tcT').fill('Yes, meet at the north entrance.');await seller.locator('#tcS').click();await seller.locator('#tcList').getByText('Yes, meet at the north entrance.',{exact:true}).waitFor();await buyer.locator('#tcList').getByText('Yes, meet at the north entrance.',{exact:true}).waitFor({timeout:8000});
+ const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII=';await call('/api/tasks/'+m.id+'/chat/image?inquiry=1','Bob',{data:png});await buyer.locator('#tcList img.img').waitFor();await buyer.waitForFunction(()=>[...document.querySelectorAll('#tcList img.img')].some(x=>x.complete&&x.naturalWidth>0));
+ await seller.goto(base+'/me.html');await seller.locator('#ordersOpen').click();const order=seller.locator('#orderRows .order-card').filter({hasText:m.text});await order.getByRole('link',{name:/查看咨询/}).waitFor();await order.getByRole('link',{name:/查看咨询/}).click();await seller.locator('.inquiry-thread').getByText('Bob',{exact:false}).waitFor();
+ await act(m,'Bob','claim');await buyer.goto(base+'/chat.html?task='+m.id+'#'+encodeURIComponent('任务大厅'));await buyer.locator('#tcTitle').getByText('任务私聊').waitFor();await buyer.locator('#tcList').getByText('Can you meet at the library?',{exact:true}).waitFor();await buyer.locator('#tcList').getByText('Yes, meet at the north entrance.',{exact:true}).waitFor();await buyer.waitForFunction(()=>[...document.querySelectorAll('#tcList img.img')].some(x=>x.complete&&x.naturalWidth>0));
+}));
+
 async function textOverlapsTaskHall(page){return page.evaluate(()=>{const hint=document.querySelector('#officialHint'),button=document.querySelector('#openTaskHall');if(!hint||hint.hidden||!button)return false;const bounds=button.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(hint);return Array.from(range.getClientRects()).some(r=>r.left<bounds.right&&r.right>bounds.left&&r.top<bounds.bottom&&r.bottom>bounds.top)})}
 test('mobile task hall button does not cover chat notices',t=>fixture(async({base})=>{
  const page=await pageFor(t,base,'AevonEcho',[],{viewport:{width:390,height:844},hasTouch:true});await page.locator('#officialHint').waitFor({state:'visible'});assert.equal(await textOverlapsTaskHall(page),false,'floating task hall button must not cover chat notices');
