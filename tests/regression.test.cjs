@@ -177,8 +177,8 @@ test('invalid collection shapes are not silently replaced with empty arrays',asy
 test('daily backup skips invalid recent files and keeps seven valid snapshots',()=>fixture(async({call,tmp})=>{
  await call('/api/health');const files=await fs.readdir(path.join(tmp,'backups')),valid=[];
  for(const f of files.filter(x=>x.endsWith('.json'))){const d=JSON.parse(await fs.readFile(path.join(tmp,'backups',f),'utf8'));if(d.users&&d.messages)valid.push(f)}
- assert.equal(valid.length,7);assert.ok(valid.some(x=>!x.startsWith('data-2000-')));assert.equal(await fs.readFile(path.join(tmp,'backups','data-2099-bad.json'),'utf8'),'{}');
-},seed(),{prepare:async tmp=>{const bak=path.join(tmp,'backups');await fs.mkdir(bak);for(let i=1;i<=8;i++){const f=path.join(bak,'data-2000-01-0'+i+'.json');await fs.writeFile(f,JSON.stringify(seed()));await fs.utimes(f,new Date('2000-01-01'),new Date('2000-01-01'))}await fs.writeFile(path.join(bak,'data-2099-bad.json'),'{}')}}));
+ assert.equal(valid.length,7);const created=valid.find(x=>!x.startsWith('data-2000-'));assert.ok(created);assert.deepEqual(JSON.parse(await fs.readFile(path.join(tmp,'backups',created),'utf8')),JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8')));assert.equal(await fs.readFile(path.join(tmp,'backups','data-2099-bad.json'),'utf8'),'{}');assert.equal(await fs.readFile(path.join(tmp,'backups','data-1999-bad.json'),'utf8'),'{}');
+},seed(),{prepare:async tmp=>{const bak=path.join(tmp,'backups');await fs.mkdir(bak);for(let i=1;i<=8;i++){const f=path.join(bak,'data-2000-01-0'+i+'T00-00-00-000Z.json');await fs.writeFile(f,JSON.stringify(seed()));await fs.utimes(f,new Date('2000-01-01'),new Date('2000-01-01'))}await fs.writeFile(path.join(bak,'data-2099-bad.json'),'{}');await fs.writeFile(path.join(bak,'data-1999-bad.json'),'{}');await fs.utimes(path.join(bak,'data-1999-bad.json'),new Date('2000-01-01'),new Date('2000-01-01'))}}));
 test('failed image deletion retains quota and retries pending cleanup after restart',()=>fixture(async({call,task,act,tmp,restart})=>{
  const m=await task();await act(m,'Bob','claim');const image=await call('/api/tasks/'+m.id+'/chat/image','Bob',{data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXcAAAAASUVORK5CYII='});assert.equal(image.status,200);
  const file=path.join(tmp,'uploads',String(m.id),image.data.id+'.png'),bytes=(await fs.stat(file)).size;await act(m,'AevonEcho','delete');assert.equal((await fs.stat(file)).size,bytes);
@@ -200,8 +200,8 @@ test('admin message pagination covers all rows, searches deleted originals and v
  },data);
 });
 test('backup write failure preserves every previous valid snapshot',()=>fixture(async({call,tmp})=>{
- assert.equal((await call('/api/health')).status,200);const files=(await fs.readdir(path.join(tmp,'backups'))).filter(f=>f.endsWith('.json'));assert.equal(files.length,8);for(const f of files)assert.ok(f.startsWith('data-2000-'));
-},seed(),{blockBackupWrite:true,prepare:async tmp=>{const bak=path.join(tmp,'backups');await fs.mkdir(bak);for(let i=1;i<=8;i++){const f=path.join(bak,'data-2000-01-0'+i+'.json');await fs.writeFile(f,JSON.stringify(seed()));await fs.utimes(f,new Date('2000-01-01'),new Date('2000-01-01'))}}}));
+ assert.equal((await call('/api/health')).status,200);const all=await fs.readdir(path.join(tmp,'backups')),files=all.filter(f=>f.endsWith('.json'));assert.equal(files.length,8);assert.equal(all.some(f=>f.endsWith('.tmp')),false);for(const f of files)assert.ok(f.startsWith('data-2000-'));
+},seed(),{blockBackupWrite:true,prepare:async tmp=>{const bak=path.join(tmp,'backups');await fs.mkdir(bak);for(let i=1;i<=8;i++){const f=path.join(bak,'data-2000-01-0'+i+'T00-00-00-000Z.json');await fs.writeFile(f,JSON.stringify(seed()));await fs.utimes(f,new Date('2000-01-01'),new Date('2000-01-01'))}}}));
 test('downloaded backup restores accounts, tasks, chats and points without restoring sessions',()=>fixture(async({call,task,act})=>{
  const registered=await call('/api/register','',{username:'__proto__',password});assert.equal(registered.status,200);
  const m=await task();await act(m,'Bob','claim');await call('/api/tasks/'+m.id+'/chat','Bob',{text:'restored conversation'});await call('/api/login','',{username:'Bob',password});

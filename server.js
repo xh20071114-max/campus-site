@@ -286,15 +286,32 @@ function remindPayments(){expireDue();const now=Date.now();let ch=false;
     m.paymentReminderAt=new Date().toISOString();sysChat(m,'发布人标记付款已超过 48 小时，请接单人核实到账后确认；如未到账可申请平台介入');
     ev(m.user,'payment_reminder',m,'标记付款已超过 48 小时，仍在等待接单人核实到账',null);ev(m.claimedBy,'payment_reminder',m,'请核实到账后确认收款；如未到账可申请平台介入',null);m.rev=nextRev();ch=true}
   if(ch) persist()}
-// 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份
+// 每日备份：启动时和之后每小时检查一次，距上次备份满 24 小时就备份，保留最近 7 份。
+// 旧快照由本服务校验后原子写入；这里避免逐份重新解析大型 JSON，恢复时仍会完整校验。
 function backup(){try{
   if(!fs.existsSync(DB))return;
   fs.mkdirSync(BAK,{recursive:true});
-  const files=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).sort();
-  const valid=[];let last=0;for(const f of files.slice().reverse()){try{parseDB(fs.readFileSync(path.join(BAK,f),'utf8'));valid.push(f);last=Math.max(last,fs.statSync(path.join(BAK,f)).mtimeMs);if(files.length<=7&&Date.now()-last<24*3600e3)return}catch(e){console.error('忽略无效备份，保留原文件：'+f,e.message)}}
-  const text=fs.readFileSync(DB,'utf8');try{parseDB(text)}catch(e){console.error('data.json 解析失败，跳过这次备份',e.message);return}
-  if(Date.now()-last>=24*3600e3){const name='data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';atomicWrite(path.join(BAK,name),text);valid.push(name);valid.sort()}
-  valid.sort().slice(0,Math.max(0,valid.length-7)).forEach(f=>fs.unlinkSync(path.join(BAK,f)));
+  const now=Date.now(),day=24*3600e3;
+  const snapshots=fs.readdirSync(BAK).filter(f=>/^data-.*\.json$/.test(f)).map(name=>({name,mtime:fs.statSync(path.join(BAK,name)).mtimeMs}));
+  // 旧的非标准文件名可能是手工放入的恢复点；不解析也不删除它们。
+  const old=snapshots.filter(x=>/^data-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/.test(x.name)&&now-x.mtime>=day),recent=snapshots.filter(x=>now-x.mtime<day).sort((a,b)=>b.mtime-a.mtime||b.name.localeCompare(a.name));
+  let latestRecent=null;
+  for(let i=0;i<recent.length;i++){
+    const item=recent[i];
+    try{parseDB(fs.readFileSync(path.join(BAK,item.name),'utf8'));latestRecent=item;break}
+    catch(e){console.error('忽略无效备份，保留原文件：'+item.name,e.message)}
+  }
+  const valid=old.concat(latestRecent?[latestRecent]:[]);
+  if(now-(latestRecent?.mtime||0)>=day){
+    // 先刷入可能尚未落盘的启动迁移，再从主库复制，避免额外构造整库字符串。
+    persistNow();
+    const name='data-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json',target=path.join(BAK,name),tmp=target+'.tmp';let fd;
+    try{fs.copyFileSync(DB,tmp);fd=fs.openSync(tmp,'r+');fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(tmp,target);valid.push({name,mtime:Date.now()})}
+    catch(e){if(fd!==undefined)try{fs.closeSync(fd)}catch{}try{fs.unlinkSync(tmp)}catch{}throw e}
+  }
+  const keep=new Set(valid.sort((a,b)=>a.mtime-b.mtime||a.name.localeCompare(b.name)).slice(-7).map(x=>x.name));
+  for(const item of valid)if(!keep.has(item.name))fs.unlinkSync(path.join(BAK,item.name));
+  // 非标准文件名、近期无效和未检查的快照不在 valid 集合中，先保留以免清理掉恢复点。
 }catch(e){console.error('备份失败',e.message)}}
 // 设置了 ADMIN_PASSWORD 时，启动时直接建好管理员账号，避免部署后被别人抢先注册（已存在就不动）
 if(ADMIN&&process.env.ADMIN_PASSWORD&&!db.users[ADMIN]){db.users[ADMIN]={id:crypto.randomUUID(),pw:hash(String(process.env.ADMIN_PASSWORD)),created:Date.now()};console.log('已创建管理员账号',ADMIN)}
