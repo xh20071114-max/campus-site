@@ -298,12 +298,58 @@ test('paid state exposes receipt confirmation only to the claimer',async()=>{
 
 test('claimer receipt action is sent only after the confirmation prompt',async()=>{
   const api=apiStub({post:async()=>({})});
-  const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',messages:[]});
+  const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?'token':'worker'});
+  page.sessionToken='token';
   page.act({currentTarget:{dataset:{action:'received'}}});
   assert.equal(api.calls.length,0);
   assert.match(wx.lastModal.content,/实际到账/);
   await wx.lastModal.success({confirm:true});
   assert.equal(api.calls[0][1],'/api/channels/%E4%BB%A3%E5%8F%96%E5%BF%AB%E9%80%92/messages/9/received');
+});
+
+test('trade confirmation cannot run under a different account after the dialog opens',async()=>{
+  let token='session-a',username='worker';
+  const api=apiStub({post:async()=>({})});
+  const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
+  page.sessionToken=token;
+  page.act({currentTarget:{dataset:{action:'received'}}});
+  assert.match(wx.lastModal.content,/实际到账/);
+  token='session-b';username='poster';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.filter(x=>x[0]==='post').length,0);
+  assert.match(wx.lastToast.title,/账号已切换/);
+});
+
+test('trade claim confirmation is bound to the account whose balance was checked',async()=>{
+  let token='session-a',username='worker';
+  const api=apiStub({get:async()=>({claimCost:1,points:10}),post:async()=>({})});
+  const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',messages:[]},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
+  page.sessionToken=token;
+  page.claim();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(wx.lastModal.content,/接单将扣除 1 积分/);
+  token='session-b';username='other';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.filter(x=>x[0]==='post').length,0);
+  assert.match(wx.lastToast.title,/账号已切换/);
+});
+
+test('private image selection cannot upload after the account changes',async()=>{
+  let token='session-a',username='worker',picker,reader;
+  const api=apiStub({request:async()=>({})});
+  const {page,wx}=harness('pages/trade/trade.js',api,{id:'9',channel:'代取快递',username:'worker',canWrite:true,messages:[]},{
+    getStorageSync:key=>key==='token'?token:username,
+    showToast(options){wx.lastToast=options},
+    chooseMedia(options){picker=options},
+    getFileSystemManager(){return {readFile(options){reader=options}}}
+  });
+  page.sessionToken=token;
+  page.chooseImage();
+  picker.success({tempFiles:[{tempFilePath:'/tmp/picture.png',size:4}]});
+  token='session-b';username='other';
+  await reader.success({data:new Uint8Array([137,80,78,71]).buffer});
+  assert.equal(api.calls.filter(x=>x[0]==='request').length,0);
+  assert.match(wx.lastToast.title,/账号已切换/);
 });
 
 test('banned-account appeal uses its temporary credential and loads the admin reply',async()=>{

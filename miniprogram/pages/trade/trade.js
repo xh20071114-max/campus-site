@@ -20,6 +20,8 @@ Page({
   },
   onHide(){if(this.timer){clearInterval(this.timer);this.timer=null}},
   onUnload(){this.unloaded=true;if(this.timer)clearInterval(this.timer)},
+  sameSession(token,username){return !!token&&token===(wx.getStorageSync('token')||'')&&username===(wx.getStorageSync('username')||'')&&token===this.sessionToken&&username===this.data.username},
+  staleAction(){wx.showToast({title:'账号已切换，请刷新订单后重试',icon:'none'});if(!this.unloaded)this.load(true)},
   async publicTask(){
     if(!this.data.channel)throw new Error('缺少订单频道，请从任务列表重新打开');
     const rows=await api.get('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages?before='+(Number(this.data.id)+1));
@@ -32,7 +34,8 @@ Page({
     if(token!==this.sessionToken){
       this.sessionToken=token;
       this.loadedImages=new Set();
-      this.setData({task:null,messages:[],draft:'',error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+      this.sendRequestId=(this.sendRequestId||0)+1;
+      this.setData({task:null,messages:[],draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
       if(this.loading)this.reloadAfterLoad=true;
     }
     if(this.loading)return;this.loading=true;
@@ -101,45 +104,63 @@ Page({
   onDraft(e){this.setData({draft:e.detail.value})},
   async send(){
     if(this.data.sending||!this.data.draft.trim())return;
+    if(!api.requireLogin())return;
+    const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'',text=this.data.draft.trim();
+    if(!this.data.canWrite)return wx.showToast({title:'当前订单不可发送消息',icon:'none'});
+    if(!this.sameSession(token,username)){this.staleAction();return}
+    const requestId=(this.sendRequestId||0)+1;this.sendRequestId=requestId;
     this.setData({sending:true});
-    try{await api.post('/api/tasks/'+this.data.id+'/chat',{text:this.data.draft.trim()});this.setData({draft:''});this.load(true)}
-    catch(e){api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
-    finally{this.setData({sending:false})}
+    try{await api.post('/api/tasks/'+this.data.id+'/chat',{text},{header:{Authorization:'Bearer '+token}});if(!this.sameSession(token,username))return;this.setData({draft:''});this.load(true)}
+    catch(e){if(!this.sameSession(token,username)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+    finally{if(requestId===this.sendRequestId)this.setData({sending:false})}
   },
   chooseImage(){
     if(!this.data.canWrite)return wx.showToast({title:'当前订单不可发送消息',icon:'none'});
+    if(!api.requireLogin())return;
+    const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
+    if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
     wx.chooseMedia({count:1,mediaType:['image'],sizeType:['compressed'],sourceType:['album','camera'],success:r=>{
+      if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
       const file=r.tempFiles&&r.tempFiles[0];
       if(!file||!file.tempFilePath)return wx.showToast({title:'没有获取到所选图片，请重试',icon:'none'});
       if(file.size>300*1024)return wx.showToast({title:'图片不能超过 300KB，请选择压缩图',icon:'none'});
       wx.getFileSystemManager().readFile({filePath:file.tempFilePath,success:async x=>{
+        if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
         const bytes=new Uint8Array(x.data),type=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':'';
         if(!type)return wx.showToast({title:'只支持 JPEG 或 PNG 图片',icon:'none'});
-        try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type}});this.load(true)}
-        catch(e){api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+        try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type,Authorization:'Bearer '+sessionToken}});if(this.sameSession(sessionToken,sessionUsername))this.load(true)}
+        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
       },fail:()=>wx.showToast({title:'读取图片失败',icon:'none'})});
     },fail:error=>{const detail=error&&error.errMsg||'';if(!/cancel/i.test(detail))wx.showToast({title:'选择图片失败，请检查权限后重试',icon:'none'})}});
   },
   previewImage(e){wx.previewImage({current:e.currentTarget.dataset.src,urls:[e.currentTarget.dataset.src]})},
   claim(){
     if(!api.requireLogin())return;
+    const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
+    if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
     api.get('/api/me').then(me=>{
+      if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
       const cost=me.claimCost;if(typeof cost!=='number'||!Number.isFinite(cost)||typeof me.points!=='number'||!Number.isFinite(me.points))return wx.showToast({title:'接单规则暂不可用，请稍后重试',icon:'none'});
       if(me.points<cost)return wx.showModal({title:'积分不足',content:'接单需要 '+cost+' 积分，当前 '+me.points+' 积分。现在前往充值吗？',confirmText:'去充值',success:r=>{if(r.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});
       wx.showModal({title:'确认接单',content:cost===0?'本次接单免扣积分。确认后请按订单流程完成交易。':'接单将扣除 '+cost+' 积分，放弃接单不退还。确认继续吗？',success:async r=>{
         if(!r.confirm)return;
-        try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/claim',{});wx.showToast({title:'接单成功'});this.load()}
-        catch(e){if(e.statusCode===402)wx.showModal({title:'积分不足',content:e.message,confirmText:'去充值',success:x=>{if(x.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});else api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
+        if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
+        try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/claim',{}, {header:{Authorization:'Bearer '+sessionToken}});if(!this.sameSession(sessionToken,sessionUsername))return;wx.showToast({title:'接单成功'});this.load()}
+        catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(e.statusCode===402)wx.showModal({title:'积分不足',content:e.message,confirmText:'去充值',success:x=>{if(x.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});else api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
       }});
-    }).catch(e=>api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'}));
+    }).catch(e=>{if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})});
   },
   act(e){
     const action=e.currentTarget.dataset.action;
+    if(!api.requireLogin())return;
+    const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
+    if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
     const labels={finish:'确认已经完成任务？',paid:'请确认已收到交付，并完成线下付款后再标记。',received:'只有在收款账户核实实际到账后，才确认收款。',complete:'申请免付款完成后，接单人仍需确认。',acceptfree:'确认已收到成果，且同意无需付款？',declinefree:'确定不同意免付款申请？',withdrawfree:'确定撤回免付款申请？',unclaim:'放弃接单不会退还接单积分，确定继续？',cancel:'撤回未接单任务后，发布积分会按规则退还。确定继续？'};
     wx.showModal({title:'确认订单操作',content:labels[action]||'确认执行此操作？',success:async r=>{
       if(!r.confirm)return;
-      try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/'+action,{});wx.showToast({title:'订单状态已更新'});this.load()}
-      catch(err){api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
+      if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
+      try{await api.post('/api/channels/'+encodeURIComponent(this.data.channel)+'/messages/'+this.data.id+'/'+action,{}, {header:{Authorization:'Bearer '+sessionToken}});if(!this.sameSession(sessionToken,sessionUsername))return;wx.showToast({title:'订单状态已更新'});this.load()}
+      catch(err){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
     }});
   }
 });
