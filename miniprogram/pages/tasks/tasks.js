@@ -21,7 +21,7 @@ Page({
     const id=e.currentTarget.dataset.id,ch=e.currentTarget.dataset.channel;
     try{
       const me=await api.get('/api/me'),cost=me.claimCost;
-      if(typeof cost!=='number'||!Number.isFinite(cost))return wx.showToast({title:'接单规则暂不可用，请稍后重试',icon:'none'});
+      if(typeof cost!=='number'||!Number.isFinite(cost)||cost<0||typeof me.points!=='number'||!Number.isFinite(me.points)||me.points<0)return wx.showToast({title:'接单规则或积分余额暂不可用，请稍后重试',icon:'none'});
       if(me.points<cost)return wx.showModal({title:'积分不足',content:'接单需要 '+cost+' 积分，当前 '+me.points+' 积分。现在前往充值吗？',confirmText:'去充值',success:r=>{if(r.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});
       wx.showModal({title:'确认接单',content:cost===0?'本次接单免扣积分。确认后请按订单流程完成交易。':'接单将扣除 '+cost+' 积分。放弃接单不退积分，确认继续吗？',success:async r=>{
         if(!r.confirm)return;

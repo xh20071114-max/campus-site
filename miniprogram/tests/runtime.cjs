@@ -121,6 +121,39 @@ test('task claim rechecks balance and fee before opening a confirmation dialog',
   assert.equal(api.calls.find(x=>x[0]==='post')[1],'/api/channels/%E6%A0%A1%E5%9B%AD%E8%B7%91/messages/12/claim');
 });
 
+test('task claim stops when the live balance is missing',async()=>{
+  const api=apiStub({get:async()=>({claimCost:2})});
+  const {page,wx}=harness('pages/tasks/tasks.js',api,{}, {showToast(options){wx.lastToast=options}});
+  await page.claim({currentTarget:{dataset:{id:'12',channel:'校园跑'}}});
+  assert.equal(wx.lastModal,undefined);
+  assert.equal(api.calls.some(x=>x[0]==='post'),false);
+  assert.match(wx.lastToast.title,/积分余额/);
+});
+
+test('channel claim stops when live fee or balance data is invalid',async()=>{
+  for(const me of [{points:5},{claimCost:2,points:NaN},{claimCost:-1,points:5}]){
+    const api=apiStub({get:async()=>me});
+    const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑'}, {showToast(options){wx.lastToast=options}});
+    await page.claim({currentTarget:{dataset:{id:'12'}}});
+    assert.equal(wx.lastModal,undefined);
+    assert.equal(api.calls.some(x=>x[0]==='post'),false);
+    assert.match(wx.lastToast.title,/接单规则或积分余额/);
+  }
+});
+
+test('channel claim shows the live fee and offers recharge after a 402 response',async()=>{
+  const api=apiStub({get:async()=>({claimCost:2,points:5}),post:async()=>{const e=new Error('余额不足');e.statusCode=402;throw e}});
+  const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑'});
+  await page.claim({currentTarget:{dataset:{id:'12'}}});
+  assert.match(wx.lastModal.content,/扣除 2 积分/);
+  assert.equal(api.calls.some(x=>x[0]==='post'),false);
+  await wx.lastModal.success({confirm:true});
+  assert.match(wx.lastModal.content,/余额不足/);
+  assert.equal(wx.lastModal.confirmText,'去充值');
+  await wx.lastModal.success({confirm:true});
+  assert.equal(wx.lastNavigation.url,'/pages/recharge/recharge');
+});
+
 test('task detail can show a public open order without requesting private chat',async()=>{
   const api=apiStub({get:async path=>{
     if(path==='/api/tasks/77'){const e=new Error('not a party');e.statusCode=403;throw e}

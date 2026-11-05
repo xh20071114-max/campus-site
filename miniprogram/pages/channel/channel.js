@@ -65,12 +65,12 @@ Page({
     const id=e.currentTarget.dataset.id;
     try{
       const me=await api.get('/api/me'),cost=me.claimCost;
-      if(typeof cost!=='number'||!Number.isFinite(cost))return wx.showToast({title:'接单规则暂不可用，请稍后重试',icon:'none'});
+      if(typeof cost!=='number'||!Number.isFinite(cost)||cost<0||typeof me.points!=='number'||!Number.isFinite(me.points)||me.points<0)return wx.showToast({title:'接单规则或积分余额暂不可用，请稍后重试',icon:'none'});
       if(me.points<cost)return wx.showModal({title:'积分不足',content:'接单需要 '+cost+' 积分，当前 '+me.points+' 积分。是否去充值？',confirmText:'去充值',success:r=>{if(r.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});
       wx.showModal({title:'确认接单',content:cost===0?'本次免扣积分。':'接单将扣除 '+cost+' 积分。放弃接单不会退还。',success:async r=>{
         if(!r.confirm)return;
         try{await api.post('/api/channels/'+encodeURIComponent(this.data.name)+'/messages/'+id+'/claim',{});wx.navigateTo({url:'/pages/trade/trade?id='+id+'&channel='+encodeURIComponent(this.data.name)})}
-        catch(err){if(err.statusCode===402)wx.showToast({title:err.message,icon:'none'});else api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
+        catch(err){if(err.statusCode===402)wx.showModal({title:'积分不足',content:err.message||'接单积分不足，请先充值',confirmText:'去充值',success:x=>{if(x.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});else api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
       }});
     }catch(err){api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
   },
