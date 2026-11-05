@@ -16,7 +16,7 @@ function harness(relative,api,dataOverrides,wxOverrides){
   },wxOverrides||{});
   const filename=path.join(root,relative);
   const source=fs.readFileSync(filename,'utf8');
-  const context={Page(value){definition=value},wx,getApp(){return {globalData:{apiBase:'https://plgslzlexpmy.sealoshzh.site'}}},require(name){return name.includes('api')?api:format},setInterval(){return 1},clearInterval(){},getCurrentPages(){return [{}]},console};
+  const context={Page(value){definition=value},wx,getApp(){return {globalData:{apiBase:'https://plgslzlexpmy.sealoshzh.site'},clearSession(){wx.clearSessionCalls=(wx.clearSessionCalls||0)+1}}},require(name){return name.includes('api')?api:format},setInterval(){return 1},clearInterval(){},getCurrentPages(){return [{}]},console};
   vm.runInNewContext(source,context,{filename});
   const page=Object.assign({},definition,{data:Object.assign({},definition.data,dataOverrides||{}),setData(value){Object.assign(this.data,value)}});
   return {page,wx};
@@ -28,7 +28,7 @@ function apiStub(handlers){
     async get(path){calls.push(['get',path]);if(handlers.get)return handlers.get(path);throw new Error('unexpected GET '+path)},
     async post(path,data,options){calls.push(['post',path,data,options]);if(handlers.post)return handlers.post(path,data,options);return {}},
     async request(path,options){calls.push(['request',path,options]);if(handlers.request)return handlers.request(path,options);return {data:{task:{canWrite:false},messages:[]},header:{}}},
-    requireLogin(){return handlers.requireLogin?handlers.requireLogin():true},handleAuthError(){return false}
+    requireLogin(){return handlers.requireLogin?handlers.requireLogin():true},handleAuthError(error){return handlers.handleAuthError?handlers.handleAuthError(error):false}
   };
   return api;
 }
@@ -114,6 +114,7 @@ test('task hall hides claim availability when fee rules cannot be read',async()=
 test('task claim rechecks balance and fee before opening a confirmation dialog',async()=>{
   const api=apiStub({get:async()=>({claimCost:3,points:3})});
   const {page,wx}=harness('pages/tasks/tasks.js',api);
+  page.sessionToken='token';page.sessionUsername='';
   await page.claim({currentTarget:{dataset:{id:'12',channel:'校园跑'}}});
   assert.match(wx.lastModal.content,/扣除 3 积分/);
   assert.equal(api.calls.filter(x=>x[0]==='post').length,0);
@@ -124,10 +125,24 @@ test('task claim rechecks balance and fee before opening a confirmation dialog',
 test('task claim stops when the live balance is missing',async()=>{
   const api=apiStub({get:async()=>({claimCost:2})});
   const {page,wx}=harness('pages/tasks/tasks.js',api,{}, {showToast(options){wx.lastToast=options}});
+  page.sessionToken='token';page.sessionUsername='';
   await page.claim({currentTarget:{dataset:{id:'12',channel:'校园跑'}}});
   assert.equal(wx.lastModal,undefined);
   assert.equal(api.calls.some(x=>x[0]==='post'),false);
   assert.match(wx.lastToast.title,/积分余额/);
+});
+
+test('task hall claim confirmation cannot spend a different account balance',async()=>{
+  let token='session-a',username='worker';
+  const api=apiStub({get:async path=>path==='/api/me'?{claimCost:2,points:5}:path==='/api/settings'?{claimCost:2}:{tasks:[],total:0,pages:1}});
+  const {page,wx}=harness('pages/tasks/tasks.js',api,{}, {getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
+  page.sessionToken=token;page.sessionUsername=username;
+  await page.claim({currentTarget:{dataset:{id:'12',channel:'校园跑'}}});
+  assert.match(wx.lastModal.content,/扣除 2 积分/);
+  token='session-b';username='other';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.filter(x=>x[0]==='post').length,0);
+  assert.match(wx.lastToast.title,/账号已切换/);
 });
 
 test('task hall ignores a slow response from the previous page',async()=>{
@@ -166,6 +181,7 @@ test('channel claim stops when live fee or balance data is invalid',async()=>{
   for(const me of [{points:5},{claimCost:2,points:NaN},{claimCost:-1,points:5}]){
     const api=apiStub({get:async()=>me});
     const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑'}, {showToast(options){wx.lastToast=options}});
+    page.sessionToken='token';page.sessionUsername='';
     await page.claim({currentTarget:{dataset:{id:'12'}}});
     assert.equal(wx.lastModal,undefined);
     assert.equal(api.calls.some(x=>x[0]==='post'),false);
@@ -176,6 +192,7 @@ test('channel claim stops when live fee or balance data is invalid',async()=>{
 test('channel claim shows the live fee and offers recharge after a 402 response',async()=>{
   const api=apiStub({get:async()=>({claimCost:2,points:5}),post:async()=>{const e=new Error('余额不足');e.statusCode=402;throw e}});
   const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑'});
+  page.sessionToken='token';page.sessionUsername='';
   await page.claim({currentTarget:{dataset:{id:'12'}}});
   assert.match(wx.lastModal.content,/扣除 2 积分/);
   assert.equal(api.calls.some(x=>x[0]==='post'),false);
@@ -184,6 +201,37 @@ test('channel claim shows the live fee and offers recharge after a 402 response'
   assert.equal(wx.lastModal.confirmText,'去充值');
   await wx.lastModal.success({confirm:true});
   assert.equal(wx.lastNavigation.url,'/pages/recharge/recharge');
+});
+
+test('channel claim confirmation cannot switch to a different account',async()=>{
+  let token='session-a',username='worker';
+  const api=apiStub({get:async()=>({claimCost:2,points:5}),post:async()=>({})});
+  const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑',username:'worker'},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
+  page.sessionToken=token;page.sessionUsername=username;
+  await page.claim({currentTarget:{dataset:{id:'12'}}});
+  assert.match(wx.lastModal.content,/接单将扣除 2 积分/);
+  token='session-b';username='other';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.filter(x=>x[0]==='post').length,0);
+  assert.match(wx.lastToast.title,/账号已切换/);
+});
+
+test('channel publish stays on the original account and preserves a newer account draft',async()=>{
+  let token='session-a',username='poster',resolvePost;
+  const api=apiStub({post:()=>new Promise(resolve=>{resolvePost=resolve})});
+  const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑',username:'poster',showForm:true,text:'A 的任务'},{getStorageSync:key=>key==='token'?token:username,showToast(options){wx.lastToast=options}});
+  page.sessionToken=token;page.sessionUsername=username;
+  const pending=page.publish();
+  assert.equal(api.calls[0][3].header.Authorization,'Bearer session-a');
+  token='session-b';username='student';
+  page.onShow();
+  page.setData({showForm:true,text:'B 的新草稿'});
+  resolvePost({});
+  await pending;
+  assert.equal(page.data.username,'student');
+  assert.equal(page.data.text,'B 的新草稿');
+  assert.equal(page.data.posting,false);
+  assert.match(wx.lastToast.title,/账号已切换/);
 });
 
 test('task detail can show a public open order without requesting private chat',async()=>{
@@ -282,6 +330,92 @@ test('personal center clears and ignores points from a previous session',async()
   assert.equal(page.data.ledger.length,0);
   const wxml=fs.readFileSync(path.join(root,'pages/me/me.wxml'),'utf8');
   assert.match(wxml,/class="card ledger" wx:if="\{\{logged\}\}"/);
+});
+
+test('order restore confirmation cannot switch to another account',async()=>{
+  let token='session-a',username='alice';
+  const api=apiStub({post:async()=>{throw new Error('stale restore must not be sent')}});
+  const toasts=[];
+  const {page,wx}=harness('pages/orders/orders.js',api,{},{
+    getStorageSync:key=>key==='token'?token:key==='username'?username:'',
+    showToast(options){toasts.push(options)}
+  });
+  page.sessionToken=token;page.sessionUsername=username;
+  page.restore({currentTarget:{dataset:{id:'55',channel:'代取快递'}}});
+  token='session-b';username='bob';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.some(x=>x[0]==='post'),false);
+  assert.match(toasts[0].title,/账号已切换/);
+});
+
+test('order restore sends only with the account that confirmed it',async()=>{
+  const api=apiStub({post:async()=>({}),get:async()=>({posted:[],claimed:[]})});
+  const {page,wx}=harness('pages/orders/orders.js',api,{},{
+    getStorageSync:key=>key==='token'?'session-a':key==='username'?'alice':''
+  });
+  page.sessionToken='session-a';page.sessionUsername='alice';
+  page.restore({currentTarget:{dataset:{id:'55',channel:'代取快递'}}});
+  await wx.lastModal.success({confirm:true});
+  const restore=api.calls.find(x=>x[0]==='post');
+  assert.equal(restore[3].header.Authorization,'Bearer session-a');
+});
+
+test('expired restore session clears private order history',async()=>{
+  let token='session-a',username='alice';
+  const unauthorized=Object.assign(new Error('expired'),{statusCode:401});
+  const api=apiStub({
+    post:async()=>{throw unauthorized},
+    handleAuthError(){token='';username='';return true}
+  });
+  const {page,wx}=harness('pages/orders/orders.js',api,{},{
+    getStorageSync:key=>key==='token'?token:key==='username'?username:'',
+    removeStorageSync:key=>{if(key==='token')token='';if(key==='username')username=''}
+  });
+  page.sessionToken=token;page.sessionUsername=username;
+  page.setData({all:[{id:'55'}],active:[{id:'55'}],history:[],visible:[{id:'55'}]});
+  page.restore({currentTarget:{dataset:{id:'55',channel:'代取快递'}}});
+  await wx.lastModal.success({confirm:true});
+  assert.equal(page.data.all.length,0);
+  assert.equal(page.data.visible.length,0);
+  assert.equal(page.sessionToken,'');
+});
+
+test('personal feedback and logout dialogs are cancelled when the account changes',async()=>{
+  let token='session-a',username='alice';
+  const api=apiStub({get:async path=>path==='/api/me'?{username:'alice'}:{points:0,log:[]}});
+  const {page,wx}=harness('pages/me/me.js',api,{},{
+    getStorageSync:key=>key==='token'?token:key==='username'?username:'',
+    showModal(options){wx.lastModal=options}
+  });
+  page.onShow();
+  page.feedback();
+  token='session-b';username='bob';
+  await wx.lastModal.success({confirm:true,content:'Alice private feedback'});
+  assert.equal(api.calls.some(x=>x[0]==='post'),false);
+
+  page.logout();
+  token='session-c';username='carol';
+  await wx.lastModal.success({confirm:true});
+  assert.equal(api.calls.some(x=>x[0]==='post'&&x[1]==='/api/logout'),false);
+  assert.equal(wx.clearSessionCalls||0,0);
+});
+
+test('personal feedback and logout requests use the account that confirmed them',async()=>{
+  const api=apiStub({post:async()=>({}),get:async path=>path==='/api/me'?{username:'alice'}:{points:0,log:[]}});
+  const {page,wx}=harness('pages/me/me.js',api,{},{
+    getStorageSync:key=>key==='token'?'session-a':key==='username'?'alice':''
+  });
+  page.onShow();
+  page.feedback();
+  await wx.lastModal.success({confirm:true,content:'Feedback'});
+  let call=api.calls.find(x=>x[0]==='post'&&x[1]==='/api/feedback');
+  assert.equal(call[3].header.Authorization,'Bearer session-a');
+
+  page.logout();
+  await wx.lastModal.success({confirm:true});
+  call=api.calls.find(x=>x[0]==='post'&&x[1]==='/api/logout');
+  assert.equal(call[3].header.Authorization,'Bearer session-a');
+  assert.equal(wx.clearSessionCalls,1);
 });
 
 test('paid state exposes receipt confirmation only to the claimer',async()=>{
@@ -387,6 +521,105 @@ test('home keeps channels and announcements visible when task loading fails',asy
   assert.match(page.data.loadError,/任务/);
 });
 
+test('recharge requests stay bound to the active account and discard older records',async()=>{
+  let token='session-a',username='alice',resolveOld;
+  const api=apiStub({request:(path,options)=>{
+    assert.equal(path,'/api/my/recharges');
+    if(token==='session-a'){
+      assert.equal(options.header.Authorization,'Bearer session-a');
+      return new Promise(resolve=>{resolveOld=resolve});
+    }
+    assert.equal(options.header.Authorization,'Bearer session-b');
+    return Promise.resolve({data:[{id:'new',status:'approved',time:1,amount:5} ]});
+  }});
+  const {page}=harness('pages/recharge/recharge.js',api,{}, {
+    getStorageSync:key=>key==='token'?token:key==='username'?username:''
+  });
+  page.onLoad();
+  const oldLoad=page.load();
+  token='session-b';username='bob';
+  assert.equal(page.syncSession().changed,true);
+  const newLoad=page.load();
+  await newLoad;
+  resolveOld({data:[{id:'old',status:'pending',time:1,amount:99}]});
+  await oldLoad;
+  assert.deepEqual(page.data.records.map(x=>x.id),['new']);
+  assert.equal(page.data.username,'bob');
+});
+
+test('recharge submission preserves the original account and clears its draft on account change',async()=>{
+  let token='session-a',username='alice';
+  const api=apiStub({});
+  const toasts=[];
+  const {page}=harness('pages/recharge/recharge.js',api,{}, {
+    getStorageSync:key=>key==='token'?token:key==='username'?username:'',
+    showToast(options){toasts.push(options)}
+  });
+  page.onLoad();
+  page.setData({amount:'12',note:'Alice payment'});
+  await page.submit();
+  let submission=api.calls.find(x=>x[0]==='post');
+  assert.equal(submission[1],'/api/recharge');
+  assert.equal(submission[3].header.Authorization,'Bearer session-a');
+
+  page.setData({amount:'20',note:'private note'});
+  token='session-b';username='bob';
+  const before=api.calls.filter(x=>x[0]==='post').length;
+  await page.submit();
+  assert.equal(api.calls.filter(x=>x[0]==='post').length,before);
+  assert.equal(page.data.amount,'');
+  assert.equal(page.data.note,'');
+  assert.match(toasts.at(-1).title,/账号已切换/);
+});
+
+test('leaderboard ignores private reward data from an earlier account',async()=>{
+  let token='session-a',username='alice',resolveOld;
+  const api=apiStub({request:(path,options)=>{
+    assert.equal(path,'/api/leaderboard');
+    if(token==='session-a'){
+      assert.equal(options.header.Authorization,'Bearer session-a');
+      return new Promise(resolve=>{resolveOld=resolve});
+    }
+    assert.equal(options.header.Authorization,'Bearer session-b');
+    return Promise.resolve({data:{live:{key:'live'},locked:null,myRewards:[{key:'bob-reward'}]}});
+  }});
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{},{
+    getStorageSync:key=>key==='token'?token:key==='username'?username:''
+  });
+  page.onLoad();
+  const oldLoad=page.load();
+  token='session-b';username='bob';
+  page.syncSession();
+  const newLoad=page.load();
+  await newLoad;
+  resolveOld({data:{live:{key:'old-live'},locked:null,myRewards:[{key:'alice-reward'}]}});
+  await oldLoad;
+  assert.deepEqual(page.data.myRewards.map(x=>x.key),['bob-reward']);
+  assert.equal(page.data.live.key,'live');
+});
+
+test('weekly reward QR upload stops before sending after an account switch',async()=>{
+  let token='session-a',username='alice',picker,reader;
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
+  const api=apiStub({request:async()=>({})});
+  const {page}=harness('pages/leaderboard/leaderboard.js',api,{},{
+    getStorageSync:key=>key==='token'?token:key==='username'?username:'',
+    chooseMedia(options){picker=options},
+    getFileSystemManager(){return {readFile(options){reader=options}}}
+  });
+  page.onLoad();
+  const pending=page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
+  picker.success({tempFiles:[{tempFilePath:'selected-image',size:bytes.length}]});
+  await Promise.resolve();
+  assert.ok(reader);
+  token='session-b';username='bob';
+  page.syncSession();
+  reader.success({data:bytes.buffer});
+  await pending;
+  assert.equal(api.calls.some(x=>x[0]==='request'&&x[1].includes('/weekly-reward/qr')),false);
+  assert.equal(page.data.uploading,false);
+});
+
 test('weekly reward QR picker prevents duplicate taps and reports selection failures',async()=>{
   let picker,chooseCalls=0;
   const toasts=[];
@@ -395,6 +628,7 @@ test('weekly reward QR picker prevents duplicate taps and reports selection fail
     chooseMedia(options){chooseCalls++;picker=options},
     showToast(options){toasts.push(options)}
   });
+  page.onLoad();
   const event={currentTarget:{dataset:{period:'2026-11-02'}}};
   const pending=page.uploadQr(event);
   assert.equal(page.data.uploading,true);
@@ -423,6 +657,7 @@ test('weekly reward QR upload rejects unsupported image formats before sending',
     getFileSystemManager(){return {readFile(options){options.success({data:new Uint8Array([1,2,3,4]).buffer})}}},
     showToast(options){toasts.push(options)}
   });
+  page.onLoad();
   await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
   assert.equal(page.data.uploading,false);
   assert.equal(api.calls.some(x=>x[0]==='request'),false);
@@ -433,18 +668,19 @@ test('weekly reward QR upload sends PNG bytes with the correct content type',asy
   const toasts=[];
   const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
   const api=apiStub({
-    request:async()=>({}),
-    get:async()=>({live:null,locked:null,myRewards:[]})
+    request:async(path)=>path==='/api/leaderboard'?{data:{live:null,locked:null,myRewards:[]}}:{}
   });
   const {page}=harness('pages/leaderboard/leaderboard.js',api,{}, {
     chooseMedia(options){options.success({tempFiles:[{tempFilePath:'selected-image',size:bytes.length}]})},
     getFileSystemManager(){return {readFile(options){options.success({data:bytes.buffer})}}},
     showToast(options){toasts.push(options)}
   });
+  page.onLoad();
   await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
-  const upload=api.calls.find(x=>x[0]==='request');
+  const upload=api.calls.find(x=>x[0]==='request'&&x[1].includes('/weekly-reward/qr'));
   assert.equal(upload[1],'/api/my/weekly-reward/qr?period=2026-11-02');
   assert.equal(upload[2].header['Content-Type'],'image/png');
+  assert.equal(upload[2].header.Authorization,'Bearer token');
   assert.equal(upload[2].data,bytes.buffer);
   assert.equal(page.data.uploading,false);
   assert.equal(page.data.error,'');
@@ -459,6 +695,7 @@ test('weekly reward QR upload reports local file read failures and clears busy s
     getFileSystemManager(){return {readFile(options){options.fail(new Error('disk unavailable'))}}},
     showToast(options){toasts.push(options)}
   });
+  page.onLoad();
   await page.uploadQr({currentTarget:{dataset:{period:'2026-11-02'}}});
   assert.equal(page.data.uploading,false);
   assert.equal(api.calls.some(x=>x[0]==='request'),false);
