@@ -13,7 +13,7 @@ jobs:
       - name: Checkout verified source commit
         uses: actions/checkout@v4
         with:
-          ref: 042255db492401550827e8ec79c3e2a7661ce6a8
+          ref: 0f85cee0e8a52722106827d4a6f39348fef4f31f
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build OCI image for Sealos
@@ -22,13 +22,13 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
-          tags: aevon-campus:042255db492401550827e8ec79c3e2a7661ce6a8
-          build-args: APP_COMMIT=042255db492401550827e8ec79c3e2a7661ce6a8
+          tags: aevon-campus:0f85cee0e8a52722106827d4a6f39348fef4f31f
+          build-args: APP_COMMIT=0f85cee0e8a52722106827d4a6f39348fef4f31f
           outputs: type=oci,dest=/tmp/aevon-campus.oci.tar
       - name: Upload temporary OCI archive
         uses: actions/upload-artifact@v4
         with:
-          name: aevon-campus-oci-042255db49
+          name: aevon-campus-oci-0f85cee0e8
           path: /tmp/aevon-campus.oci.tar
           if-no-files-found: error
           retention-days: 1
