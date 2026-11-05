@@ -1,5 +1,5 @@
 // Aevon校园交流网 后端：静态文件 + 登录 + 频道消息 + 公告（数据存 data.json，每日备份到 backups/）
-const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib');
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),zlib=require('zlib'),{Readable}=require('node:stream'),{pipeline}=require('node:stream/promises');
 const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', ROOT=__dirname, DATA_DIR=path.resolve(process.env.DATA_DIR||ROOT), DB=path.join(DATA_DIR,'data.json'), BAK=path.join(DATA_DIR,'backups');
 const APP_COMMIT_VALUE=String(process.env.APP_COMMIT||'').trim();
 const APP_COMMIT=/^[a-f0-9]{40}$/i.test(APP_COMMIT_VALUE)?APP_COMMIT_VALUE.toLowerCase():'unknown';
@@ -92,6 +92,14 @@ function* jsonChunks(value,depth=0){if(Array.isArray(value)){yield '[';for(let i
   else if(value&&typeof value==='object'&&depth<2&&typeof value.toJSON!=='function'){yield '{';let separator='';for(const [k,v] of Object.entries(value)){if(['undefined','function','symbol'].includes(typeof v))continue;yield separator+JSON.stringify(k)+':';separator=',';yield*jsonChunks(v,depth+1)}yield '}'}
   else yield JSON.stringify(value)}
 const writeJSON=(fd,value)=>{let parts=[],size=0;const flush=()=>{if(!size)return;const b=Buffer.from(parts.join(''));for(let offset=0;offset<b.length;){const n=fs.writeSync(fd,b,offset,b.length-offset);if(!n)throw new Error('数据写入没有进展');offset+=n}parts=[];size=0};for(const chunk of jsonChunks(value)){parts.push(chunk);size+=chunk.length;if(size>=65536)flush()}flush()};
+// 管理员导出整库时逐项写入响应，避免同时构造完整 JSON 字符串和 UTF-8 缓冲区。
+function* adminBackupJSON(){
+  yield '{"users":{';let separator='';
+  for(const name in db.users)if(Object.hasOwn(db.users,name)){const {ips,...user}=db.users[name];yield separator+JSON.stringify(name)+':'+JSON.stringify(user);separator=','}
+  yield '}';
+  for(const key in db)if(Object.hasOwn(db,key)&&key!=='users'&&key!=='sessions'){yield ','+JSON.stringify(key)+':';yield*jsonChunks(db[key])}
+  yield '}';
+}
 const persistNow=()=>{if(storageError)throw storageError;if(persistTimer){clearTimeout(persistTimer);persistTimer=null}atomicWrite(DB,fd=>writeJSON(fd,db))};
 const persist=(ms=200)=>{if(!persistTimer&&!storageError)persistTimer=setTimeout(()=>{persistTimer=null;try{persistNow()}catch(e){failStorage(e)}},ms)};
 process.on('exit',()=>{if(persistTimer)try{persistNow()}catch{}});
@@ -859,7 +867,7 @@ const handle=async(req,res)=>{
     }
     if(p==='/api/admin/reports'||p.startsWith('/api/admin/reports/')||p==='/api/admin/backup'||p==='/api/admin/disputes'){
       const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'}); if(!isAdmin(n)) return send(res,403,{error:'只有管理员能操作'});
-      if(p==='/api/admin/backup'&&GET){const {sessions,users,...rest}=db; const us=Object.create(null); for(const [k,v] of Object.entries(users)){const {ips,...o}=v; us[k]=o} const d=JSON.stringify({users:us,...rest}); res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); return res.end(d)}
+      if(p==='/api/admin/backup'&&GET){res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="aevon-backup-'+new Date(Date.now()+8*3600e3).toISOString().slice(0,10)+'.json"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}); await pipeline(Readable.from(adminBackupJSON()),res); return}
       if(p==='/api/admin/disputes'&&GET){const o=[]; for(const c of CHANNELS) for(const x of db.messages[c]) if(x.task&&x.dispute&&!x.deleted) o.push({...out(x,c,true),chatCount:(db.taskChats[x.id]||[]).length,ipOverlap:!!((x.ratings&&Object.values(x.ratings).some(v=>v.ipOverlap))||((db.users[x.user]||{}).ips||[]).some(i=>((db.users[x.claimedBy]||{}).ips||[]).includes(i))),resolved:x.stage!=='disputed'}); return send(res,200,o.sort((a,b)=>(a.resolved-b.resolved)||b.dispute.time.localeCompare(a.dispute.time)))}
       if(p==='/api/admin/reports'&&GET) return send(res,200,db.reports.slice().reverse().map(x=>{const t=x.target==='task'?findTask(x.targetId):null; return {...x,targetText:t?(t.msg.deleted?db.deletedTexts[t.msg.id]:t.msg.text):null,targetChannel:t?t.ch:null,targetExists:x.target==='user'?!!db.users[x.targetId]:!!t}}));
       const rm2=p.match(/^\/api\/admin\/reports\/([^/]+)\/(resolve|delete)$/);
