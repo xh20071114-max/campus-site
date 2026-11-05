@@ -4,7 +4,11 @@ const PORT=process.env.PORT||3000,BIND_HOST=process.env.BIND_HOST||'0.0.0.0', RO
 const APP_COMMIT_VALUE=String(process.env.APP_COMMIT||process.env.RELEASE_SHA||'').trim();
 const APP_COMMIT=/^[a-f0-9]{40}$/i.test(APP_COMMIT_VALUE)?APP_COMMIT_VALUE.toLowerCase():'unknown';
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
-const CHANNELS=['校园跑','校园配送','代取快递','代课','代做作业'];
+const TASK_CHANNEL='任务大厅', CHAT_CHANNEL='校园聊天';
+const TASK_TYPES=['校园跑','校园配送','代取快递','代课','代做作业','其他'];
+const LEGACY_TASK_TYPE_BY_CHANNEL=Object.freeze({'校园跑':'校园跑','校园配送':'校园配送','食堂配送':'校园配送','代取快递':'代取快递','代课':'代课','代做作业':'代做作业'});
+const CHANNELS=[TASK_CHANNEL,CHAT_CHANNEL];
+const isTaskType=value=>TASK_TYPES.includes(value);
 // 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
 const PERMISSIONS=[
   ['viewUsers','用户管理','查看用户','查看账号、状态和积分'],
@@ -65,13 +69,24 @@ let db=loadDB();
 db.users=db.users||{};db.sessions=db.sessions||{};db.messages=db.messages||{};db.announcements=db.announcements||[];db.deletedTexts=db.deletedTexts||{};
 // 用无原型对象，防止 __proto__、constructor 这类用户名或频道名命中内置属性
 for(const k of ['users','sessions','messages','deletedTexts']) if(db[k]&&typeof db[k]==='object') db[k]=Object.assign(Object.create(null),db[k]);
-// 合并旧配送频道，保留任务 ID、私聊关联和新旧频道中已有的记录。
-if(db.messages['食堂配送']){
- const merged=new Map((db.messages['校园配送']||[]).map(m=>[String(m.id),m]));
- for(const m of db.messages['食堂配送'])if(!merged.has(String(m.id)))merged.set(String(m.id),m);
- db.messages['校园配送']=[...merged.values()].sort((a,b)=>a.id-b.id);delete db.messages['食堂配送'];
+// 将旧分类频道中的任务迁入任务大厅，给任务保留分类；旧频道普通消息统一迁入校园聊天。
+// 仅搬移消息记录，ID、任务私聊、议价、收藏、积分流水和订单状态均保持不变。
+{
+ const tasks=new Map(),chats=new Map();
+ for(const [oldChannel,items] of Object.entries(db.messages)){
+   if(!Array.isArray(items))continue;
+   for(const m of items){
+     const key=String(m.id);if(tasks.has(key)||chats.has(key))continue;
+     if(m.task){if(!isTaskType(m.taskType))m.taskType=LEGACY_TASK_TYPE_BY_CHANNEL[oldChannel]||'其他';tasks.set(key,m)}
+     else chats.set(key,m);
+   }
+ }
+ db.messages=Object.assign(Object.create(null),{
+   [TASK_CHANNEL]:[...tasks.values()].sort((a,b)=>a.id-b.id),
+   [CHAT_CHANNEL]:[...chats.values()].sort((a,b)=>a.id-b.id)
+ });
 }
-for(const events of Object.values(db.events||{}))for(const e of events)if(e.channel==='食堂配送')e.channel='校园配送';
+for(const events of Object.values(db.events||{}))for(const e of events)if(LEGACY_TASK_TYPE_BY_CHANNEL[e.channel])e.channel=TASK_CHANNEL;
 CHANNELS.forEach(c=>db.messages[c]=db.messages[c]||[]);
 // 保留旧记录 ID；新 ID 在同一毫秒和时钟回退时也严格递增，重启后不会复用。
 let lastId=Number.isSafeInteger(db.lastId)?db.lastId:0;
@@ -344,7 +359,8 @@ const handle=async(req,res)=>{
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   let u,p; try{u=new URL(req.url.replace(/^\/+/,'/'),'http://x'); p=decodeURIComponent(u.pathname)}catch{res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});return res.end('{"error":"请求地址格式不对"}')}
-  p=p.replace(/^\/api\/channels\/食堂配送(?=\/|$)/,'/api/channels/校园配送');
+  const legacyChannel=p.match(/^\/api\/channels\/(校园跑|校园配送|食堂配送|代取快递|代课|代做作业)(?=\/|$)/),legacyTaskType=legacyChannel&&LEGACY_TASK_TYPE_BY_CHANNEL[legacyChannel[1]];
+  p=p.replace(/^\/api\/channels\/(?:校园跑|校园配送|食堂配送|代取快递|代课|代做作业)(?=\/|$)/,'/api/channels/任务大厅');
   if(u.searchParams.get('channel')==='食堂配送')u.searchParams.set('channel','校园配送');
   // 允许 GitHub Pages 上的前端跨域调用接口（ALLOW_ORIGINS 可用逗号追加其他来源）
   const origin=req.headers.origin||"",allow=(process.env.ALLOW_ORIGINS||"https://plgslzlexpmy.sealoshzh.site").split(",");
@@ -652,7 +668,7 @@ const handle=async(req,res)=>{
       const ok=storage.ok&&!storageError;
       return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),commit:APP_COMMIT,storage});
     }
-    if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive);return{name:c,count:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
+    if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive),tasks=l.filter(x=>x.task);return{name:c,count:c===TASK_CHANNEL?tasks.length:l.length,taskCount:tasks.length,messageCount:l.length,lastId:l.length?l[l.length-1].id:0,...(c===TASK_CHANNEL?{taskTypes:TASK_TYPES}:{})}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete>
     const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|restore|dispute)$/);
     if(am2&&POST){
@@ -1001,11 +1017,14 @@ const handle=async(req,res)=>{
     if(p==="/api/tasks"&&GET){
       const st=u.searchParams.get("status")||"open", lim=Math.min(Math.max(parseInt(u.searchParams.get("limit"))||10,1),100);
       if(!['open','claimed','done','all'].includes(st))return send(res,400,{error:'任务状态无效'});
-      const paged=u.searchParams.has('page'),page=intIn(u.searchParams.get('page')||'1',1,1000000),channel=u.searchParams.get('channel')||'';
+      const paged=u.searchParams.has('page'),page=intIn(u.searchParams.get('page')||'1',1,1000000),channel=u.searchParams.get('channel')||'',taskType=u.searchParams.get('taskType')||'';
       if(paged&&page==null)return send(res,400,{error:'页码无效'});
-      if(channel&&!CHANNELS.includes(channel))return send(res,400,{error:'频道无效'});
+      if(channel&&channel!==TASK_CHANNEL&&channel!==CHAT_CHANNEL&&!isTaskType(channel))return send(res,400,{error:'频道无效'});
+      if(taskType&&!isTaskType(taskType))return send(res,400,{error:'任务分类无效'});
+      if(channel===CHAT_CHANNEL)return send(res,200,paged?{tasks:[],total:0,page:1,pages:1}:[]);
+      const filterType=taskType||(isTaskType(channel)?channel:'');
       const me=userOf(req),q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50),all=[];
-      for(const c of CHANNELS)for(const x of db.messages[c]){if(channel&&c!==channel||!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x)||x.done||x.closed)||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
+      for(const c of CHANNELS)for(const x of db.messages[c]){if((filterType&&x.taskType!==filterType)||!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x)||x.done||x.closed)||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
         if(q&&![x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)))continue;all.push({msg:x,ch:c})}
       const compare=taskComparator(u.searchParams.get('sort'));all.sort((a,b)=>compare(a.msg,b.msg));
       const pages=Math.max(1,Math.ceil(all.length/lim)),current=Math.min(page||1,pages),start=paged?(current-1)*lim:0,tasks=all.slice(start,start+lim).map(x=>withUnread(out(x.msg,x.ch,me),me));
@@ -1024,22 +1043,27 @@ const handle=async(req,res)=>{
       if(GET){
         // ?rev=<n> 返回 rev 大于 n 的消息（含新消息、状态变化、被删除的），响应头 X-Rev 是当前最大 rev
         const rv=u.searchParams.get('rev'), me=userOf(req);
-        const q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50), so=u.searchParams.get('sort');
-        if(q||so){const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100); let l=db.messages[ch].filter(x=>x.task&&alive(x)); if(q) l=l.filter(x=>[x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q))); return send(res,200,sortTasks(l,so).slice(0,lim).map(x=>withUnread(out(x,null,me),me)))}
+        const q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50), so=u.searchParams.get('sort'),taskType=u.searchParams.get('taskType')||'',filterType=taskType||legacyTaskType||'';
+        if(taskType&&!isTaskType(taskType))return send(res,400,{error:'任务分类无效'});
+        const feed=items=>filterType?items.filter(x=>x.task&&x.taskType===filterType):items;
+        if(q||so||taskType){const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100); let l=db.messages[ch].filter(x=>x.task&&alive(x)); if(filterType)l=l.filter(x=>x.taskType===filterType);if(q) l=l.filter(x=>[x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q))); return send(res,200,sortTasks(l,so).slice(0,lim).map(x=>withUnread(out(x,null,me),me)))}
         const bf=u.searchParams.get('before');
-        if(bf!==null){const b=+bf||0;const l=db.messages[ch].filter(x=>x.id<b);return send(res,200,l.slice(-50).map(x=>withUnread(out(x,null,me),me)))}
-        if(rv!==null){const n=+rv||0;res.setHeader('X-Rev',String(db.rev||0));const l=n>0?db.messages[ch].filter(x=>(x.rev||0)>n):db.messages[ch].slice(-50);return send(res,200,l.map(x=>withUnread(out(x,null,me),me)));}
-        const s=+u.searchParams.get('since')||0; return send(res,200,db.messages[ch].filter(x=>x.id>s).map(x=>withUnread(out(x,null,me),me)));}
+        if(bf!==null){const b=+bf||0;const l=feed(db.messages[ch].filter(x=>x.id<b));return send(res,200,l.slice(-50).map(x=>withUnread(out(x,null,me),me)))}
+        if(rv!==null){const n=+rv||0;res.setHeader('X-Rev',String(db.rev||0));const l=feed(n>0?db.messages[ch].filter(x=>(x.rev||0)>n):db.messages[ch].slice(-50));return send(res,200,l.map(x=>withUnread(out(x,null,me),me)));}
+        const s=+u.searchParams.get('since')||0; return send(res,200,feed(db.messages[ch].filter(x=>x.id>s)).map(x=>withUnread(out(x,null,me),me)));}
       if(POST){
         const n=userOf(req); if(!n) return send(res,401,{error:'请先登录'});
         if(banned(n)) return send(res,403,BANNED);
         if(limited("msg:"+n,10)) return send(res,429,{error:"发得太快了，请稍后再试"});
         const b=await body(req); if(typeof b.text!=='string'||!b.text.trim()) return send(res,400,{error:'消息不能为空'});
         for(const k of ['reward','place','deadline']) if(b[k]!=null&&typeof b[k]!=='string'&&typeof b[k]!=='number') return send(res,400,{error:k+' 格式不对'});
-        if(!b.task&&!can(n,'postOfficial')) return send(res,403,{error:'频道里只能发布任务'});
+        if(ch===CHAT_CHANNEL&&b.task)return send(res,400,{error:'聊天频道不能发布任务，请前往任务大厅'});
+        if(ch===TASK_CHANNEL&&!b.task&&!can(n,'postOfficial')) return send(res,403,{error:'任务大厅只允许发布任务'});
+        if(b.task&&(b.taskType!=null||legacyTaskType)&&!isTaskType(b.taskType||legacyTaskType))return send(res,400,{error:'任务分类无效'});
         const msg={id:newId(),user:n,text:String(b.text).slice(0,2000),task:!!b.task,time:new Date().toISOString()};
         if(can(n,'postOfficial')) msg.official=true;
         if(msg.task){
+          msg.taskType=isTaskType(b.taskType)?b.taskType:(legacyTaskType||'其他');
           const reward=str(b.reward,20),place=str(b.place,50);
           if(reward) msg.reward=reward; if(place) msg.place=place;
           if(b.deadline){const t=Date.parse(b.deadline); if(isNaN(t)) return send(res,400,{error:'截止时间格式不对'}); if(t<=Date.now()) return send(res,400,{error:'截止时间要晚于现在'}); msg.deadline=new Date(t).toISOString();}

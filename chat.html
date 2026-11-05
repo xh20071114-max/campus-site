@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="favicon.svg">
-<title>项目频道 · Aevon校园交流网</title>
+<title>任务大厅 / 校园聊天 · Aevon校园交流网</title>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;background:#f3f4f6}
 aside{width:220px;background:#1f2937;color:#e5e7eb;display:flex;flex-direction:column}
@@ -110,7 +110,7 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 #f input:disabled+*{color:#d1d5db}
 #bell{position:relative;background:transparent;color:#374151;font-size:18px;padding:2px 6px;display:none}#bell i{position:absolute;top:-2px;right:-4px;background:#ef4444;color:#fff;font-style:normal;font-size:10px;line-height:15px;min-width:15px;padding:0 3px;border-radius:8px;display:none}
 .topR{display:flex;align-items:center;gap:6px}
-#sbar{display:flex;gap:8px;padding:6px 20px;background:#fff;border-bottom:1px solid #f3f4f6}#sbar input{flex:1;min-width:0;padding:6px 10px;font-size:13px}#sbar select{padding:5px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:8px;background:#fff}
+#sbar{display:flex;gap:8px;padding:6px 20px;background:#fff;border-bottom:1px solid #f3f4f6}#sbar input{flex:1;min-width:0;padding:6px 10px;font-size:13px}#sbar select{padding:5px 6px;font-size:13px;border:1px solid #d1d5db;border-radius:8px;background:#fff}#chatHint{display:none;padding:10px 18px;background:#eff6ff;color:#1e40af;border-bottom:1px solid #dbeafe;font-size:13px;line-height:1.5}
 #sInfo{font-size:12px;color:#6b7280;padding:0 0 6px}
 .un{cursor:pointer}.un:hover{text-decoration:underline}
 .rep{background:transparent;color:#9ca3af;font-size:12px;padding:0 4px}.rep:hover{color:#ef4444}
@@ -147,12 +147,14 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
   <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span id="title"></span><span class="topR"><button type="button" id="bell" title="任务动态">🔔<i id="bellDot"></i></button><span id="fbSlot"></span></span></div>
   <div id="banned" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 20px;font-size:14px;border-bottom:1px solid #fecaca">⛔ 账号已被封禁：你现在只能浏览，不能发消息和接单。<button type="button" onclick="window.openSupport()">联系管理员 / 申诉</button></div>
   <div id="offline">⚠️ 网络连接失败，请检查网络后重试 <button id="retry" type="button" style="margin-left:8px;padding:3px 12px;font-size:13px;background:#d97706">重试</button></div>
-  <div class="filters" id="flt"><span class="on" data-f="all">全部消息</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我的任务</span><span data-f="saved">⭐ 我的收藏</span></div>
-  <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务标题或内容"><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
+  <div class="filters" id="flt"><span class="on" data-f="all">全部任务</span><span data-f="open">待接单</span><span data-f="claimed">进行中</span><span data-f="done">已完成</span><span data-f="mine">我的任务</span><span data-f="saved">⭐ 我的收藏</span></div>
+  <div id="sbar"><input id="q" type="search" maxlength="40" placeholder="🔍 搜索任务内容"><select id="taskFilter" title="按任务类型筛选"><option value="">全部类型</option></select><select id="sort" title="排序"><option value="new">最新发布</option><option value="reward">报酬最高</option><option value="deadline">截止最近</option></select></div>
+  <div id="chatHint">💬 校园聊天：所有登录用户都可以发言，聊天不消耗积分。请文明交流，不要发布个人敏感信息。</div>
   <div class="site-quick-actions" id="quickActions" aria-label="快捷入口"></div>
   <div id="msgs"></div>
   <div id="tip"></div>
   <div id="extra"><div class="hd">📌 任务信息 <small>写清地点、时间和报酬更容易接单；暂未确定可留空</small></div><div class="grid">
+    <label class="fld" title="任务类型"><span aria-hidden="true">🏷️</span><select id="xType" aria-label="任务类型"></select></label>
     <label class="fld" title="报酬"><span aria-hidden="true">💰</span><input id="xReward" aria-label="任务报酬" maxlength="20" placeholder="报酬，如 5元"></label>
     <label class="fld" title="地点"><span aria-hidden="true">📍</span><input id="xPlace" aria-label="任务地点" maxlength="50" placeholder="地点，如 三食堂"></label>
     <label class="fld" title="截止时间"><span aria-hidden="true">⏳</span><input id="xDeadline" aria-label="任务截止时间" type="datetime-local"></label>
@@ -185,8 +187,12 @@ label{display:flex;align-items:center;gap:4px;font-size:13px;color:#6b7280;white
 <script src="config.js"></script>
 <script src="task-entry.js"></script><script src="feedback.js"></script><script src="orders.js"></script>
 <script>
+const TASK_CHANNEL='任务大厅',CHAT_CHANNEL='校园聊天',OLD_TASK_TYPES={'校园跑':'校园跑','校园配送':'校园配送','食堂配送':'校园配送','代取快递':'代取快递','代课':'代课','代做作业':'代做作业'};
+function rawHash(h){try{return decodeURIComponent(h)}catch{return h}}
+function oldTaskType(h){return OLD_TASK_TYPES[rawHash(h)]||''}
+function dec(h){const v=rawHash(h);return OLD_TASK_TYPES[v]?TASK_CHANNEL:v}
 let CHANNELS=[],cache={},token=localStorage.getItem('token'),me=localStorage.getItem('username');
-function dec(h){try{h=decodeURIComponent(h)}catch(e){}return h==='食堂配送'?'校园配送':h}
+let pendingInitialType=oldTaskType(location.hash.slice(1));
 let cur=dec(location.hash.slice(1))||null;
 const seenKey='lastRead:'+(me||'guest'),seen=Object.create(null);
 try{const v=JSON.parse(localStorage.getItem(seenKey)||'{}');if(v&&typeof v==='object'&&!Array.isArray(v))for(const[k,n]of Object.entries(v))if(Number.isSafeInteger(n)&&n>=0)seen[k]=n}catch{}
@@ -199,6 +205,8 @@ const API_BASE=(window.API_BASE||'').replace(/\/$/,'');
 const api=(p,o={})=>fetch(API_BASE+p,{cache:'no-store',...o,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
 const fmt=t=>new Date(t).toLocaleString('zh-CN',{hour12:false});
 const meEl=document.getElementById('me');
+const taskCategory=document.getElementById('xType'),taskFilter=document.getElementById('taskFilter');
+const filtersEl=document.getElementById('flt'),searchBarEl=document.getElementById('sbar'),quickActionsEl=document.getElementById('quickActions'),chatHintEl=document.getElementById('chatHint');
 const showLogin=v=>login.style.display=v&&online!==false?'flex':'none';
 function expired(){localStorage.removeItem('admin');localStorage.removeItem('token');localStorage.removeItem('username');location.reload()}
 function renderMe(){setBell(me?undefined:0);if(!me){points=null;if(window.bal)renderPts()}
@@ -229,7 +237,9 @@ async function refresh(){
   const seq=++refreshSeq;
   try{
     const channels=await (await api('/api/channels')).json();if(seq!==refreshSeq)return;CHANNELS=channels;
-    if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;
+    const typeList=channels.find(c=>c.name===TASK_CHANNEL)?.taskTypes||['校园跑','校园配送','代取快递','代课','代做作业','其他'];
+    if(taskCategory.options.length===0){for(const type of typeList){const pub=document.createElement('option');pub.value=pub.textContent=type;taskCategory.append(pub);const fil=document.createElement('option');fil.value=fil.textContent=type;taskFilter.append(fil)}taskCategory.value=pendingInitialType||'其他';if(pendingInitialType)taskFilter.value=pendingInitialType;pendingInitialType='';updateTaskPrompt()}
+    if(!CHANNELS.some(c=>c.name===cur))cur=CHANNELS[0].name;applyMode();updateTaskPrompt();
     const ch=cur,first=!(ch in revs);
     const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?rev='+(revs[ch]||0));
     const more=await r.json();if(seq!==refreshSeq)return;if(!r.ok||!Array.isArray(more))throw new Error('消息加载失败');revs[ch]=Math.max(revs[ch]||0,+(r.headers.get('X-Rev')||0));if(first)hasMore[ch]=more.length>=50;
@@ -251,7 +261,7 @@ async function loadOlder(){const ch=cur,l=cache[ch];if(loadingOld||!hasMore[ch]|
   catch(e){}finally{loadingOld=false;more_(false)}}
 function more_(on){const d=document.getElementById('more');if(d)d.textContent=on?'加载中…':(hasMore[cur]?'上滑加载更早的消息':'没有更早的消息了')}
 msgs.addEventListener('scroll',()=>{if(msgs.scrollTop<80)loadOlder()});
-function go(c){cur=c;forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(c));updateTaskPrompt();renderMsgs();refresh()}
+function go(c){const oldType=oldTaskType(c);cur=dec(c);if(oldType)taskCategory.value=taskFilter.value=oldType;else taskFilter.value='';qI.value='';sortI.value='new';flt='all';document.querySelectorAll('#flt span').forEach(x=>x.classList.toggle('on',x.dataset.f==='all'));composing=false;isTask.checked=false;text.value='';xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');sres={};forceTop=true;forceBottom=true;history.replaceState(null,'','#'+encodeURIComponent(cur));renderPts();updateTaskPrompt();renderMsgs();refresh()}
 function renderSide(){
   chs.innerHTML=CHANNELS.map(c=>{const last=c.lastId||0,r=seen[c.name]||0;let n='';
     if(c.name!==cur&&last>r){const l=cache[c.name];n=r?(l?l.filter(m=>m.id>r&&!m.deleted).length||'新':'新'):'新';if(n>99)n='99+'}
@@ -267,16 +277,20 @@ function loadMe(){if(!token){points=null;renderPts();setBell(0);return}const req
   api('/api/me').then(r=>localStorage.getItem('token')!==requestedToken?null:r.status===401?(expired(),null):r.ok?r.json():null).then(d=>{if(!d||localStorage.getItem('token')!==requestedToken)return;const stamp=JSON.stringify([d.admin,d.superAdmin,d.permissions]);if(roleFingerprint!==null&&stamp!==roleFingerprint){location.reload();return}roleFingerprint=stamp;isAdmin=!!d.admin;isSuperAdmin=!!d.superAdmin;permissions=d.permissions||[];if(isBanned!==!!d.banned)setBanned(!!d.banned);localStorage.setItem('admin',isAdmin?'1':'0');
     if(typeof d.points==='number')points=d.points;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;if(d.eventUnread!=null)setBell(+d.eventUnread);renderPts();renderMsgs()}).catch(()=>{})}
 function loadCost(){api('/api/settings').then(r=>r.ok?r.json():null).then(d=>{if(!d)return;if(d.postCost!=null)cost.post=+d.postCost;if(d.claimCost!=null)cost.claim=+d.claimCost;renderPts();renderMsgs()}).catch(()=>{})}
-function renderPts(){bal.innerHTML=me&&points!=null?`${isSuperAdmin?'👑 总管理员 · ':isAdmin?'🛡 管理员 · ':''}💎 余额 <b>${points}</b> 分${can('freeTasks')?' · 任务免扣分':''}`:'';
-  send.textContent=isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):can('postOfficial')?'发布频道文字':'发送';applyMode()}
+function renderPts(){bal.innerHTML=cur!==CHAT_CHANNEL&&me&&points!=null?`${isSuperAdmin?'👑 总管理员 · ':isAdmin?'🛡 管理员 · ':''}💎 余额 <b>${points}</b> 分${can('freeTasks')?' · 任务免扣分':''}`:'';
+  send.textContent=cur===CHAT_CHANNEL?'发送':isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):can('postOfficial')?'发布频道文字':'发送';applyMode()}
 let composing=false,posting=false;
-function applyMode(){const admin=!!(me&&can('postOfficial'));
-  isTaskL.style.display=admin?'':'none';fCancel.style.display=!admin&&composing?'':'none';
-  officialHint.hidden=!admin;
+function applyMode(){const admin=!!(me&&can('postOfficial')),chatMode=cur===CHAT_CHANNEL;
+  if(chatMode){isTask.checked=false;composing=false;extra.classList.remove('show')}
+  isTaskL.style.display=admin&&!chatMode?'':'none';fCancel.style.display=!chatMode&&!admin&&composing?'':'none';
+  officialHint.hidden=!admin||chatMode;
   if(!admin&&!composing&&isTask.checked){isTask.checked=false;extra.classList.remove('show')}
-  f.style.display=admin||composing?'':'none';postBar.classList.toggle('show',!admin&&!composing);
+  f.style.display=chatMode||admin||composing?'':'none';postBar.classList.toggle('show',!chatMode&&!admin&&!composing);
+  filtersEl.style.display=searchBarEl.style.display=quickActionsEl.style.display=chatMode?'none':'';
+  chatHintEl.style.display=chatMode?'block':'none';if(chatMode)text.placeholder='和大家聊点什么？聊天不消耗积分';
+  send.textContent=chatMode?'发送':isTask.checked?(can('freeTasks')||!cost.post?'发布任务':`发布（扣 ${cost.post} 积分）`):can('postOfficial')?'发布频道文字':'发送';
   postBtn.disabled=isBanned||online===false;
-  postHint.textContent=admin?'发布频道文字或任务':me&&points!=null?`${can('freeTasks')?'发布任务免扣分':'每次发布扣 '+cost.post+' 积分'} · 余额 ${points}`:(me?'':'登录后即可发布任务')}
+  postHint.textContent=chatMode?'聊天免费，不消耗积分':admin?'发布频道文字或任务':me&&points!=null?`${can('freeTasks')?'发布任务免扣分':'每次发布扣 '+cost.post+' 积分'} · 余额 ${points}`:(me?'':'登录后即可发布任务')}
 postBtn.onclick=()=>{if(!token)return showLogin(true);composing=true;isTask.checked=true;isTask.onchange();forceBottom=true;text.focus()};
 fCancel.onclick=()=>{composing=false;isTask.checked=false;isTask.onchange()};
 function lowPts(msg){tip.innerHTML=`💸 ${esc(msg||'积分不足')}<a href="recharge.html">去充值 →</a>`;tip.style.display='block';clearTimeout(lowPts.t);lowPts.t=setTimeout(()=>tip.style.display='none',8000)}
@@ -307,14 +321,14 @@ function statusOf(m){/* 返回 [状态小标签, 卡片底部按钮] */
 function btn(act,label,color,id,confirmText){if(isBanned&&act!=='delete')return '';return `<button class="claim act" style="background:${color}" data-act="${act}" data-id="${id}"${confirmText?` data-confirm="${esc(confirmText)}"`:''}>${label}</button>`}
 function renderMsgs(){
   const atBottom=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight<80;
-  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!S||match(m));
+  const S=searching(),source=flt==='saved'?savedTasks:S?sorted(sres[cur]||[]):(cache[cur]||[]),list=source.filter(m=>!m.deleted).filter(FL[flt]).filter(m=>!m.task||!taskFilter.value||m.taskType===taskFilter.value).filter(m=>!S||match(m));
   sInfo_(S,list.length);
   const top=S?'<div id="sInfo"></div>':flt==='saved'?'':hasMore[cur]?'<div id="more" style="cursor:pointer">上滑加载更早的消息</div>':((cache[cur]||[]).length>=50?'<div id="more">没有更早的消息了</div>':'');
   msgs.innerHTML=top+list.map(m=>{
     const canDel=can('deleteMessages')||(m.user===me&&!m.claimedBy);
     const [tag,acts]=statusOf(m),del=canDel?btn('delete','删除','#ef4444',m.id,'确定删除这条消息吗？'):'',rep_=canRep(m)?`<button class="rep" data-rep="${m.id}" title="举报这条任务">🚩 举报</button>`:'',chat=canChat(m)?`<button class="cbtn" data-chat="${m.id}" title="和${esc(m.user===me?m.claimedBy:m.user)}私聊">💬${m.chatUnread>0?`<i>${m.chatUnread>99?'99+':+m.chatUnread}</i>`:''}</button>`:'',save=m.task?`<button class="saveB" type="button" data-save="${m.id}" aria-label="${savedTaskIds.has(String(m.id))?'取消收藏':'收藏任务'}">${savedTaskIds.has(String(m.id))?'⭐ 已收藏':'☆ 收藏'}</button>`:'';
     const ops=acts||del||rep_||chat||save?`<div class="ops">${acts}${del}<span class="sp"></span>${rep_}${chat}${save}</div>`:'';
-    return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who">${flt==='saved'?`<span class="tag blue"># ${esc(m.channel||'')}</span>`:''}<b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':flt==='saved'?'<p style="color:#9ca3af">还没有收藏任务，点任务下方的「收藏」就能稍后再看。</p>':'<p style="color:#9ca3af">这里还没有消息</p>');
+    return `<div class="m${m.task?' task':''}${m.official&&!m.task?' ann':''}${m.bonusPoints>0?' bonus':''}"><div class="who">${flt==='saved'?`<span class="tag blue">${m.task?'# '+esc(m.taskType||'其他'):'# '+esc(m.channel||'')}</span>`:''}<b class="un" data-u="${esc(m.user)}">${esc(m.user)}</b>${m.task?`<span class="tag violet">${esc(m.taskType||'其他')}</span>`:''}${m.official?'<span class="official">官方</span>':''}${m.official&&!m.task?'<span class="annTag">📢 公告</span> ':''}<span class="tm">${fmt(m.time)}</span>${m.bonusPoints>0?`<span class="bonus-tag">🎁 积分任务 +${+m.bonusPoints}</span>`:''}${tag}</div><div class="txt">${esc(m.text)}${m.task&&(m.reward||m.place||m.deadline)?`<div class="meta">${m.reward?`<span>💰 ${m.originalReward!=null&&String(m.originalReward)!==String(m.reward)?`<s style="color:#9ca3af">原价 ${esc(m.originalReward)}</s> → 议价 ${esc(m.reward)}`:esc(m.reward)}</span>`:''}${m.place?`<span>📍 ${esc(m.place)}</span>`:''}${m.deadline?`<span>⏳ 截止 ${fmt(m.deadline)}</span>`:''}</div>`:''}${ops}</div></div>`}).join('')||(S?'':flt==='saved'?'<p style="color:#9ca3af">还没有收藏任务，点任务下方的「收藏」就能稍后再看。</p>':'<p style="color:#9ca3af">这里还没有消息</p>');
   const mo=document.getElementById('more');if(mo&&hasMore[cur])mo.onclick=loadOlder;
   msgs.querySelectorAll('.cbtn').forEach(b=>b.onclick=()=>openChat(b.dataset.chat));
   msgs.querySelectorAll('.saveB').forEach(b=>b.onclick=()=>saveTask(b.dataset.save,b));
@@ -381,7 +395,7 @@ tcF.onsubmit=async e=>{e.preventDefault();const c=tc,t=tcT.value.trim();if(!c||!
 tcT.onkeydown=e=>enterSend(e,tcF);
 /* ---- 搜索排序 ---- */
 let sres={},forceTop=false,sT=null,sSeq=0;const qI=document.getElementById('q'),sortI=document.getElementById('sort');
-const searching=()=>!!(qI.value.trim()||sortI.value!=='new');
+const searching=()=>!!(qI.value.trim()||sortI.value!=='new'||taskFilter.value);
 const kw=()=>qI.value.trim().toLowerCase();
 const match=m=>{const k=kw();if(!k)return true;return [m.title,m.text,m.place,m.reward].some(v=>v&&String(v).toLowerCase().includes(k))};
 const money=m=>{const x=String(m.reward||'').match(/\d+(\.\d+)?/);return x?+x[0]:-1};
@@ -392,11 +406,11 @@ function sorted(l){l=l.slice();const s=sortI.value;
 function sInfo_(S,n){const e=document.getElementById('sInfo');if(e&&S)e.textContent=(kw()?`搜索「${qI.value.trim()}」：`:'')+`共 ${n} 条`+(sortI.value==='reward'?'，按报酬从高到低':sortI.value==='deadline'?'，按截止时间从近到远':'，按最新发布')+'，已结束的任务不显示'}
 async function runSearch(quiet){const ch=cur,seq=++sSeq;if(!ch)return;if(!searching()){sres={};forceBottom=true;renderMsgs();return}
   if(!quiet)forceTop=true;
-  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?limit=100&sort='+encodeURIComponent(sortI.value)+(kw()?'&q='+encodeURIComponent(qI.value.trim()):''));
+  try{const r=await api('/api/channels/'+encodeURIComponent(ch)+'/messages?limit=100&sort='+encodeURIComponent(sortI.value)+(kw()?'&q='+encodeURIComponent(qI.value.trim()):'')+(taskFilter.value?'&taskType='+encodeURIComponent(taskFilter.value):''));
     if(!r.ok)return;const d=await r.json();if(seq!==sSeq||ch!==cur)return;const l=(Array.isArray(d)?d:(d.messages||[])).filter(m=>m.task);
     const c=cache[ch]||[];l.forEach(m=>{const i=c.findIndex(x=>x.id===m.id);if(i>=0)c[i]=m});
     sres[ch]=l;renderMsgs()}catch(e){}}
-qI.oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>runSearch(),300)};sortI.onchange=()=>runSearch();
+qI.oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>runSearch(),300)};sortI.onchange=()=>runSearch();taskFilter.onchange=()=>runSearch();
 /* ---- 通用弹窗 ---- */
 const pop=document.getElementById('pop'),popB=document.getElementById('popB');
 function openPop(title){document.getElementById('popT').textContent=title;popB.replaceChildren();pop.classList.add('show');return popB}
@@ -564,20 +578,22 @@ tcFile.onchange=async()=>{const c=tc,f=tcFile.files[0];if(!c||!f)return;
     if(r.status===401)return expired();if(!r.ok){const d=await r.json().catch(()=>({}));tcNote(r.status===413?'图片太大了':r.status===429?(d.error||'今天发的图片太多了'):(d.error||'图片发送失败'));return}
     tcNote('');await pullChat();tcList.scrollTop=tcList.scrollHeight}
   catch(e){if(c===tc)tcNote(e.message||'图片发送失败')}finally{ib.disabled=isBanned||tcT.disabled}};
-window.onhashchange=()=>go(dec(location.hash.slice(1)));
+window.onhashchange=()=>go(location.hash.slice(1));
 f.onsubmit=async e=>{e.preventDefault();if(!token)return showLogin(true);
   if(posting)return;
-  if(isTask.checked&&!can('freeTasks')&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
+  const asTask=cur!==CHAT_CHANNEL&&isTask.checked;
+  if(asTask&&!can('freeTasks')&&cost.post&&points!=null&&points<cost.post)return lowPts(`积分不足：发布任务需要 ${cost.post} 积分，你现在有 ${points} 积分`);
   posting=true;[...f.elements].forEach(x=>x.disabled=true);
   try{
-  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(Object.assign({text:text.value.trim(),task:isTask.checked},isTask.checked?Object.assign({reward:xReward.value.trim()||undefined,place:xPlace.value.trim()||undefined,deadline:xDeadline.value?new Date(xDeadline.value).toISOString():undefined}):{}))});
+  const payload={text:text.value.trim(),task:asTask};if(asTask){payload.taskType=taskCategory.value;payload.reward=xReward.value.trim()||undefined;payload.place=xPlace.value.trim()||undefined;payload.deadline=xDeadline.value?new Date(xDeadline.value).toISOString():undefined}
+  const r=await api('/api/channels/'+encodeURIComponent(cur)+'/messages',{method:'POST',body:JSON.stringify(payload)});
   if(r.status===401){expired();return}
   if(!r.ok){await failed(r);return}
-  composing=false;const wasTask=isTask.checked;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
+  composing=false;const wasTask=asTask;text.value='';isTask.checked=false;xReward.value=xPlace.value=xDeadline.value='';extra.classList.remove('show');renderPts();forceBottom=true;if(wasTask)loadMe();refresh()
   }catch{alert('网络连接失败，请稍后重试')}finally{posting=false;[...f.elements].forEach(x=>x.disabled=isBanned||online===false)}};
-const taskExamples={'校园跑':'写清路线、时长和时间要求（如陪跑 3 公里）','校园配送':'写清门店、商品和送达地点','代取快递':'写清取件点、包裹情况和送达地点','代课':'写清课程、教室、时间和需要协助的内容','代做作业':'写清科目、具体需求和截止时间'};
-function updateTaskPrompt(){text.placeholder=isTask.checked?(taskExamples[cur]||'任务内容：写清要做什么、地点和时间要求'):(touch?'发消息':'发消息，回车发送')}
-isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);updateTaskPrompt();renderPts()};
+const taskExamples={'校园跑':'写清路线、时长和时间要求（如陪跑 3 公里）','校园配送':'写清门店、商品和送达地点','代取快递':'写清取件点、包裹情况和送达地点','代课':'写清课程、教室、时间和需要协助的内容','代做作业':'写清科目、具体需求和截止时间','其他':'写清需要完成什么、地点和时间要求'};
+function updateTaskPrompt(){text.placeholder=cur===CHAT_CHANNEL?'和大家聊点什么？聊天不消耗积分':isTask.checked?(taskExamples[taskCategory.value]||taskExamples['其他']):(touch?'发消息':'发消息，回车发送')}
+isTask.onchange=()=>{extra.classList.toggle('show',isTask.checked);updateTaskPrompt();renderPts()};taskCategory.onchange=updateTaskPrompt;
 text.onkeydown=e=>enterSend(e,f);
 if(touch){text.placeholder='发消息';tcT.placeholder='和对方说点什么'}
 renderMe();

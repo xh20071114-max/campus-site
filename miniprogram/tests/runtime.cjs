@@ -189,6 +189,28 @@ test('channel claim stops when live fee or balance data is invalid',async()=>{
   }
 });
 
+test('legacy channel links open the task hall and public chat posts without reading or spending points',async()=>{
+  let sent=null;
+  const api=apiStub({request:async()=>({data:[],header:{'X-Rev':'1'}}),post:async(path,data)=>{sent={path,data};return {}}});
+  const legacy=harness('pages/channel/channel.js',api,{}).page;
+  legacy.onLoad({name:'食堂配送'});
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(legacy.data.name,'任务大厅');
+  assert.equal(legacy.data.chatMode,false);
+  assert.equal(legacy.data.taskTypeIndex,1);
+  assert.equal(api.calls.some(x=>x[0]==='request'&&decodeURIComponent(x[1]).startsWith('/api/channels/任务大厅/')),true);
+
+  const {page:chat}=harness('pages/channel/channel.js',api,{});
+  chat.onLoad({name:'校园聊天'});
+  await Promise.resolve();await Promise.resolve();
+  chat.setData({showForm:true,text:'免费聊天'});
+  await chat.publish();
+  assert.equal(decodeURIComponent(sent.path),'/api/channels/校园聊天/messages');
+  assert.equal(sent.data.text,'免费聊天');
+  assert.equal(sent.data.task,false);
+  assert.equal(api.calls.some(x=>x[0]==='get'&&x[1]==='/api/me'),false);
+});
+
 test('channel claim shows the live fee and offers recharge after a 402 response',async()=>{
   const api=apiStub({get:async()=>({claimCost:2,points:5}),post:async()=>{const e=new Error('余额不足');e.statusCode=402;throw e}});
   const {page,wx}=harness('pages/channel/channel.js',api,{name:'校园跑'});

@@ -1,15 +1,19 @@
 const api=require('../../utils/api');
 const fmt=require('../../utils/format');
+const TASK_CHANNEL='任务大厅',CHAT_CHANNEL='校园聊天';
+const TASK_TYPES=['校园跑','校园配送','代取快递','代课','代做作业','其他'];
+const OLD_TYPES={'校园跑':'校园跑','校园配送':'校园配送','食堂配送':'校园配送','代取快递':'代取快递','代课':'代课','代做作业':'代做作业'};
 
 function decodeRouteValue(value){try{return decodeURIComponent(value)}catch{return null}}
 
 Page({
-  data:{name:'',messages:[],username:'',showForm:false,text:'',reward:'',place:'',date:'',time:'',postCost:0,posting:false,error:''},
+  data:{name:'',messages:[],username:'',showForm:false,chatMode:false,text:'',reward:'',place:'',date:'',time:'',postCost:0,posting:false,error:'',taskTypes:TASK_TYPES,taskTypeIndex:5},
   onLoad(q){
     this.sessionToken=wx.getStorageSync('token')||'';this.sessionUsername=wx.getStorageSync('username')||'';
-    const name=q.name?decodeRouteValue(q.name):'校园跑';
+    let name=q.name?decodeRouteValue(q.name):TASK_CHANNEL,taskType='';
     if(name===null){this.invalidRoute=true;this.setData({name:'',username:wx.getStorageSync('username')||'',error:'频道链接无效，请从首页重新打开'});return}
-    this.setData({name,username:wx.getStorageSync('username')||''});
+    if(OLD_TYPES[name]){taskType=OLD_TYPES[name];name=TASK_CHANNEL}
+    this.setData({name,chatMode:name===CHAT_CHANNEL,taskTypeIndex:Math.max(0,TASK_TYPES.indexOf(taskType||'其他')),username:wx.getStorageSync('username')||''});
     this.load();
   },
   onShow(){
@@ -46,12 +50,14 @@ Page({
   },
   async toggleForm(){
     if(!api.requireLogin())return;
+    if(this.data.chatMode){this.setData({showForm:!this.data.showForm});return}
     const {token,username}=this.syncSession();
     if(!this.sameSession(token,username)){this.staleAction();return}
     try{const me=await api.get('/api/me');if(!this.sameSession(token,username)){this.staleAction();return}this.setData({postCost:me.postCost,showForm:!this.data.showForm})}
     catch(e){if(!this.sameSession(token,username)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
   },
   onText(e){this.setData({text:e.detail.value})},
+  onTypeChange(e){this.setData({taskTypeIndex:Number(e.detail.value)||0})},
   onReward(e){this.setData({reward:e.detail.value})},
   onPlace(e){this.setData({place:e.detail.value})},
   onDate(e){this.setData({date:e.detail.value})},
@@ -64,14 +70,15 @@ Page({
     if(!this.data.text.trim())return wx.showToast({title:'请写任务描述',icon:'none'});
     let deadline='';
     if(this.data.date&&this.data.time)deadline=new Date(this.data.date+'T'+this.data.time+':00+08:00').toISOString();
-    const data={text:this.data.text.trim(),task:true,reward:this.data.reward,place:this.data.place,...(deadline?{deadline}:{})};
+    const task=!this.data.chatMode;
+    const data=task?{text:this.data.text.trim(),task:true,taskType:TASK_TYPES[this.data.taskTypeIndex]||'其他',reward:this.data.reward,place:this.data.place,...(deadline?{deadline}:{})}:{text:this.data.text.trim(),task:false};
     const requestId=(this.publishRequestId||0)+1;this.publishRequestId=requestId;
     this.setData({posting:true});
     try{
       await api.post('/api/channels/'+encodeURIComponent(this.data.name)+'/messages',data,{header:{Authorization:'Bearer '+token}});
       if(!this.sameSession(token,username)){this.staleAction();return}
       this.setData({showForm:false,text:'',reward:'',place:'',date:'',time:''});
-      wx.showToast({title:'任务已发布'});this.load();
+      wx.showToast({title:task?'任务已发布':'消息已发送'});this.load();
     }catch(e){
       if(!this.sameSession(token,username)){this.staleAction();return}
       if(e.statusCode===402)wx.showModal({title:'积分不足',content:e.message,confirmText:'去充值',success:r=>{if(r.confirm)wx.navigateTo({url:'/pages/recharge/recharge'})}});

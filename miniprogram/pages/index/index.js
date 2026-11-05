@@ -1,6 +1,6 @@
 const api=require('../../utils/api');
 const fmt=require('../../utils/format');
-const icons={'校园跑':'🏃','校园配送':'🍱','代取快递':'📦','代课':'📚','代做作业':'📝'};
+const icons={'任务大厅':'📋','校园聊天':'💬'};
 
 Page({
   data:{channels:[],announcements:[],allAnnouncements:[],expanded:false,tasks:[],username:'',loadError:''},
@@ -13,13 +13,13 @@ Page({
       settle(api.get('/api/tasks?limit=6'))
     ]);
     const updates={},failed=[];
-    if(channels.ok)updates.channels=channels.value.map(x=>({...x,icon:icons[x.name]||'🎓'}));else failed.push('频道');
+    if(channels.ok)updates.channels=channels.value.map(x=>({...x,icon:icons[x.name]||'🎓',countLabel:x.name==='任务大厅'?'条任务':'条聊天消息'}));else failed.push('频道');
     if(announcements.ok){
       const news=announcements.value.map(x=>({...x,date:fmt.date(x.time)}));
       updates.allAnnouncements=news;
       updates.announcements=this.data.expanded?news:news.slice(0,2);
     }else failed.push('公告');
-    if(tasks.ok)updates.tasks=tasks.value.slice(0,6).map(x=>({...x,timeText:fmt.date(x.time)}));else failed.push('任务');
+    if(tasks.ok)updates.tasks=tasks.value.slice(0,6).map(x=>({...x,typeLabel:x.taskType||'其他',timeText:fmt.date(x.time)}));else failed.push('任务');
     updates.loadError=failed.length?`部分信息加载失败（${failed.join('、')}），请检查网络或 request 合法域名，点击重试` : '';
     this.setData(updates);
   },

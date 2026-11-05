@@ -1,6 +1,6 @@
 // Aevon校园交流网 service worker（bot2 负责）：只缓存同源静态文件，从不缓存 /api、管理后台和上传的图片。
 // 页面和程序代码网络优先，断网时使用缓存；图片等资源先用缓存、后台更新。
-const V='aevon-static-v12';
+const V='aevon-static-v13';
 const PRE=['/','/index.html','/tasks.html','/leaderboard.html','/task-entry.js','/chat.html','/me.html','/login.html','/recharge.html','/config.js','/session.js','/feedback.js','/orders.js','/ui.css','/pwa.js','/favicon.svg','/icon-192.png','/icon-512.png','/manifest.json'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>Promise.all(PRE.map(u=>c.add(u).catch(()=>{})))).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

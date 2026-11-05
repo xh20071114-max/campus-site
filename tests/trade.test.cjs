@@ -23,7 +23,7 @@ test('revocation prevents late moderator text and image submissions',()=>fixture
  assert.ok(!(await call('/api/tasks/'+m.id+'/chat','Alice')).data.messages.some(x=>x.user==='Bob'));
 }));
 test('order detail and opt-in history are private and deleted task text is not disclosed',()=>fixture(async({call,task,act})=>{
- const m=await task('Alice',{text:'history private task'});assert.equal((await call('/api/tasks/'+m.id,'Bob')).status,403);assert.equal((await call('/api/tasks/'+m.id,'')).status,401);assert.equal((await call('/api/tasks/'+m.id,'Alice')).data.channel,'校园跑');await act(m,'Alice','delete');assert.equal((await call('/api/my/tasks','Alice')).data.posted.length,0);const history=(await call('/api/my/tasks?includeHistory=1','Alice')).data.posted;assert.equal(history.length,1);assert.equal(history[0].deleted,true);assert.equal(history[0].text,'');assert.equal((await call('/api/my/tasks?includeHistory=1','Bob')).data.posted.length,0);
+ const m=await task('Alice',{text:'history private task'});assert.equal((await call('/api/tasks/'+m.id,'Bob')).status,403);assert.equal((await call('/api/tasks/'+m.id,'')).status,401);assert.equal((await call('/api/tasks/'+m.id,'Alice')).data.channel,'任务大厅');await act(m,'Alice','delete');assert.equal((await call('/api/my/tasks','Alice')).data.posted.length,0);const history=(await call('/api/my/tasks?includeHistory=1','Alice')).data.posted;assert.equal(history.length,1);assert.equal(history[0].deleted,true);assert.equal(history[0].text,'');assert.equal((await call('/api/my/tasks?includeHistory=1','Bob')).data.posted.length,0);
 }));
 test('former claim history is private, survives reassignment and is bound to the original account',()=>fixture(async({call,task,act})=>{
  const m=await task('Alice',{text:'Parcel history'});await act(m,'Bob','claim');await act(m,'Bob','unclaim');await act(m,'Carol','claim');
@@ -35,7 +35,7 @@ test('former claim history is private, survives reassignment and is bound to the
 }));
 test('reassigned negotiated claims persist the current account identity without publishing it',()=>fixture(async({call,task,act,tmp,restart})=>{
  const m=await task();await act(m,'Bob','claim');await act(m,'Bob','unclaim');
- const readTask=async()=>JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8')).messages['校园跑'].find(x=>x.id===m.id);
+ const readTask=async()=>JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8')).messages['任务大厅'].find(x=>x.id===m.id);
  assert.equal((await readTask()).claimedById,undefined);
  const offer=(await act(m,'Carol','offer',{price:12})).data.offer;
  const accepted=await call('/api/channels/'+encodeURIComponent('校园跑')+'/messages/'+m.id+'/offers/'+offer.id+'/accept','Alice',{});

@@ -108,7 +108,7 @@ test('health reports the configured full release commit for deployment verificat
 
 test('successful mutations are on disk before acknowledgement and survive restart',()=>fixture(async({call,task,tmp,restart})=>{
  const m=await task(),saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));
- assert.equal(saved.users.Alice.points,99);assert.ok(saved.messages['校园跑'].some(x=>x.id===m.id));assert.ok(saved.lastId>=m.id);
+ assert.equal(saved.users.Alice.points,99);assert.ok(saved.messages['任务大厅'].some(x=>x.id===m.id));assert.ok(saved.lastId>=m.id);
  const recharge=(await call('/api/recharge','Bob',{amount:3,method:'wechat'})).data;
  assert.equal((await call('/api/admin/recharges/'+recharge.id+'/approve','AevonEcho',{points:3})).status,200);
  const approved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.equal(approved.users.Bob.points,103);assert.equal(approved.recharges.find(x=>x.id===recharge.id).status,'approved');
@@ -117,7 +117,7 @@ test('successful mutations are on disk before acknowledgement and survive restar
 test('storage failure returns 503 and stops trading without overwriting the saved database',()=>fixture(async({call,task,tmp,restart})=>{
  assert.equal((await call('/api/health')).status,200);await fs.mkdir(path.join(tmp,'data.json.tmp'));
  const result=await call(ch,'Alice',{text:'must not acknowledge',task:true});assert.equal(result.status,503);
- const saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.equal(saved.users.Alice.points,100);assert.equal(saved.messages['校园跑'].length,0);
+ const saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.equal(saved.users.Alice.points,100);assert.equal(saved.messages['任务大厅'].length,0);
  await sleep(150);await fs.rmdir(path.join(tmp,'data.json.tmp'));await restart();assert.equal((await call('/api/my/points')).data.points,100);await task();
 }));
 test('already-running authentication cannot acknowledge success after storage fails',()=>fixture(async({call,tmp,waitForCrypto,releaseCrypto})=>{
@@ -234,7 +234,7 @@ test('task state actions are rate limited without changing a rejected order',()=
 },seed(),{clock:true}));
 test('chunked persistence preserves JSON values and handles short filesystem writes',async()=>{
  const data=seed();data.extra={array:[null,true,false,0,1.25,{text:'换行\n"引号" \\路径 😀\ud800'},[]],map:JSON.parse('{"__proto__":{"value":1},"constructor":"kept"}')};
- await fixture(async({call,task,tmp,restart})=>{await task('Alice',{text:'换行\n"引号" \\路径 😀\ud800'});let saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(saved.extra,data.extra);assert.equal(saved.messages['校园跑'][0].text,'换行\n"引号" \\路径 😀\ud800');await restart();assert.equal((await call('/api/my/points')).data.points,99);saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(saved.extra,data.extra)},data,{shortWrites:true});
+ await fixture(async({call,task,tmp,restart})=>{await task('Alice',{text:'换行\n"引号" \\路径 😀\ud800'});let saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(saved.extra,data.extra);assert.equal(saved.messages['任务大厅'][0].text,'换行\n"引号" \\路径 😀\ud800');await restart();assert.equal((await call('/api/my/points')).data.points,99);saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(saved.extra,data.extra)},data,{shortWrites:true});
 });
 test('failure midway through a chunked snapshot never replaces the committed database',async()=>{
  const data=seed(),id=Date.now()*1000;data.messages['校园跑']=Array.from({length:300},(_,i)=>({id:id+i,user:'Alice',text:'x'.repeat(500),task:true,time:new Date().toISOString()}));
@@ -255,7 +255,7 @@ test('task selection preserves state, ordering, channel and personalized fields'
  const data=seed(),id=Date.now()*1000,now=Date.now(),time=new Date(now).toISOString(),task=(n,extra)=>({id:id+n,user:'Alice',text:'task '+n,task:true,time,...extra});
  data.messages['校园跑']=[task(1,{reward:'1元',deadline:new Date(now-1000).toISOString()}),task(2,{reward:'3元',place:'北门',deadline:new Date(now+3600000).toISOString()}),task(3,{reward:'20元',claimedBy:'Bob'}),task(4,{reward:'99元',claimedBy:'Bob',done:true}),task(5,{reward:'100元',cancelled:true}),task(6,{deleted:true})];data.messages['代取快递']=[task(7,{reward:'15元'}),{id:id+8,user:'Alice',text:'plain',task:false,time}];
  data.taskChats={[id+3]:[{id:id+100,user:'Alice',text:'unread',claimer:'Bob',time}]};data.offers={[id+2]:[{id:id+200,user:'Bob',userId:'account-Bob',status:'pending',price:4,turn:'poster',rounds:[{by:'claimer',price:4,note:'',time}],time,updated:time}]};
- await fixture(async({call})=>{const open=(await call('/api/tasks?limit=8','Bob')).data;assert.deepEqual(open.map(x=>x.id),[id+7,id+2]);assert.equal(open[0].channel,'代取快递');const search=(await call('/api/tasks?q='+encodeURIComponent('北门'),'Bob')).data;assert.equal(search[0].myOffer.price,4);assert.equal((await call('/api/tasks?status=claimed','Bob')).data[0].chatUnread,1);assert.equal((await call('/api/tasks?status=claimed','')).data[0].chatUnread,undefined);assert.deepEqual((await call('/api/tasks?status=all&sort=reward&limit=2','Bob')).data.map(x=>x.id),[id+4,id+3])},data);
+ await fixture(async({call})=>{const open=(await call('/api/tasks?limit=8','Bob')).data;assert.deepEqual(open.map(x=>x.id),[id+7,id+2]);assert.equal(open[0].channel,'任务大厅');assert.equal(open[0].taskType,'代取快递');const search=(await call('/api/tasks?q='+encodeURIComponent('北门'),'Bob')).data;assert.equal(search[0].myOffer.price,4);assert.equal((await call('/api/tasks?status=claimed','Bob')).data[0].chatUnread,1);assert.equal((await call('/api/tasks?status=claimed','')).data[0].chatUnread,undefined);assert.deepEqual((await call('/api/tasks?status=all&sort=reward&limit=2','Bob')).data.map(x=>x.id),[id+4,id+3])},data);
 });
 
 test('banned login and /api/me return ban reason and admin contact configured in settings',()=>fixture(async({call})=>{
@@ -282,14 +282,32 @@ test('task hall paginates every available task and preserves the legacy array re
  },data);
 });
 
-test('campus delivery merges old tasks and supports old channel links across restart',async()=>{
+test('old category channels migrate into the unified task hall and retain category links',async()=>{
  const data=seed(),id=1234567890400000;data.messages['食堂配送']=[{id,user:'Alice',task:true,text:'old delivery',time:new Date().toISOString()}];data.messages['校园配送']=[{id:id+1,user:'Alice',task:true,text:'new delivery',time:new Date().toISOString()}];
  await fixture(async({call,restart})=>{
-  const channels=(await call('/api/channels','')).data.map(c=>c.name);assert.ok(channels.includes('校园配送'));assert.ok(!channels.includes('食堂配送'));
+  const channels=(await call('/api/channels','')).data.map(c=>c.name);assert.deepEqual(channels,['任务大厅','校园聊天']);
   const old='/api/channels/'+encodeURIComponent('食堂配送')+'/messages';const current='/api/channels/'+encodeURIComponent('校园配送')+'/messages';
   assert.deepEqual((await call(current,'')).data.map(m=>m.id),[id,id+1]);assert.deepEqual((await call(old,'')).data.map(m=>m.id),[id,id+1]);
   assert.equal((await call(old+'/'+id+'/claim','Bob',{})).status,200);
-  await restart();const tasks=(await call('/api/tasks?status=claimed','Bob')).data;assert.equal(tasks[0].id,id);assert.equal(tasks[0].channel,'校园配送');assert.equal(tasks[0].claimedBy,'Bob');
+  await restart();const tasks=(await call('/api/tasks?status=claimed','Bob')).data;assert.equal(tasks[0].id,id);assert.equal(tasks[0].channel,'任务大厅');assert.equal(tasks[0].taskType,'校园配送');assert.equal(tasks[0].claimedBy,'Bob');
   const open=(await call('/api/tasks?page=1&channel='+encodeURIComponent('食堂配送'),'')).data;assert.equal(open.total,1);assert.equal(open.tasks[0].id,id+1);
  },data);
 });
+
+test('legacy task and chat messages migrate without losing records or task categories',()=>fixture(async({call,restart,tmp})=>{
+ const channels=(await call('/api/channels','')).data;assert.deepEqual(channels.map(x=>x.name),['任务大厅','校园聊天']);assert.deepEqual(channels[0].taskTypes,['校园跑','校园配送','代取快递','代课','代做作业','其他']);
+ const tasks=(await call('/api/channels/任务大厅/messages?rev=0','')).data;assert.deepEqual(tasks.map(x=>[x.id,x.taskType]),[[81001,'校园跑'],[81003,'代取快递']]);
+ const chat=(await call('/api/channels/校园聊天/messages?rev=0','')).data;assert.deepEqual(chat.map(x=>x.id),[81002,81004]);
+ const filtered=(await call('/api/tasks?taskType=代取快递','')).data;assert.deepEqual(filtered.map(x=>x.id),[81003]);
+ await restart();const saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(Object.keys(saved.messages),['任务大厅','校园聊天']);assert.equal(saved.messages['任务大厅'][0].id,81001);assert.equal(saved.messages['校园聊天'][0].id,81002);
+},(()=>{const d=seed();d.messages={'校园跑':[{id:81001,user:'Alice',text:'run task',task:true,time:new Date().toISOString()},{id:81002,user:'Bob',text:'old public chat',task:false,time:new Date().toISOString()}],'代取快递':[{id:81003,user:'Alice',text:'parcel task',task:true,time:new Date().toISOString()}],'校园聊天':[{id:81004,user:'Carol',text:'existing chat',task:false,time:new Date().toISOString()}]};return d})()));
+
+test('the public chat channel accepts free chat while task posting stays categorized and charged',()=>fixture(async({call})=>{
+ const before=(await call('/api/my/points','Alice')).data.points;
+ const chat=await call('/api/channels/校园聊天/messages','Alice',{text:'普通聊天',task:false});assert.equal(chat.status,200);assert.equal((await call('/api/my/points','Alice')).data.points,before);
+ assert.equal((await call('/api/channels/校园聊天/messages','Alice',{text:'wrong channel',task:true,taskType:'其他'})).status,400);
+ assert.equal((await call('/api/channels/任务大厅/messages','Alice',{text:'not a task',task:false})).status,403);
+ const task=await call('/api/channels/任务大厅/messages','Alice',{text:'delivery request',task:true,taskType:'校园配送'});assert.equal(task.status,200);assert.equal((await call('/api/my/points','Alice')).data.points,before-1);
+ const listed=(await call('/api/tasks?taskType=校园配送','')).data;assert.equal(listed.length,1);assert.equal(listed[0].channel,'任务大厅');assert.equal(listed[0].taskType,'校园配送');
+ assert.equal((await call('/api/channels/任务大厅/messages','Alice',{text:'bad category',task:true,taskType:'不存在'})).status,400);
+},seed()));
