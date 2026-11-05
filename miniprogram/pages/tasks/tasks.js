@@ -5,16 +5,22 @@ Page({
   data:{tasks:[],claimCost:null,feeReady:false,total:0,page:1,pages:1,error:''},
   onShow(){this.load()},
   async load(){
+    const page=this.data.page,token=wx.getStorageSync('token')||'',requestId=(this.loadRequestId||0)+1;
+    this.loadRequestId=requestId;
+    if(this.sessionToken!==token){this.sessionToken=token;this.setData({claimCost:null,feeReady:false,error:''})}
+    const isCurrent=()=>requestId===this.loadRequestId&&page===this.data.page&&token===(wx.getStorageSync('token')||'');
     try{
-      const [d,s]=await Promise.all([api.get('/api/tasks?status=open&limit=10&page='+this.data.page),api.get('/api/settings')]);
+      const [d,s]=await Promise.all([api.get('/api/tasks?status=open&limit=10&page='+page),api.get('/api/settings')]);
+      if(!isCurrent())return;
       const feeReady=typeof s.claimCost==='number'&&Number.isFinite(s.claimCost);
       let cost=feeReady?s.claimCost:null;
-      if(wx.getStorageSync('token')){
-        try{const me=await api.get('/api/me');if(typeof me.claimCost==='number'&&Number.isFinite(me.claimCost))cost=me.claimCost;else cost=null}
-        catch(e){if(api.handleAuthError(e))return;cost=null}
+      if(token){
+        try{const me=await api.get('/api/me');if(!isCurrent())return;if(typeof me.claimCost==='number'&&Number.isFinite(me.claimCost))cost=me.claimCost;else cost=null}
+        catch(e){if(!isCurrent())return;if(api.handleAuthError(e)){this.loadRequestId++;this.sessionToken='';this.setData({feeReady:false,claimCost:null});return}cost=null}
       }
+      if(!isCurrent())return;
       this.setData({tasks:(d.tasks||[]).map(x=>({...x,timeText:fmt.date(x.time)})),claimCost:cost,feeReady:cost!==null,total:d.total,pages:d.pages,error:''});
-    }catch(e){this.setData({feeReady:false,claimCost:null,error:e.message})}
+    }catch(e){if(!isCurrent())return;this.setData({feeReady:false,claimCost:null,error:e.message})}
   },
   async claim(e){
     if(!api.requireLogin())return;

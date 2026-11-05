@@ -28,7 +28,7 @@ function apiStub(handlers){
     async get(path){calls.push(['get',path]);if(handlers.get)return handlers.get(path);throw new Error('unexpected GET '+path)},
     async post(path,data,options){calls.push(['post',path,data,options]);if(handlers.post)return handlers.post(path,data,options);return {}},
     async request(path,options){calls.push(['request',path,options]);if(handlers.request)return handlers.request(path,options);return {data:{task:{canWrite:false},messages:[]},header:{}}},
-    requireLogin(){return true},handleAuthError(){return false}
+    requireLogin(){return handlers.requireLogin?handlers.requireLogin():true},handleAuthError(){return false}
   };
   return api;
 }
@@ -130,6 +130,38 @@ test('task claim stops when the live balance is missing',async()=>{
   assert.match(wx.lastToast.title,/积分余额/);
 });
 
+test('task hall ignores a slow response from the previous page',async()=>{
+  let resolvePageOne;
+  const api=apiStub({get:async path=>{
+    if(path.startsWith('/api/tasks?'))return path.includes('page=1')?new Promise(resolve=>{resolvePageOne=resolve}):{tasks:[{id:2,text:'第二页'}],total:20,pages:2};
+    if(path==='/api/settings')return {claimCost:1};
+    if(path==='/api/me')return {claimCost:1,points:5};
+  }});
+  const {page}=harness('pages/tasks/tasks.js',api);
+  const first=page.load();
+  page.setData({page:2});
+  const second=page.load();
+  await second;
+  assert.equal(page.data.tasks[0].id,2);
+  resolvePageOne({tasks:[{id:1,text:'第一页旧结果'}],total:20,pages:2});
+  await first;
+  assert.equal(page.data.page,2);
+  assert.equal(page.data.tasks[0].id,2);
+});
+
+test('task hall clears the previous account claim fee until new rules load',async()=>{
+  const api=apiStub({get:path=>path.startsWith('/api/tasks?')?{tasks:[],total:0,pages:1}:path==='/api/settings'?{claimCost:0}:{claimCost:2,points:1}});
+  const {page}=harness('pages/tasks/tasks.js',api,{}, {getStorageSync:key=>key==='token'?'new-account':''});
+  page.sessionToken='old-account';
+  page.setData({claimCost:0,feeReady:true});
+  const loading=page.load();
+  assert.equal(page.data.claimCost,null);
+  assert.equal(page.data.feeReady,false);
+  await loading;
+  assert.equal(page.data.claimCost,2);
+  assert.equal(page.data.feeReady,true);
+});
+
 test('channel claim stops when live fee or balance data is invalid',async()=>{
   for(const me of [{points:5},{claimCost:2,points:NaN},{claimCost:-1,points:5}]){
     const api=apiStub({get:async()=>me});
@@ -206,6 +238,50 @@ test('former claimer orders belong to history and do not offer private chat',asy
   assert.equal(page.data.history[0].statusText,'已结束（历史接单）');
   assert.match(page.data.history[0].roleText,/订单已重新分配/);
   assert.equal(api.calls.filter(x=>x[0]==='get').length,1);
+});
+
+test('orders ignore previous-account responses and clear private rows after logout',async()=>{
+  let token='old-token',resolveOld,requestCount=0;
+  const oldOrder={id:'old',channel:'校园跑',task:true,user:'alice',status:'open',text:'旧账号订单'};
+  const newOrder={id:'new',channel:'校园跑',task:true,user:'bob',status:'open',text:'新账号订单'};
+  const api=apiStub({requireLogin:()=>!!token,get:async()=>{
+    requestCount++;
+    return requestCount===1?new Promise(resolve=>{resolveOld=resolve}):{posted:[newOrder],claimed:[]};
+  }});
+  const {page}=harness('pages/orders/orders.js',api,{}, {getStorageSync:key=>key==='token'?token:key==='username'?(token==='old-token'?'alice':'bob'):''});
+  const oldLoad=page.load();
+  token='new-token';
+  await page.load();
+  assert.equal(page.data.active[0].text,'新账号订单');
+  resolveOld({posted:[oldOrder],claimed:[]});
+  await oldLoad;
+  assert.equal(page.data.active[0].text,'新账号订单');
+  token='';
+  await page.load();
+  assert.equal(page.data.all.length,0);
+  assert.equal(page.data.visible.length,0);
+});
+
+test('personal center clears and ignores points from a previous session',async()=>{
+  let token='old-token',resolveMe,resolvePoints;
+  const api=apiStub({get:path=>new Promise(resolve=>{
+    if(path==='/api/me')resolveMe=resolve;
+    else if(path==='/api/my/points')resolvePoints=resolve;
+  })});
+  const {page}=harness('pages/me/me.js',api,{}, {getStorageSync:key=>key==='token'?token:key==='username'?'alice':''});
+  page.setData({logged:true,username:'alice',points:42,ledger:[{id:'old',delta:42}]});
+  const pending=page.load(token);
+  token='';
+  page.onShow();
+  resolveMe({username:'alice'});
+  resolvePoints({points:99,log:[{id:'old',delta:99}]});
+  await pending;
+  assert.equal(page.data.logged,false);
+  assert.equal(page.data.username,'');
+  assert.equal(page.data.points,0);
+  assert.equal(page.data.ledger.length,0);
+  const wxml=fs.readFileSync(path.join(root,'pages/me/me.wxml'),'utf8');
+  assert.match(wxml,/class="card ledger" wx:if="\{\{logged\}\}"/);
 });
 
 test('paid state exposes receipt confirmation only to the claimer',async()=>{
