@@ -17,6 +17,9 @@ test('pre-claim inquiries are account-private, free, and only the winning thread
  assert.equal((await call('/api/my/points','Bob')).data.points,bobBefore);assert.equal((await call('/api/my/points','Carol')).data.points,carolBefore);
  const reply=await call(endpoint,'Alice',{inquiryId:bob.inquiryId,text:'Seller reply'});assert.equal(reply.status,200);
  const inbox=(await call(endpoint,'Alice')).data;assert.equal(inbox.threads.length,2);assert.ok(inbox.threads.some(x=>x.user==='Bob'&&x.unread===0));
+ const selected=(await call(endpoint+'?inquiryId='+bob.inquiryId,'Alice')).data;
+ assert.equal(selected.user,'Bob');assert.equal(selected.task.canWrite,true);
+ assert.equal((await call(endpoint+'?inquiryId='+bob.inquiryId,'Bob')).data.user,'Bob');
  assert.equal((await call('/api/my/tasks','Alice')).data.posted.find(x=>x.id===m.id).inquiryCount,2);
  await act(m,'Bob','claim');assert.equal((await call('/api/my/points','Bob')).data.points,bobBefore-1);
  const order=(await call('/api/tasks/'+m.id+'/chat','Bob')).data.messages;
@@ -25,6 +28,19 @@ test('pre-claim inquiries are account-private, free, and only the winning thread
  assert.equal((await call(endpoint+'?inquiryId='+carol.inquiryId,'Carol')).data.task.canWrite,false);
  assert.equal((await call(endpoint,'Carol',{text:'late'})).status,409);
  assert.equal((await call(endpoint,'Bob',{inquiryId:bob.inquiryId,text:'switch to order chat'})).status,409);
+}));
+
+test('a publisher with chat viewing permission can still reply to their own inquiry inbox',()=>fixture(async({call,task})=>{
+ const m=await task('Alice'),endpoint='/api/tasks/'+m.id+'/inquiries';
+ const sent=(await call(endpoint,'Bob',{text:'Question'})).data;
+ await grant(call,'Alice',['viewChats']);
+ assert.equal((await call(endpoint,'Alice')).data.threads[0].canWrite,true);
+ assert.equal((await call(endpoint+'?inquiryId='+sent.inquiryId,'Alice')).data.task.canWrite,true);
+ assert.equal((await call(endpoint,'Alice',{inquiryId:sent.inquiryId,text:'Reply as publisher'})).status,200);
+ await call('/api/admin/users/Bob/delete','AevonEcho',{});
+ const deleted=(await call(endpoint+'?inquiryId='+sent.inquiryId,'Alice')).data;
+ assert.equal(deleted.user,'已注销用户');assert.equal(deleted.task.canWrite,false);
+ assert.equal((await call(endpoint,'Alice')).data.threads[0].canWrite,false);
 }));
 
 test('inquiry images require thread membership and reject pre-claim payment QR codes',()=>fixture(async({call,task,act,base})=>{

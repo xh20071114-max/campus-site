@@ -1,0 +1,46 @@
+name: Build Sealos OCI image
+
+on:
+  push:
+    branches:
+      - codex/saved-task-clarity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Sealos image as OCI archive
+        run: >-
+          docker buildx build
+          --platform linux/amd64
+          --build-arg APP_COMMIT=${GITHUB_SHA}
+          --tag aevon-campus:${GITHUB_SHA}
+          --metadata-file image-metadata.json
+          --output type=oci,dest=aevon-campus.oci.tar
+          .
+
+      - name: Record artifact checksum
+        run: sha256sum aevon-campus.oci.tar > aevon-campus.oci.tar.sha256
+
+      - name: Upload image archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: aevon-campus-${{ github.sha }}
+          path: |
+            aevon-campus.oci.tar
+            aevon-campus.oci.tar.sha256
+            image-metadata.json
+          if-no-files-found: error
+          retention-days: 7

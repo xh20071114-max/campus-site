@@ -2,7 +2,7 @@ const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 
 Page({
-  data:{all:[],active:[],history:[],visible:[],view:'active',error:''},
+  data:{all:[],active:[],history:[],visible:[],view:'active',username:'',error:''},
   onLoad(q){if(q.view==='history')this.setData({view:'history'})},
   onShow(){this.load()},
   sameSession(token,username){
@@ -19,6 +19,7 @@ Page({
       this.sessionUsername=username;
       this.clearOrders();
     }
+    if(this.data.username!==username)this.setData({username});
     if(!api.requireLogin()){this.clearOrders();return}
     const isCurrent=()=>requestId===this.loadRequestId&&this.sameSession(token,username);
     try{
@@ -51,6 +52,16 @@ Page({
   },
   openTrade(e){
     wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(e.currentTarget.dataset.channel)});
+  },
+  openInquiries(e){
+    if(!api.requireLogin())return;
+    const t=e.currentTarget.dataset;
+    wx.navigateTo({url:'/pages/trade/trade?id='+t.id+'&channel='+encodeURIComponent(t.channel)+'&inquiry=1'});
+  },
+  openInquiries(e){
+    if(!api.requireLogin())return;
+    const t=e.currentTarget.dataset;
+    wx.navigateTo({url:'/pages/trade/trade?id='+t.id+'&channel='+encodeURIComponent(t.channel)+'&inquiry=1'});
   },
   restore(e){
     if(!api.requireLogin())return;

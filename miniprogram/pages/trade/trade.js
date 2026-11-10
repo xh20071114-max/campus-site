@@ -4,14 +4,14 @@ const fmt=require('../../utils/format');
 function decodeRouteValue(value){try{return decodeURIComponent(value)}catch{return null}}
 
 Page({
-  data:{id:'',channel:'',task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false},
+  data:{id:'',channel:'',task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',inquiryMode:false,inquiryId:'',inquiryUser:'',threads:[],showThreads:false,canConsult:false,canViewInquiries:false,canOpenOrder:false,canComplete:false,canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false},
   onLoad(q){
     this.loadedImages=new Set();
     this.unloaded=false;
     this.sessionToken=wx.getStorageSync('token')||'';
     this.sessionUsername=wx.getStorageSync('username')||'';
     const channel=q.channel?decodeRouteValue(q.channel):'';
-    this.setData({id:q.id||'',channel:channel===null?'':channel,username:wx.getStorageSync('username')||'',error:channel===null?'订单链接无效，请从任务列表重新打开':''});
+    this.setData({id:q.id||'',channel:channel===null?'':channel,inquiryMode:q.inquiry==='1',inquiryId:q.inquiryId||'',username:wx.getStorageSync('username')||'',error:channel===null?'订单链接无效，请从任务列表重新打开':''});
     this.load();
   },
   onShow(){
@@ -28,7 +28,7 @@ Page({
     this.sessionUsername='';
     this.sendRequestId=(this.sendRequestId||0)+1;
     this.loadedImages=new Set();
-    this.setData({task:null,messages:[],username:'',draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+    this.setData({task:null,messages:[],threads:[],showThreads:false,inquiryId:'',inquiryUser:'',username:'',draft:'',sending:false,error:'',statusText:'',canConsult:false,canViewInquiries:false,canOpenOrder:false,canComplete:false,canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
   },
   handleActionAuthError(error){
     if(!api.handleAuthError(error))return false;
@@ -49,42 +49,66 @@ Page({
       this.sessionUsername=name;
       this.loadedImages=new Set();
       this.sendRequestId=(this.sendRequestId||0)+1;
-      this.setData({task:null,messages:[],draft:'',sending:false,error:'',statusText:'',canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
+      this.setData({task:null,messages:[],threads:[],showThreads:false,inquiryId:'',inquiryUser:'',draft:'',sending:false,error:'',statusText:'',canConsult:false,canViewInquiries:false,canOpenOrder:false,canComplete:false,canClaim:false,canCancel:false,canFinish:false,canPay:false,canReceive:false,canFreeDecision:false,canWithdrawFree:false,canUnclaim:false,canWrite:false});
       if(this.loading)this.reloadAfterLoad=true;
     }
     if(this.loading)return;this.loading=true;
     try{
-      let task;
-      try{task=await api.get('/api/tasks/'+this.data.id)}
-      catch(e){if(e.statusCode===401||e.statusCode===403)task=await this.publicTask();else throw e}
-      if(token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
+      let task,chat={task:{canWrite:false},messages:[]};
+      const inquiryMode=this.data.inquiryMode;
+      if(inquiryMode){
+        chat=await api.get('/api/tasks/'+this.data.id+'/inquiries'+(this.data.inquiryId?'?inquiryId='+encodeURIComponent(this.data.inquiryId):''));
+        task=chat.task;
+      }else{
+        try{task=await api.get('/api/tasks/'+this.data.id)}
+        catch(e){if(e.statusCode===401||e.statusCode===403)task=await this.publicTask();else throw e}
+      }
+      if(this.unloaded||token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
       const poster=task.user===name,claimer=task.claimedBy===name;
-      let chat={task:{canWrite:false},messages:[]};
-      if(task.status!=='open'||poster)chat=await api.get('/api/tasks/'+this.data.id+'/chat');
-      if(token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
+      if(inquiryMode&&claimer){
+        this.setData({inquiryMode:false,inquiryId:'',inquiryUser:'',threads:[],showThreads:false,messages:[],draft:'',canWrite:false});
+        this.loadedImages=new Set();this.reloadAfterLoad=true;return;
+      }
+      if(!inquiryMode&&(task.status!=='open'||poster))chat=await api.get('/api/tasks/'+this.data.id+'/chat');
+      if(this.unloaded||token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
       const old=new Map(this.data.messages.map(x=>[String(x.id),x]));
       const messages=(chat.messages||[]).map(x=>{
         const cached=old.get(String(x.id)),sameImage=cached&&cached.image===x.image;
         return {...x,timeText:fmt.date(x.time),localImage:sameImage?cached.localImage||'':'',imageStatus:x.image?(sameImage?cached.imageStatus||'loading':'loading'):''};
       });
-      this.setData({task,channel:task.channel||this.data.channel,statusText:fmt.status(task.status),messages,username:name,
-        canClaim:task.status==='open'&&!poster,canCancel:poster&&task.status==='open',
+      const threads=Array.isArray(chat.threads)?chat.threads.map(x=>({...x,preview:x.last&&x.last.text||'图片消息'})):[];
+      this.setData({task,channel:task.channel||this.data.channel,statusText:fmt.status(task.status),messages,username:name,threads,showThreads:inquiryMode&&Array.isArray(chat.threads),
+        inquiryId:inquiryMode?(chat.inquiryId||this.data.inquiryId):'',inquiryUser:inquiryMode?(chat.user||''):'',
+        canConsult:!inquiryMode&&!poster&&(task.status==='open'||!!task.myInquiry),canViewInquiries:!inquiryMode&&poster,canOpenOrder:inquiryMode&&!!task.claimedBy&&(poster||claimer),
+        canClaim:!inquiryMode&&task.status==='open'&&!poster,canCancel:!inquiryMode&&poster&&task.status==='open',
         canWrite:!!chat.task.canWrite,
-        canFinish:claimer&&task.status==='claimed',canPay:poster&&task.status==='finished',
-        canReceive:claimer&&task.status==='paid',canFreeDecision:claimer&&task.status==='free_pending',
-        canWithdrawFree:poster&&task.status==='free_pending',canUnclaim:claimer&&task.status==='claimed',error:''});
+        canComplete:!inquiryMode&&poster&&task.status==='claimed',canFinish:!inquiryMode&&claimer&&task.status==='claimed',canPay:!inquiryMode&&poster&&task.status==='finished',
+        canReceive:!inquiryMode&&claimer&&task.status==='paid',canFreeDecision:!inquiryMode&&claimer&&task.status==='free_pending',
+        canWithdrawFree:!inquiryMode&&poster&&task.status==='free_pending',canUnclaim:!inquiryMode&&claimer&&task.status==='claimed',error:''});
       this.loadImages(messages,token,name);
     }catch(e){
+      if(this.unloaded||token!==(wx.getStorageSync('token')||'')||name!==(wx.getStorageSync('username')||''))return;
       if(this.handleActionAuthError(e))return;
-      if(!silent)this.setData({error:e.message});
+      if(e.statusCode===403||e.statusCode===404)this.setData({task:null,messages:[],threads:[],showThreads:false,canWrite:false});
+      if(!silent||e.statusCode===403||e.statusCode===404)this.setData({error:e.message});
     }
     finally{
       this.loading=false;
-      if(this.reloadAfterLoad||(wx.getStorageSync('token')||'')!==this.sessionToken){
+      if(!this.unloaded&&(this.reloadAfterLoad||(wx.getStorageSync('token')||'')!==this.sessionToken)){
         this.reloadAfterLoad=false;
         this.load(true);
       }
     }
+  },
+  inquiryUrl(inquiryId){return '/pages/trade/trade?id='+encodeURIComponent(this.data.id)+'&channel='+encodeURIComponent(this.data.channel)+'&inquiry=1'+(inquiryId?'&inquiryId='+encodeURIComponent(inquiryId):'')},
+  openInquiry(){if(api.requireLogin())wx.navigateTo({url:this.inquiryUrl('')})},
+  selectThread(e){if(api.requireLogin())wx.navigateTo({url:this.inquiryUrl(e.currentTarget.dataset.id)})},
+  showInquiryThreads(){wx.redirectTo({url:this.inquiryUrl('')})},
+  openOrderChat(){if(api.requireLogin())wx.redirectTo({url:'/pages/trade/trade?id='+encodeURIComponent(this.data.id)+'&channel='+encodeURIComponent(this.data.channel)})},
+  chatPath(image){
+    const root='/api/tasks/'+this.data.id;
+    if(!this.data.inquiryMode)return root+(image?'/chat/image':'/chat');
+    return root+(image?'/chat/image?inquiry=1'+(this.data.inquiryId?'&inquiryId='+encodeURIComponent(this.data.inquiryId):''):'/inquiries');
   },
   loadImages(messages,token,username){
     if(!this.loadedImages)this.loadedImages=new Set();
@@ -93,11 +117,12 @@ Page({
       const id=String(m.id);
       if(!m.image||m.localImage||m.imageStatus==='failed'||this.loadedImages.has(id))return;
       this.loadedImages.add(id);
+      const current=()=>!this.unloaded&&(wx.getStorageSync('token')||'')===session&&(wx.getStorageSync('username')||'')===sessionUser;
       wx.downloadFile({url:app.globalData.apiBase+m.image,header:{Authorization:'Bearer '+session},success:r=>{
         if(this.unloaded||(wx.getStorageSync('token')||'')!==session||(wx.getStorageSync('username')||'')!==sessionUser){this.loadedImages.delete(id);return}
         if(r.statusCode!==200||!r.tempFilePath)return this.markImageFailed(id);
         this.setImageState(id,{localImage:r.tempFilePath,imageStatus:'loaded'});
-      },fail:()=>this.markImageFailed(id)});
+      },fail:()=>{if(current())this.markImageFailed(id)}});
     });
   },
   setImageState(id,values){
@@ -111,6 +136,7 @@ Page({
     if(this.loadedImages)this.loadedImages.delete(String(id));
     this.setImageState(id,{localImage:'',imageStatus:'failed'});
   },
+  imageError(e){const m=this.data.messages.find(x=>String(x.id)===String(e.currentTarget.dataset.id));if(m&&m.localImage===e.currentTarget.dataset.src)this.markImageFailed(m.id)},
   retryImage(e){
     const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'';
     if(!this.sameSession(token,username)){this.staleAction();return}
@@ -128,7 +154,7 @@ Page({
     if(!this.sameSession(token,username)){this.staleAction();return}
     const requestId=(this.sendRequestId||0)+1;this.sendRequestId=requestId;
     this.setData({sending:true});
-    try{await api.post('/api/tasks/'+this.data.id+'/chat',{text},{header:{Authorization:'Bearer '+token}});if(!this.sameSession(token,username))return;this.setData({draft:''});this.load(true)}
+    try{const sent=await api.post(this.chatPath(false),{text,...(this.data.inquiryMode&&this.data.inquiryId?{inquiryId:this.data.inquiryId}:{})},{header:{Authorization:'Bearer '+token}});if(!this.sameSession(token,username))return;this.setData({draft:'',...(this.data.inquiryMode&&sent.inquiryId?{inquiryId:sent.inquiryId}:{})});await this.load(true)}
     catch(e){if(!this.sameSession(token,username)){this.staleAction();return}if(this.handleActionAuthError(e))return;wx.showToast({title:e.message,icon:'none'})}
     finally{if(requestId===this.sendRequestId)this.setData({sending:false})}
   },
@@ -146,12 +172,12 @@ Page({
         if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
         const bytes=new Uint8Array(x.data),type=bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes[0]===137&&bytes[1]===80?'image/png':'';
         if(!type)return wx.showToast({title:'只支持 JPEG 或 PNG 图片',icon:'none'});
-        try{await api.request('/api/tasks/'+this.data.id+'/chat/image',{method:'POST',data:x.data,json:false,header:{'Content-Type':type,Authorization:'Bearer '+sessionToken}});if(this.sameSession(sessionToken,sessionUsername))this.load(true)}
+        try{const sent=await api.request(this.chatPath(true),{method:'POST',data:x.data,json:false,header:{'Content-Type':type,Authorization:'Bearer '+sessionToken}});if(this.sameSession(sessionToken,sessionUsername)){if(this.data.inquiryMode&&sent.data&&sent.data.inquiryId)this.setData({inquiryId:sent.data.inquiryId});this.load(true)}}
         catch(e){if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}if(this.handleActionAuthError(e))return;wx.showToast({title:e.message,icon:'none'})}
       },fail:()=>wx.showToast({title:'读取图片失败',icon:'none'})});
     },fail:error=>{const detail=error&&error.errMsg||'';if(!/cancel/i.test(detail))wx.showToast({title:'选择图片失败，请检查权限后重试',icon:'none'})}});
   },
-  previewImage(e){const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'';if(!this.sameSession(token,username)){this.staleAction();return}wx.previewImage({current:e.currentTarget.dataset.src,urls:[e.currentTarget.dataset.src]})},
+  previewImage(e){const token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'';if(!this.sameSession(token,username)){this.staleAction();return}const src=e.currentTarget.dataset.src;if(!src)return;wx.previewImage({current:src,urls:this.data.messages.filter(x=>x.localImage).map(x=>x.localImage),fail:()=>{this.imageError(e);wx.showToast({title:'图片预览失败，请点此重试',icon:'none'})}})},
   claim(){
     if(!api.requireLogin())return;
     const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
@@ -173,7 +199,7 @@ Page({
     if(!api.requireLogin())return;
     const sessionToken=wx.getStorageSync('token')||'',sessionUsername=wx.getStorageSync('username')||'';
     if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}
-    const labels={finish:'确认已经完成任务？',paid:'请确认已收到交付，并完成线下付款后再标记。',received:'只有在收款账户核实实际到账后，才确认收款。',complete:'申请免付款完成后，接单人仍需确认。',acceptfree:'确认已收到成果，且同意无需付款？',declinefree:'确定不同意免付款申请？',withdrawfree:'确定撤回免付款申请？',unclaim:'放弃接单不会退还接单积分，确定继续？',cancel:'撤回未接单任务后，发布积分会按规则退还。确定继续？'};
+    const labels={finish:'确认已经完成任务？',paid:'请确认已收到交付，并完成线下付款后再标记。',received:'只有在收款账户核实实际到账后，才确认收款。',complete:'普通任务需接单人同意；纯积分任务将直接完成。确认继续吗？',acceptfree:'确认已收到成果，且同意无需付款？',declinefree:'确定不同意免付款申请？',withdrawfree:'确定撤回免付款申请？',unclaim:'放弃接单不会退还接单积分，确定继续？',cancel:'撤回未接单任务后，发布积分会按规则退还。确定继续？'};
     wx.showModal({title:'确认订单操作',content:labels[action]||'确认执行此操作？',success:async r=>{
       if(!r.confirm)return;
       if(!this.sameSession(sessionToken,sessionUsername)){this.staleAction();return}

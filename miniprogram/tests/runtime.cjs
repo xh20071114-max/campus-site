@@ -831,3 +831,78 @@ test('account change clears chat while a private task request is still pending',
   assert.equal(page.data.task,null);
   assert.equal(page.loading,false);
 });
+
+test('pre-claim consultation creates an independent free thread and renders the publisher reply',async()=>{
+  const paths=[],posts=[];
+  const api=apiStub({
+    get:async path=>{
+      paths.push(path);
+      if(path==='/api/tasks/77/inquiries')return {task:{id:77,channel:'任务大厅',user:'poster',status:'open',claimedBy:null,text:'帮取快递',reward:'5元',place:'东门',canWrite:true},messages:[]};
+      if(path==='/api/tasks/77/inquiries?inquiryId=thread-bob')return {task:{id:77,channel:'任务大厅',user:'poster',status:'open',claimedBy:null,text:'帮取快递',canWrite:true},inquiryId:'thread-bob',user:'student',messages:[{id:1,user:'student',text:'东门哪里？'},{id:2,user:'poster',text:'东门快递柜'}]};
+      throw new Error('unexpected GET '+path);
+    },
+    post:async(path,data)=>{posts.push({path,data});return {id:1,inquiryId:'thread-bob',text:data.text}}
+  });
+  const {page}=harness('pages/trade/trade.js',api,{id:'77',channel:'任务大厅',inquiryMode:true,messages:[]},{getStorageSync:key=>key==='token'?'session':'student'});
+  page.sessionToken='session';page.sessionUsername='student';
+  await page.load();
+  assert.equal(page.data.canWrite,true);assert.equal(page.data.canClaim,false);
+  page.setData({draft:'东门哪里？'});
+  await page.send();
+  assert.equal(posts.length,1);assert.equal(posts[0].path,'/api/tasks/77/inquiries');assert.equal(posts[0].data.text,'东门哪里？');
+  assert.ok(paths.includes('/api/tasks/77/inquiries?inquiryId=thread-bob'));
+  assert.equal(page.data.inquiryId,'thread-bob');
+  assert.equal(JSON.stringify(page.data.messages.map(x=>x.text)),JSON.stringify(['东门哪里？','东门快递柜']));
+});
+
+test('publisher inbox selects isolated inquiry threads and enables replies',async()=>{
+  const api=apiStub({get:async path=>{
+    assert.equal(path,'/api/tasks/88/inquiries');
+    return {task:{id:88,channel:'任务大厅',user:'publisher',status:'open',claimedBy:null,text:'买咖啡',inquiryUnread:1},threads:[{inquiryId:'buyer-one',user:'buyer',count:2,unread:1,last:{text:'能帮买吗？'},canWrite:true}]};
+  }});
+  const {page,wx}=harness('pages/trade/trade.js',api,{id:'88',channel:'任务大厅',inquiryMode:true,messages:[]},{getStorageSync:key=>key==='token'?'session':'publisher'});
+  page.sessionToken='session';page.sessionUsername='publisher';
+  await page.load();
+  assert.equal(page.data.showThreads,true);assert.equal(page.data.threads[0].preview,'能帮买吗？');assert.equal(page.data.canWrite,false);
+  page.selectThread({currentTarget:{dataset:{id:'buyer-one'}}});
+  assert.match(wx.lastNavigation.url,/inquiryId=buyer-one/);
+});
+
+test('task hall and personal orders keep consultation actions bound to each account',async()=>{
+  const task={id:78,channel:'任务大厅',user:'publisher',status:'open',text:'买咖啡',inquiryCount:1,inquiryUnread:1};
+  const taskApi=apiStub({get:async path=>{
+    if(path==='/api/tasks?status=open&limit=10&page=1')return {tasks:[task],total:1,pages:1};
+    if(path==='/api/settings')return {claimCost:1};
+    if(path==='/api/me')return {claimCost:1,points:5};
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page:buyer,wx:buyerWx}=harness('pages/tasks/tasks.js',taskApi,{}, {getStorageSync:key=>key==='token'?'buyer-token':'buyer'});
+  await buyer.load();
+  assert.equal(buyer.data.username,'buyer');
+  buyer.consult({currentTarget:{dataset:{id:78,channel:'任务大厅'}}});
+  assert.match(buyerWx.lastNavigation.url,/inquiry=1/);
+
+  const publisherOrders=apiStub({get:async path=>{
+    assert.equal(path,'/api/my/tasks?includeHistory=1');
+    return {posted:[task],claimed:[]};
+  }});
+  const {page:orders,wx:ordersWx}=harness('pages/orders/orders.js',publisherOrders,{}, {getStorageSync:key=>key==='token'?'publisher-token':'publisher'});
+  await orders.load();
+  assert.equal(orders.data.username,'publisher');
+  orders.openInquiries({currentTarget:{dataset:{id:78,channel:'任务大厅'}}});
+  assert.match(ordersWx.lastNavigation.url,/inquiry=1/);
+});
+
+test('publisher receives the free completion button while an order is claimed',async()=>{
+  const api=apiStub({get:async path=>{
+    if(path==='/api/tasks/99')return {id:99,channel:'任务大厅',user:'publisher',claimedBy:'worker',status:'claimed',text:'纯积分任务',bonusPoints:10};
+    if(path==='/api/tasks/99/chat')return {task:{canWrite:true},messages:[]};
+    throw new Error('unexpected GET '+path);
+  }});
+  const {page}=harness('pages/trade/trade.js',api,{id:'99',channel:'任务大厅',messages:[]},{getStorageSync:key=>key==='token'?'session':'publisher'});
+  page.sessionToken='session';page.sessionUsername='publisher';
+  await page.load();
+  assert.equal(page.data.canComplete,true);assert.equal(page.data.canPay,false);
+  const wxml=fs.readFileSync(path.join(root,'pages/trade/trade.wxml'),'utf8');
+  assert.match(wxml,/wx:if="\{\{canComplete\}\}"/);
+});

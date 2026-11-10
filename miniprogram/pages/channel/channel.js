@@ -103,5 +103,7 @@ Page({
     }catch(err){if(!this.sameSession(token,username)){this.staleAction();return}api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
   },
   refresh(){this.load(false)},
-  openTrade(e){wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(this.data.name)})}
+  openTrade(e){wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(this.data.name)})},
+  consult(e){if(!api.requireLogin())return;wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(this.data.name)+'&inquiry=1'})},
+  viewInquiries(e){if(!api.requireLogin())return;wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(this.data.name)+'&inquiry=1'})}
 });

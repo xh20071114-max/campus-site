@@ -1,1 +1,2 @@
 .intro{line-height:1.7;color:#475467}.task{padding:22rpx}.state{color:#b4232e;font-size:24rpx}.task-text{font-weight:600;line-height:1.6;margin:14rpx 0}.bottom{margin-top:20rpx}.cost{color:#b4232e;font-weight:700;font-size:24rpx}.small{font-size:23rpx;padding:12rpx 18rpx;margin:0}.pager{padding:12rpx 0}.pager button{margin:0}
+.inquiry-actions{margin-top:12rpx}.inquiry-actions button{flex:1}

@@ -2,12 +2,12 @@ const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 
 Page({
-  data:{tasks:[],claimCost:null,feeReady:false,total:0,page:1,pages:1,error:''},
+  data:{tasks:[],username:'',claimCost:null,feeReady:false,total:0,page:1,pages:1,error:''},
   onShow(){this.load()},
   async load(){
     const page=this.data.page,token=wx.getStorageSync('token')||'',username=wx.getStorageSync('username')||'',requestId=(this.loadRequestId||0)+1;
     this.loadRequestId=requestId;
-    if(this.sessionToken!==token||this.sessionUsername!==username){this.sessionToken=token;this.sessionUsername=username;this.setData({claimCost:null,feeReady:false,error:''})}
+    if(this.sessionToken!==token||this.sessionUsername!==username){this.sessionToken=token;this.sessionUsername=username;this.setData({username,claimCost:null,feeReady:false,error:''})}
     const isCurrent=()=>requestId===this.loadRequestId&&page===this.data.page&&token===(wx.getStorageSync('token')||'')&&username===(wx.getStorageSync('username')||'');
     try{
 
@@ -43,6 +43,8 @@ Page({
     }catch(err){if(!this.sameSession(token,username)){this.staleClaim();return}api.handleAuthError(err)||wx.showToast({title:err.message,icon:'none'})}
   },
   detail(e){wx.navigateTo({url:'/pages/trade/trade?id='+e.currentTarget.dataset.id+'&channel='+encodeURIComponent(e.currentTarget.dataset.channel)})},
+  consult(e){if(!api.requireLogin())return;const t=e.currentTarget.dataset;wx.navigateTo({url:'/pages/trade/trade?id='+t.id+'&channel='+encodeURIComponent(t.channel)+'&inquiry=1'})},
+  viewInquiries(e){if(!api.requireLogin())return;const t=e.currentTarget.dataset;wx.navigateTo({url:'/pages/trade/trade?id='+t.id+'&channel='+encodeURIComponent(t.channel)+'&inquiry=1'})},
 
   prev(){if(this.data.page>1){this.setData({page:this.data.page-1});this.load()}},
   next(){if(this.data.page<this.data.pages){this.setData({page:this.data.page+1});this.load()}},

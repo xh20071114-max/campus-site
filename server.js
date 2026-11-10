@@ -998,17 +998,17 @@ const handle=async(req,res)=>{
       if(GET){
         if(!poster&&!admin&&!own&&!activeInquiry(m))return send(res,404,{error:'咨询记录不存在'});
         if((poster||admin)&&!qid){
-          const threads=[...groups].map(([id,list])=>{const first=list[0],last=list[list.length-1],username=first.inquiryUser||first.user,live=!!(db.users[username]&&db.users[username].id===first.inquiryUserId);return{inquiryId:id,user:live?username:'已注销用户',userDeleted:!live,count:list.length,last:chatPublic(last),unread:list.filter(x=>x.id>inquiryLastRead(m,id,readerId)&&x.userId!==readerId).length,canWrite:activeInquiry(m)&&live&&(!admin||can(n,'joinChats'))}}).sort((a,b)=>b.last.time.localeCompare(a.last.time)||b.last.id-a.last.id);
+          const threads=[...groups].map(([id,list])=>{const first=list[0],last=list[list.length-1],username=first.inquiryUser||first.user,live=!!(db.users[username]&&db.users[username].id===first.inquiryUserId);return{inquiryId:id,user:live?username:'已注销用户',userDeleted:!live,count:list.length,last:chatPublic(last),unread:list.filter(x=>x.id>inquiryLastRead(m,id,readerId)&&x.userId!==readerId).length,canWrite:activeInquiry(m)&&live&&!banned(n)&&(poster||!admin||can(n,'joinChats'))}}).sort((a,b)=>b.last.time.localeCompare(a.last.time)||b.last.id-a.last.id);
           return send(res,200,{task:{...inquiryTaskInfo(m,t.ch),canWrite:false},threads});
         }
         const thread=qid?{id:qid,list:groups.get(qid)}:own;
         if(!poster&&!admin&&qid&&(!own||own.id!==qid))return send(res,403,{error:'只能查看你自己的咨询'});
-        if(!thread||!thread.list){if(!poster&&!admin&&activeInquiry(m)&&!qid)return send(res,200,{task:{...inquiryTaskInfo(m,t.ch),canWrite:true},messages:[]});return send(res,404,{error:'咨询记录不存在'})}
+        if(!thread||!thread.list){if(!poster&&!admin&&activeInquiry(m)&&!qid)return send(res,200,{task:{...inquiryTaskInfo(m,t.ch),canWrite:!banned(n)&&!isAdmin(n)},messages:[]});return send(res,404,{error:'咨询记录不存在'})}
         if(!poster&&!admin&&thread.list[0].inquiryUserId!==readerId)return send(res,403,{error:'只能查看你自己的咨询'});
         const last=thread.list.at(-1).id,readBefore=inquiryLastRead(m,thread.id,readerId);markInquiryRead(m,thread.id,readerId,last);if(last>readBefore)persist();
         const after=Number(u.searchParams.get('after'))||0,messages=thread.list.filter(x=>x.id>after).map(chatPublic);
-        const username=thread.user,live=!!(db.users[username]&&db.users[username].id===thread.list[0].inquiryUserId);
-        return send(res,200,{task:{...inquiryTaskInfo(m,t.ch),canWrite:activeInquiry(m)&&!banned(n)&&(!admin||can(n,'joinChats'))},inquiryId:thread.id,user:live?username:'已注销用户',messages});
+        const username=thread.list[0].inquiryUser||thread.user,live=!!(db.users[username]&&db.users[username].id===thread.list[0].inquiryUserId);
+        return send(res,200,{task:{...inquiryTaskInfo(m,t.ch),canWrite:activeInquiry(m)&&live&&!banned(n)&&(poster||!admin||can(n,'joinChats'))},inquiryId:thread.id,user:live?username:'已注销用户',messages});
       }
       if(banned(n))return send(res,403,BANNED);
       if(!activeInquiry(m))return send(res,409,{error:'任务已被接取或结束，请使用订单私聊'});
