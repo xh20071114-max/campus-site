@@ -50,6 +50,8 @@ assert.ok(leaderboardWxml.includes('disabled="{{uploading}}"')&&leaderboardWxml.
 const ordersWxml=fs.readFileSync(path.join(root,'pages/orders/orders.wxml'),'utf8');
 assert.ok(ordersWxml.includes('!item.deleted&&!item.formerClaim'),'former claim history must not offer private chat');
 assert.ok(ordersWxml.includes('本记录不再开放原订单私聊'),'former claim history must explain why chat is unavailable');
+const homeWxml=fs.readFileSync(path.join(root,'pages/index/index.wxml'),'utf8');
+assert.match(homeWxml,/class="announcement-text" user-select="true"/,'long announcements must remain selectable for copying');
 
 const apiFile=path.join(root,'utils/api.js');
 let call;
