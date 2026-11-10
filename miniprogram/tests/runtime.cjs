@@ -197,8 +197,15 @@ test('legacy channel links open the task hall and public chat posts without read
   await Promise.resolve();await Promise.resolve();
   assert.equal(legacy.data.name,'任务大厅');
   assert.equal(legacy.data.chatMode,false);
-  assert.equal(legacy.data.taskTypeIndex,1);
+  assert.equal(Object.hasOwn(legacy.data,'taskTypeIndex'),false);
   assert.equal(api.calls.some(x=>x[0]==='request'&&decodeURIComponent(x[1]).startsWith('/api/channels/任务大厅/')),true);
+
+  const publisher=harness('pages/channel/channel.js',api,{showForm:true,text:'帮我买一杯咖啡'}).page;
+  publisher.onLoad({name:'任务大厅'});
+  await publisher.publish();
+  const taskPost=api.calls.findLast(x=>x[0]==='post'&&decodeURIComponent(x[1])==='/api/channels/任务大厅/messages');
+  assert.equal(taskPost[2].task,true);
+  assert.equal(Object.hasOwn(taskPost[2],'taskType'),false);
 
   const {page:chat}=harness('pages/channel/channel.js',api,{});
   chat.onLoad({name:'校园聊天'});

@@ -29,13 +29,13 @@
 | POST | /api/register、/api/login | `{username,password}` → `{token,username}`；用户名 2-16 位，密码至少 6 位 |
 | POST | /api/logout | 退出，token 失效 |
 | GET | /api/me | 当前用户 |
-| GET | /api/channels | 任务大厅、校园聊天及消息数；任务大厅返回可选 taskTypes |
-| GET | /api/channels/<频道>/messages?rev=<n> | 返回 rev 大于 n 的消息，响应头 `X-Rev` 为当前最大 rev；任务大厅支持 taskType 筛选 |
-| POST | /api/channels/任务大厅/messages | `{text,task:true,taskType,reward,place,deadline}` 发分类任务 |
+| GET | /api/channels | 任务大厅、校园聊天及消息数 |
+| GET | /api/channels/<频道>/messages?rev=<n> | 返回 rev 大于 n 的消息，响应头 `X-Rev` 为当前最大 rev；任务大厅不按类型筛选 |
+| POST | /api/channels/任务大厅/messages | `{text,task:true,reward,place,deadline}` 发布任意内容的任务，任务描述必填，其余信息可选 |
 | POST | /api/channels/校园聊天/messages | `{text,task:false}` 发送免费聊天消息 |
 | POST | /api/channels/任务大厅/messages/<id>/claim | 接单（不能接自己的） |
 | POST | /api/channels/<频道>/messages/<id>/complete | 发布者确认完成（需已接单） |
-| GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 网页和小程序默认展示全部类型；API 仍接受可选 `taskType` 参数供接口客户端筛选 |
+| GET | /api/tasks?status=open\|claimed\|done\|all&limit= | 按状态、关键词和排序读取任务；不提供类型筛选 |
 | GET | /api/my/tasks | `{posted,claimed}` |
 | GET | /api/my/saved | 当前账号收藏的任务 |
 | POST | /api/my/saved/<任务ID> | `{saved:true\|false}` 收藏或取消收藏；每个账号最多 200 个 |
@@ -178,8 +178,8 @@ overview 里的 `unreadFeedback` 是未读建议的数量。普通用户看不�
 - `POST /api/channels/<ch>/messages/<id>/release`（也可以写 `kick`）：发布人取消接单人，任务回到待接单，退还接单人的接单积分（返回的任务带 `releasedBy`）。
 - 已接单、没完成、超过截止时间 24 小时的任务带 `overdue:true`，发布人可以 `cancel`，会退还发布积分。
 - 管理员删除或关闭任务时，只有勾选 `refundPost` / `refundClaim` 才退还对应积分；已经退款或已注销的账号不会再退款。
-- 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `任务大厅` 和 `校园聊天`，并为任务大厅返回任务类型。
-- 任务大厅中普通用户只能发任务，任务需属于一个任务类型；校园聊天允许所有登录用户发普通消息，聊天不消耗积分。旧分类频道中的任务迁入任务大厅并保留分类，旧消息迁入校园聊天，订单 ID、私聊、议价、收藏及积分流水保留；旧频道 URL 继续兼容。管理员可发官方标记的公告文字。
+- 频道消息：`?rev=0` 返回最近 50 条，`?before=<id>` 返回这条之前的 50 条；`/api/channels` 返回 `任务大厅` 和 `校园聊天`。
+- 任务大厅允许发布任何类别的任务，不需要选择类型；任务描述必填，报酬、地点和时间可以留空。校园聊天允许所有登录用户发普通消息，聊天不消耗积分。历史任务保留原有分类字段作为旧数据，列表和搜索不再按分类筛选；旧分类频道 URL 仍会跳转到统一任务大厅。旧消息迁入校园聊天，订单 ID、私聊、议价、收藏及积分流水保留。管理员可发官方标记的公告文字。
 - 全站公告只在首页显示。频道管理员文字作为带「官方」标记的频道消息显示在聊天流中，不再置顶到频道顶部。
 
 ## 交易流程和私聊图片

@@ -87,7 +87,7 @@ async function loadTasks(){
   const el=document.getElementById('taskList');
   try{
     const all=await (await fetch((window.API_BASE||'')+'/api/tasks?limit=8')).json();
-    el.innerHTML=all.map(m=>`<a class="task" href="chat.html#任务大厅"><div><span class="tg">#${esc(m.taskType||'其他')}</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
+    el.innerHTML=all.map(m=>`<a class="task" href="chat.html#任务大厅"><div><span class="tg">#任务</span>${esc(m.text)}</div><small>${esc(m.user)} · ${new Date(m.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></a>`).join('')||'<p style="color:#9ca3af">暂时没有待接的任务</p>';
   }catch{el.innerHTML='<p style="color:#9ca3af">任务加载失败</p>'}finally{tasksLoading=false}
 }
 loadCounts();loadTasks();setInterval(()=>{if(document.hidden)return;loadCounts();loadTasks()},10000);

@@ -294,20 +294,21 @@ test('old category channels migrate into the unified task hall and retain catego
  },data);
 });
 
-test('legacy task and chat messages migrate without losing records or task categories',()=>fixture(async({call,restart,tmp})=>{
- const channels=(await call('/api/channels','')).data;assert.deepEqual(channels.map(x=>x.name),['任务大厅','校园聊天']);assert.deepEqual(channels[0].taskTypes,['校园跑','校园配送','代取快递','代课','代做作业','其他']);
+test('legacy task and chat messages migrate while category labels stay hidden',()=>fixture(async({call,restart,tmp})=>{
+ const channels=(await call('/api/channels','')).data;assert.deepEqual(channels.map(x=>x.name),['任务大厅','校园聊天']);assert.equal(Object.hasOwn(channels[0],'taskTypes'),false);
  const tasks=(await call('/api/channels/任务大厅/messages?rev=0','')).data;assert.deepEqual(tasks.map(x=>[x.id,x.taskType]),[[81001,'校园跑'],[81003,'代取快递']]);
  const chat=(await call('/api/channels/校园聊天/messages?rev=0','')).data;assert.deepEqual(chat.map(x=>x.id),[81002,81004]);
- const filtered=(await call('/api/tasks?taskType=代取快递','')).data;assert.deepEqual(filtered.map(x=>x.id),[81003]);
+ const all=(await call('/api/tasks?taskType=不存在','')).data;assert.deepEqual(all.map(x=>x.id),[81003,81001]);
+ const oldLink=(await call('/api/channels/代取快递/messages?rev=0','')).data;assert.deepEqual(oldLink.map(x=>x.id),[81001,81003]);
  await restart();const saved=JSON.parse(await fs.readFile(path.join(tmp,'data.json'),'utf8'));assert.deepEqual(Object.keys(saved.messages),['任务大厅','校园聊天']);assert.equal(saved.messages['任务大厅'][0].id,81001);assert.equal(saved.messages['校园聊天'][0].id,81002);
 },(()=>{const d=seed();d.messages={'校园跑':[{id:81001,user:'Alice',text:'run task',task:true,time:new Date().toISOString()},{id:81002,user:'Bob',text:'old public chat',task:false,time:new Date().toISOString()}],'代取快递':[{id:81003,user:'Alice',text:'parcel task',task:true,time:new Date().toISOString()}],'校园聊天':[{id:81004,user:'Carol',text:'existing chat',task:false,time:new Date().toISOString()}]};return d})()));
 
-test('the public chat channel accepts free chat while task posting stays categorized and charged',()=>fixture(async({call})=>{
+test('the public chat channel is free and tasks accept any content without categories',()=>fixture(async({call})=>{
  const before=(await call('/api/my/points','Alice')).data.points;
  const chat=await call('/api/channels/校园聊天/messages','Alice',{text:'普通聊天',task:false});assert.equal(chat.status,200);assert.equal((await call('/api/my/points','Alice')).data.points,before);
  assert.equal((await call('/api/channels/校园聊天/messages','Alice',{text:'wrong channel',task:true,taskType:'其他'})).status,400);
  assert.equal((await call('/api/channels/任务大厅/messages','Alice',{text:'not a task',task:false})).status,403);
- const task=await call('/api/channels/任务大厅/messages','Alice',{text:'delivery request',task:true,taskType:'校园配送'});assert.equal(task.status,200);assert.equal((await call('/api/my/points','Alice')).data.points,before-1);
- const listed=(await call('/api/tasks?taskType=校园配送','')).data;assert.equal(listed.length,1);assert.equal(listed[0].channel,'任务大厅');assert.equal(listed[0].taskType,'校园配送');
- assert.equal((await call('/api/channels/任务大厅/messages','Alice',{text:'bad category',task:true,taskType:'不存在'})).status,400);
+ const task=await call('/api/channels/任务大厅/messages','Alice',{text:'帮我预约图书馆的自习室',task:true});assert.equal(task.status,200);assert.equal(task.data.taskType,undefined);assert.equal((await call('/api/my/points','Alice')).data.points,before-1);
+ const legacyInput=await call('/api/channels/任务大厅/messages','Alice',{text:'帮我买一杯咖啡',task:true,taskType:'不存在'});assert.equal(legacyInput.status,200);assert.equal(legacyInput.data.taskType,undefined);
+ const listed=(await call('/api/tasks?taskType=校园配送','')).data;assert.equal(listed.length,2);assert.ok(listed.every(x=>x.channel==='任务大厅'&&x.taskType===undefined));
 },seed()));

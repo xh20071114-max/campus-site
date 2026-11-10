@@ -5,10 +5,10 @@ const APP_COMMIT_VALUE=String(process.env.APP_COMMIT||process.env.RELEASE_SHA||'
 const APP_COMMIT=/^[a-f0-9]{40}$/i.test(APP_COMMIT_VALUE)?APP_COMMIT_VALUE.toLowerCase():'unknown';
 try{fs.mkdirSync(DATA_DIR,{recursive:true})}catch{}
 const TASK_CHANNEL='任务大厅', CHAT_CHANNEL='校园聊天';
-const TASK_TYPES=['校园跑','校园配送','代取快递','代课','代做作业','其他'];
+const LEGACY_TASK_TYPES=['校园跑','校园配送','代取快递','代课','代做作业','其他'];
 const LEGACY_TASK_TYPE_BY_CHANNEL=Object.freeze({'校园跑':'校园跑','校园配送':'校园配送','食堂配送':'校园配送','代取快递':'代取快递','代课':'代课','代做作业':'代做作业'});
 const CHANNELS=[TASK_CHANNEL,CHAT_CHANNEL];
-const isTaskType=value=>TASK_TYPES.includes(value);
+const isLegacyTaskType=value=>LEGACY_TASK_TYPES.includes(value);
 // 权限键由服务端统一维护；授予权限和完整备份始终仅限总管理员。
 const PERMISSIONS=[
   ['viewUsers','用户管理','查看用户','查看账号、状态和积分'],
@@ -79,7 +79,7 @@ for(const k of ['users','sessions','messages','deletedTexts']) if(db[k]&&typeof 
    if(!Array.isArray(items))continue;
    for(const m of items){
      const key=String(m.id);if(tasks.has(key)||chats.has(key))continue;
-     if(m.task){if(!isTaskType(m.taskType))m.taskType=LEGACY_TASK_TYPE_BY_CHANNEL[oldChannel]||'其他';tasks.set(key,m)}
+     if(m.task){if(!isLegacyTaskType(m.taskType))m.taskType=LEGACY_TASK_TYPE_BY_CHANNEL[oldChannel]||'其他';tasks.set(key,m)}
      else chats.set(key,m);
    }
  }
@@ -371,7 +371,7 @@ const handle=async(req,res)=>{
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
   let u,p; try{u=new URL(req.url.replace(/^\/+/,'/'),'http://x'); p=decodeURIComponent(u.pathname)}catch{res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});return res.end('{"error":"请求地址格式不对"}')}
-  const legacyChannel=p.match(/^\/api\/channels\/(校园跑|校园配送|食堂配送|代取快递|代课|代做作业)(?=\/|$)/),legacyTaskType=legacyChannel&&LEGACY_TASK_TYPE_BY_CHANNEL[legacyChannel[1]];
+  const legacyChannel=p.match(/^\/api\/channels\/(校园跑|校园配送|食堂配送|代取快递|代课|代做作业)(?=\/|$)/);
   p=p.replace(/^\/api\/channels\/(?:校园跑|校园配送|食堂配送|代取快递|代课|代做作业)(?=\/|$)/,'/api/channels/任务大厅');
   if(u.searchParams.get('channel')==='食堂配送')u.searchParams.set('channel','校园配送');
   // 允许 GitHub Pages 上的前端跨域调用接口（ALLOW_ORIGINS 可用逗号追加其他来源）
@@ -680,7 +680,7 @@ const handle=async(req,res)=>{
       const ok=storage.ok&&!storageError;
       return send(res,ok?200:503,{ok,uptime:Math.round(process.uptime()),commit:APP_COMMIT,storage});
     }
-    if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive),tasks=l.filter(x=>x.task);return{name:c,count:c===TASK_CHANNEL?tasks.length:l.length,taskCount:tasks.length,messageCount:l.length,lastId:l.length?l[l.length-1].id:0,...(c===TASK_CHANNEL?{taskTypes:TASK_TYPES}:{})}})}; return send(res,200,chCache.data)}
+    if(p==='/api/channels'){ if(!chCache||chCache.rev!==(db.rev||0)) chCache={rev:db.rev||0,data:CHANNELS.map(c=>{const l=db.messages[c].filter(alive),tasks=l.filter(x=>x.task);return{name:c,count:c===TASK_CHANNEL?tasks.length:l.length,taskCount:tasks.length,messageCount:l.length,lastId:l.length?l[l.length-1].id:0}})}; return send(res,200,chCache.data)}
     // 任务和消息操作：POST /api/channels/:ch/messages/:id/<claim|unclaim|complete|done|cancel|delete|pin|unpin>
     const am2=p.match(/^\/api\/channels\/([^/]+)\/messages\/(\d+)\/(claim|unclaim|release|kick|finish|paid|received|complete|done|acceptfree|declinefree|withdrawfree|cancel|delete|restore|dispute|pin|unpin)$/);
     if(am2&&POST){
@@ -1095,14 +1095,12 @@ const handle=async(req,res)=>{
     if(p==="/api/tasks"&&GET){
       const st=u.searchParams.get("status")||"open", lim=Math.min(Math.max(parseInt(u.searchParams.get("limit"))||10,1),100);
       if(!['open','claimed','done','all'].includes(st))return send(res,400,{error:'任务状态无效'});
-      const paged=u.searchParams.has('page'),page=intIn(u.searchParams.get('page')||'1',1,1000000),channel=u.searchParams.get('channel')||'',taskType=u.searchParams.get('taskType')||'';
+      const paged=u.searchParams.has('page'),page=intIn(u.searchParams.get('page')||'1',1,1000000),channel=u.searchParams.get('channel')||'';
       if(paged&&page==null)return send(res,400,{error:'页码无效'});
-      if(channel&&channel!==TASK_CHANNEL&&channel!==CHAT_CHANNEL&&!isTaskType(channel))return send(res,400,{error:'频道无效'});
-      if(taskType&&!isTaskType(taskType))return send(res,400,{error:'任务分类无效'});
+      if(channel&&channel!==TASK_CHANNEL&&channel!==CHAT_CHANNEL&&!isLegacyTaskType(channel))return send(res,400,{error:'频道无效'});
       if(channel===CHAT_CHANNEL)return send(res,200,paged?{tasks:[],total:0,page:1,pages:1}:[]);
-      const filterType=taskType||(isTaskType(channel)?channel:'');
       const me=userOf(req),q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50),all=[];
-      for(const c of CHANNELS)for(const x of db.messages[c]){if((filterType&&x.taskType!==filterType)||!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x)||x.done||x.closed)||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
+      for(const c of CHANNELS)for(const x of db.messages[c]){if(!x.task||!alive(x)||st==='open'&&(x.claimedBy||expired(x)||x.done||x.closed)||st==='claimed'&&(!x.claimedBy||x.done)||st==='done'&&!x.done)continue;
         if(q&&![x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q)))continue;all.push({msg:x,ch:c})}
       const compare=taskComparator(u.searchParams.get('sort'));all.sort((a,b)=>compare(a.msg,b.msg));
       const pages=Math.max(1,Math.ceil(all.length/lim)),current=Math.min(page||1,pages),start=paged?(current-1)*lim:0,tasks=all.slice(start,start+lim).map(x=>withUnread(out(x.msg,x.ch,me),me));
@@ -1124,10 +1122,9 @@ const handle=async(req,res)=>{
       if(GET){
         // ?rev=<n> 返回 rev 大于 n 的消息（含新消息、状态变化、被删除的），响应头 X-Rev 是当前最大 rev
         const rv=u.searchParams.get('rev'), me=userOf(req);
-        const q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50), so=u.searchParams.get('sort'),taskType=u.searchParams.get('taskType')||'',filterType=taskType||legacyTaskType||'';
-        if(taskType&&!isTaskType(taskType))return send(res,400,{error:'任务分类无效'});
-        const feed=items=>filterType?items.filter(x=>x.task&&x.taskType===filterType):items;
-        if(q||so||taskType){const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100); let l=db.messages[ch].filter(x=>x.task&&alive(x)); if(filterType)l=l.filter(x=>x.taskType===filterType);if(q) l=l.filter(x=>[x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q))); return send(res,200,sortTasks(l,so).slice(0,lim).map(x=>withUnread(out(x,null,me),me)))}
+        const q=(u.searchParams.get('q')||'').trim().toLowerCase().slice(0,50), so=u.searchParams.get('sort');
+        const feed=items=>items;
+        if(q||so){const lim=Math.min(Math.max(parseInt(u.searchParams.get('limit'))||50,1),100); let l=db.messages[ch].filter(x=>x.task&&alive(x));if(q) l=l.filter(x=>[x.text,x.place,x.reward].some(v=>String(v||'').toLowerCase().includes(q))); return send(res,200,sortTasks(l,so).slice(0,lim).map(x=>withUnread(out(x,null,me),me)))}
         const bf=u.searchParams.get('before');
         if(bf!==null){const b=+bf||0;const l=feed(db.messages[ch].filter(x=>x.id<b));return send(res,200,l.slice(-50).map(x=>withUnread(out(x,null,me),me)))}
         if(rv!==null){const n=+rv||0;res.setHeader('X-Rev',String(db.rev||0));const l=feed(n>0?db.messages[ch].filter(x=>(x.rev||0)>n):db.messages[ch].slice(-50));return send(res,200,l.map(x=>withUnread(out(x,null,me),me)));}
@@ -1140,11 +1137,9 @@ const handle=async(req,res)=>{
         for(const k of ['reward','place','deadline']) if(b[k]!=null&&typeof b[k]!=='string'&&typeof b[k]!=='number') return send(res,400,{error:k+' 格式不对'});
         if(ch===CHAT_CHANNEL&&b.task)return send(res,400,{error:'聊天频道不能发布任务，请前往任务大厅'});
         if(ch===TASK_CHANNEL&&!b.task&&!can(n,'postOfficial')) return send(res,403,{error:'任务大厅只允许发布任务'});
-        if(b.task&&(b.taskType!=null||legacyTaskType)&&!isTaskType(b.taskType||legacyTaskType))return send(res,400,{error:'任务分类无效'});
         const msg={id:newId(),user:n,text:String(b.text).slice(0,2000),task:!!b.task,time:new Date().toISOString()};
         if(can(n,'postOfficial')) msg.official=true;
         if(msg.task){
-          msg.taskType=isTaskType(b.taskType)?b.taskType:(legacyTaskType||'其他');
           const reward=str(b.reward,20),place=str(b.place,50);
           if(reward) msg.reward=reward; if(place) msg.place=place;
           if(b.deadline){const t=Date.parse(b.deadline); if(isNaN(t)) return send(res,400,{error:'截止时间格式不对'}); if(t<=Date.now()) return send(res,400,{error:'截止时间要晚于现在'}); msg.deadline=new Date(t).toISOString();}

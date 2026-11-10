@@ -74,6 +74,8 @@ const api=require(apiFile);
   for(const action of ['finish','paid','received','complete','acceptfree','declinefree'])assert.ok(trade.includes(action),'missing trade action '+action);
   assert.ok(tasks.includes('feeReady')&&tasks.includes('/api/settings'),'task hall must stop claims if fee rules cannot be read');
   assert.ok(channel.includes('reward:this.data.reward')&&!channel.includes('bonusPoints'),'regular task composer must omit bonus-point input');
+  assert.ok(channel.includes('task:true')&&!channel.includes('taskType:'),'new mini program tasks must not require a category');
+  assert.ok(!channelWxml.includes('taskTypes')&&!channelWxml.includes('item.taskType'),'mini program task UI must not expose category selectors or labels');
   assert.ok(trade.includes('wx.downloadFile')&&trade.includes('Authorization'),'private chat images must use authenticated downloads');
   assert.ok(trade.includes("'/inquiries'")&&trade.includes("'&inquiry=1'"),'pre-claim inquiry endpoint and route are required');
   assert.ok(tradeWxml.includes('wx:if="{{canComplete}}"')&&tradeWxml.includes('申请免付款完成'),'publisher must be able to request free completion before payment');

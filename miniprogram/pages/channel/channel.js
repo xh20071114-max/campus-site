@@ -1,19 +1,18 @@
 const api=require('../../utils/api');
 const fmt=require('../../utils/format');
 const TASK_CHANNEL='任务大厅',CHAT_CHANNEL='校园聊天';
-const TASK_TYPES=['校园跑','校园配送','代取快递','代课','代做作业','其他'];
-const OLD_TYPES={'校园跑':'校园跑','校园配送':'校园配送','食堂配送':'校园配送','代取快递':'代取快递','代课':'代课','代做作业':'代做作业'};
+const OLD_TASK_CHANNELS=new Set(['校园跑','校园配送','食堂配送','代取快递','代课','代做作业']);
 
 function decodeRouteValue(value){try{return decodeURIComponent(value)}catch{return null}}
 
 Page({
-  data:{name:'',messages:[],username:'',showForm:false,chatMode:false,text:'',reward:'',place:'',date:'',time:'',postCost:0,posting:false,error:'',taskTypes:TASK_TYPES,taskTypeIndex:5},
+  data:{name:'',messages:[],username:'',showForm:false,chatMode:false,text:'',reward:'',place:'',date:'',time:'',postCost:0,posting:false,error:''},
   onLoad(q){
     this.sessionToken=wx.getStorageSync('token')||'';this.sessionUsername=wx.getStorageSync('username')||'';
-    let name=q.name?decodeRouteValue(q.name):TASK_CHANNEL,taskType='';
+    let name=q.name?decodeRouteValue(q.name):TASK_CHANNEL;
     if(name===null){this.invalidRoute=true;this.setData({name:'',username:wx.getStorageSync('username')||'',error:'频道链接无效，请从首页重新打开'});return}
-    if(OLD_TYPES[name]){taskType=OLD_TYPES[name];name=TASK_CHANNEL}
-    this.setData({name,chatMode:name===CHAT_CHANNEL,taskTypeIndex:Math.max(0,TASK_TYPES.indexOf(taskType||'其他')),username:wx.getStorageSync('username')||''});
+    if(OLD_TASK_CHANNELS.has(name))name=TASK_CHANNEL;
+    this.setData({name,chatMode:name===CHAT_CHANNEL,username:wx.getStorageSync('username')||''});
     this.load();
   },
   onShow(){
@@ -57,7 +56,6 @@ Page({
     catch(e){if(!this.sameSession(token,username)){this.staleAction();return}api.handleAuthError(e)||wx.showToast({title:e.message,icon:'none'})}
   },
   onText(e){this.setData({text:e.detail.value})},
-  onTypeChange(e){this.setData({taskTypeIndex:Number(e.detail.value)||0})},
   onReward(e){this.setData({reward:e.detail.value})},
   onPlace(e){this.setData({place:e.detail.value})},
   onDate(e){this.setData({date:e.detail.value})},
@@ -71,7 +69,7 @@ Page({
     let deadline='';
     if(this.data.date&&this.data.time)deadline=new Date(this.data.date+'T'+this.data.time+':00+08:00').toISOString();
     const task=!this.data.chatMode;
-    const data=task?{text:this.data.text.trim(),task:true,taskType:TASK_TYPES[this.data.taskTypeIndex]||'其他',reward:this.data.reward,place:this.data.place,...(deadline?{deadline}:{})}:{text:this.data.text.trim(),task:false};
+    const data=task?{text:this.data.text.trim(),task:true,reward:this.data.reward,place:this.data.place,...(deadline?{deadline}:{})}:{text:this.data.text.trim(),task:false};
     const requestId=(this.publishRequestId||0)+1;this.publishRequestId=requestId;
     this.setData({posting:true});
     try{

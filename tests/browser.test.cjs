@@ -305,7 +305,7 @@ test('admin message rows retain access to withdrawn offer history',t=>fixture(as
  const page=await pageFor(t,base,'AevonEcho');await page.goto(base+'/admin.html');await page.locator('#ub').waitFor();await page.locator('[data-t="msgs"]').click();await page.locator('[data-off="'+m.id+'"]').click();await page.locator('.cm .ci').waitFor();assert.ok((await page.locator('.cm .cl').textContent()).includes('history note'));
 }));
 
-test('task hall exposes all task types without type filters and opens a claimed order on mobile',async t=>{
+test('task hall shows every task without category filters and opens claimed orders on mobile',async t=>{
  const data=seed(),id=1234567890200000;data.messages['校园跑']=Array.from({length:21},(_,i)=>({id:id+i,user:'Alice',task:true,text:'hall task '+i,time:new Date().toISOString()}));data.messages['代取快递']=[{id:id+30,user:'Alice',task:true,text:'hall parcel',time:new Date().toISOString()}];
  await fixture(async({base})=>{
  const page=await pageFor(t,base,'Bob',[],{viewport:{width:390,height:844},hasTouch:true});
@@ -319,7 +319,7 @@ test('task hall exposes all task types without type filters and opens a claimed 
 
 test('unified task hall, free chat and legacy channel bookmark',t=>fixture(async({base,call})=>{
  const page=await pageFor(t,base,'Bob');await page.goto(base+'/index.html');await page.getByRole('heading',{name:'任务大厅',exact:true}).waitFor();await page.getByRole('heading',{name:'校园聊天',exact:true}).waitFor();assert.equal(await page.locator('#channels .card').count(),2);
- await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='任务大厅'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 任务大厅');assert.equal(await page.locator('#taskFilter').count(),0);assert.equal(await page.locator('#xType').inputValue(),'校园配送');
+ await page.goto(base+'/chat.html#'+encodeURIComponent('食堂配送'));await page.waitForFunction(()=>cur==='任务大厅'&&online===true);assert.equal(await page.locator('#title').innerText(),'# 任务大厅');assert.equal(await page.locator('#taskFilter').count(),0);assert.equal(await page.locator('#xType').count(),0);await page.locator('#postBtn').click();await page.locator('#text').fill('帮我从图书馆取预约资料');await page.locator('#send').click();await page.locator('.m.task').filter({hasText:'帮我从图书馆取预约资料'}).waitFor();const posted=(await call('/api/my/tasks','Bob')).data.posted.find(x=>x.text==='帮我从图书馆取预约资料');assert.ok(posted);assert.equal(posted.taskType,undefined);
  await page.goto(base+'/chat.html#'+encodeURIComponent('校园聊天'));await page.waitForFunction(()=>cur==='校园聊天'&&online===true);await page.locator('#chatHint').waitFor({state:'visible'});assert.equal(await page.locator('#sbar').isVisible(),false);assert.equal((await page.locator('#bal').innerText()).trim(),'');const points=(await call('/api/my/points','Bob')).data.points;await page.locator('#text').fill('campus chat is free');await page.locator('#send').click();await page.locator('.m').filter({hasText:'campus chat is free'}).waitFor();assert.equal((await call('/api/my/points','Bob')).data.points,points);
 }));
 

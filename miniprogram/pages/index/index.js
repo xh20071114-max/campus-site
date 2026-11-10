@@ -19,7 +19,7 @@ Page({
       updates.allAnnouncements=news;
       updates.announcements=this.data.expanded?news:news.slice(0,2);
     }else failed.push('公告');
-    if(tasks.ok)updates.tasks=tasks.value.slice(0,6).map(x=>({...x,typeLabel:x.taskType||'其他',timeText:fmt.date(x.time)}));else failed.push('任务');
+    if(tasks.ok)updates.tasks=tasks.value.slice(0,6).map(x=>({...x,typeLabel:'任务',timeText:fmt.date(x.time)}));else failed.push('任务');
     updates.loadError=failed.length?`部分信息加载失败（${failed.join('、')}），请检查网络或 request 合法域名，点击重试` : '';
     this.setData(updates);
   },
