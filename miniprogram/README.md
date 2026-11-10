@@ -18,9 +18,10 @@
 
 1. 用微信开发者工具打开本目录。
 2. `project.config.json` 已配置当前小程序 AppID：`wx312deec0abd7330f`，无需再替换占位 AppID。
-3. 在小程序后台“开发管理 → 开发设置 → 服务器域名”中，将 `plgslzlexpmy.sealoshzh.site` 加入 `request` 和 `downloadFile` 合法域名。私聊图片使用 `wx.downloadFile` 下载；图片上传使用 `wx.request` 发送原始图片字节，不使用 `uploadFile`。
-4. 工程里的 `urlCheck:false` 仅供本机开发者工具模拟器调试，不能代替平台域名白名单，也不能证明真机或正式版请求可用。配置完白名单后，打开合法域名校验并逐页检查布局、登录态和 API。`app.js` 默认连接现有正式服务，调试时不要创建真实订单或提交真实充值。
-5. 小程序名称、服务类目、隐私保护指引、用户数据处理说明和审核发布需在真实主体账号中完成。后台隐私指引需声明代码实际使用的相册/相机图片选择用途并通过审核；图片选择前小程序会展示微信隐私授权提示，用户拒绝时不会继续读取或上传图片。
+3. **不要把 Sealos 生成的 `plgslzlexpmy.sealoshzh.site` 加入小程序白名单**：微信后台已拒绝该共享子域名。先准备归你本人或单位所有、已完成 ICP 备案的域名；备案主体须与域名实名认证信息一致。Sealos 支持在现有应用上绑定自有域名：DNS 添加指向 `plgslzlexpmy.sealoshzh.site` 的 CNAME，再在 `aevon-campus` 应用详情中绑定该域名并确认 HTTPS 证书正常。参见 [Sealos 绑定自定义域名](https://sealos.io/docs/guides/app-deploy/add-a-domain) 和 [腾讯云备案域名要求](https://cloud.tencent.com/document/product/243/18905)。
+4. 域名绑定并启用 HTTPS 后，把 `miniprogram/app.js` 中的 `apiBase` 改为 `https://你的域名`。在微信小程序后台“开发管理 → 开发设置 → 服务器域名”中，将**不带协议、端口、路径或分号**的主机名加入 `request` 和 `downloadFile` 合法域名。私聊图片通过 `wx.downloadFile` 下载；图片上传由 `wx.request` 发送原始图片字节，因此无需 `uploadFile` 域名。
+5. 工程里的 `urlCheck:false` 只用于本机开发者工具模拟器调试，不能代替平台白名单，也不能证明真机或正式版请求可用。域名白名单配置成功后，将 `urlCheck` 改为 `true`，逐页检查模拟器与真机的布局、登录态、API 和私聊图片。`app.js` 默认连接现有正式服务，调试时不要创建真实订单或提交真实充值。
+6. 小程序名称、服务类目、隐私保护指引、用户数据处理说明和审核发布需在真实主体账号中完成。后台隐私指引需声明代码实际使用的相册/相机图片选择用途并通过审核；图片选择前小程序会展示微信隐私授权提示，用户拒绝时不会继续读取或上传图片。
 
 ## 本地预检
 
